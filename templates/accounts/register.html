@@ -1,0 +1,215 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="register-container">
+    <h1 class="text-[var(--text-color)]">Create Your Account</h1>
+    {% if messages %}
+        <div class="messages" id="messages">
+            {% for message in messages %}
+                <div class="alert animate__animated animate__fadeIn">{{ message }}</div>
+            {% endfor %}
+        </div>
+    {% endif %}
+    <form method="post" novalidate id="register-form">
+        {% csrf_token %}
+        <div class="input-group">
+            {{ form.username }}
+            <label for="id_username">Username</label>
+            <span class="error-message" id="username-error"></span>
+        </div>
+
+        <div class="input-group">
+            {{ form.email }}
+            <label for="id_email">Email</label>
+            <span class="error-message" id="email-error"></span>
+        </div>
+
+        <div class="input-group">
+            {{ form.password1 }}
+            <label for="id_password1">Password</label>
+            <div class="password-strength" id="password-strength">
+                <span class="strength-bar" id="strength-bar"></span>
+                <span class="strength-text" id="strength-text">Password Strength</span>
+            </div>
+        </div>
+
+        <div class="input-group">
+            {{ form.password2 }}
+            <label for="id_password2">Confirm Password</label>
+            <span class="error-message" id="password2-error"></span>
+        </div>
+
+        <button type="submit" class="btn-ripple auth-button">Register</button>
+    </form>
+    <p class="login-link">Already have an account? <a href="{% url 'accounts:login' %}" class="text-[var(--link-color)] hover:text-[var(--link-hover)]">Login</a></p>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap');
+
+.register-container {
+    background: var(--dropdown-bg);
+    padding: 40px;
+    border-radius: 15px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+    max-width: 420px;
+    width: 90%;
+    margin: 50px auto;
+    text-align: center;
+    animation: slideUp 0.8s ease-out forwards;
+}
+
+@keyframes slideUp { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
+
+h1 { font-size: 2rem; margin-bottom: 25px; }
+
+.input-group { position: relative; margin-bottom: 20px; }
+input {
+    padding: 14px 12px;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    width: 100%;
+    background: var(--bg-color);
+    color: var(--text-color);
+    outline: none;
+    transition: border-color 0.3s ease;
+    font-size: 1rem;
+}
+input:focus { border-color: var(--button-bg); background: var(--dropdown-bg); }
+label {
+    position: absolute;
+    top: 50%; left: 12px;
+    transform: translateY(-50%);
+    color: #777;
+    font-size: 0.95rem;
+    transition: 0.3s ease;
+    pointer-events: none;
+}
+input:focus + label,
+input:not(:placeholder-shown) + label {
+    top: -8px; background: var(--dropdown-bg); padding: 0 6px; font-size: 0.8rem; color: var(--button-bg);
+}
+
+.register-container .auth-button {
+    background: var(--button-bg);
+    color: white !important;
+    padding: 14px;
+    border-radius: 10px;
+    font-weight: 700;
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    width: 100%;
+}
+.register-container .auth-button:hover {
+    background: var(--button-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(37, 99, 235, 0.5);
+}
+.register-container .auth-button:after {
+    content: "";
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    width: 0; height: 0;
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 50%;
+    opacity: 0;
+    transition: width 0.4s ease, height 0.4s ease, opacity 0.4s ease;
+}
+.register-container .auth-button:active:after {
+    width: 200px; height: 200px; opacity: 1; transition: 0s;
+}
+
+.register-container .messages, .register-container .error-message {
+    background: var(--alert-bg);
+    color: var(--alert-text);
+    padding: 8px;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    margin-top: 5px;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+}
+.register-container .messages.show, .register-container .error-message.show {
+    opacity: 1;
+}
+
+.password-strength { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.strength-bar { flex-grow: 1; height: 6px; background: #e0e0e0; border-radius: 3px; transition: all 0.4s ease; }
+.strength-bar.weak { background: #d32f2f; width: 33%; }
+.strength-bar.medium { background: #f4a261; width: 66%; }
+.strength-bar.strong { background: #2a9d8f; width: 100%; }
+.strength-text { font-size: 0.8rem; color: #555; }
+
+.login-link { margin-top: 20px; font-size: 0.9rem; }
+
+@media (max-width: 480px) {
+    .register-container { padding: 30px 20px; }
+    h1 { font-size: 1.7rem; }
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('register-form');
+    const usernameInput = document.querySelector('#register-form [name="username"]');
+    const emailInput = document.querySelector('#register-form [name="email"]');
+    const password1Input = document.querySelector('#register-form [name="password1"]');
+    const password2Input = document.querySelector('#register-form [name="password2"]');
+    const usernameError = document.getElementById('username-error');
+    const emailError = document.getElementById('email-error');
+    const password2Error = document.getElementById('password2-error');
+    const strengthBar = document.getElementById('strength-bar');
+    const strengthText = document.getElementById('strength-text');
+    const messages = document.getElementById('messages');
+
+    function showError(element, message) {
+        if (element) { element.textContent = message; element.classList.add('show'); }
+    }
+    function clearError(element) {
+        if (element) { element.textContent = ''; element.classList.remove('show'); }
+    }
+
+    if (messages) {
+        messages.classList.add('show');
+        setTimeout(() => messages.classList.remove('show'), 5000);
+    }
+
+    usernameInput.addEventListener('input', () => {
+        usernameInput.value.length < 3 ? showError(usernameError, 'Username must be at least 3 characters long.') : clearError(usernameError);
+    });
+
+    emailInput.addEventListener('input', () => {
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput.value) ? clearError(emailError) : showError(emailError, 'Please enter a valid email address.');
+    });
+
+    password1Input.addEventListener('input', () => {
+        const val = password1Input.value;
+        let strength = 'weak';
+        if (val.length >= 8 && /[A-Z]/.test(val) && /[0-9]/.test(val)) strength = 'strong';
+        else if (val.length >= 6) strength = 'medium';
+        strengthBar.className = 'strength-bar ' + strength;
+        strengthText.textContent = `Password Strength: ${strength.charAt(0).toUpperCase() + strength.slice(1)}`;
+    });
+
+    password2Input.addEventListener('input', () => {
+        password2Input.value !== password1Input.value ? showError(password2Error, 'Passwords do not match.') : clearError(password2Error);
+    });
+
+    form.addEventListener('submit', (e) => {
+        let hasError = false;
+        if (usernameInput.value.length < 3) { showError(usernameError, 'Username must be at least 3 characters long.'); hasError = true; }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput.value)) { showError(emailError, 'Please enter a valid email address.'); hasError = true; }
+        if (password1Input.value.length < 6) { showError(password2Error, 'Password must be at least 6 characters long.'); hasError = true; }
+        if (password1Input.value !== password2Input.value) { showError(password2Error, 'Passwords do not match.'); hasError = true; }
+        if (hasError) e.preventDefault();
+    });
+});
+</script>
+{% endblock %}

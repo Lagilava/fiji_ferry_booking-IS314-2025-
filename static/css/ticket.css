@@ -1,0 +1,107 @@
+/* ==== Base Styles ==== */
+body {
+    background: #f3f4f6; /* Light gray background */
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+}
+
+/* Ticket container */
+.ticket-container {
+    display: flex;
+    justify-content: center;
+    padding: 1.5rem;
+}
+
+/* Ticket card */
+.ticket-card {
+    background: #fff;
+    width: 100%;
+    max-width: 450px;
+    border-radius: 16px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+    border: 1px solid #e5e7eb;
+    position: relative;
+}
+
+/* Header */
+.ticket-header {
+    background: linear-gradient(to right, #4338ca, #6366f1);
+    color: #fff;
+    text-align: center;
+    padding: 1rem;
+    font-weight: 600;
+    font-size: 1.3rem;
+    letter-spacing: 0.5px;
+}
+
+/* Ticket sections */
+.ticket-section {
+    padding: 1rem 1.5rem;
+    border-bottom: 1px dashed #d1d5db;
+}
+
+.ticket-section:last-child {
+    border-bottom: none;
+}
+
+.ticket-section h5 {
+    color: #4338ca;
+    font-weight: 600;
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+}
+
+/* Status badge */
+.status-badge {
+    padding: 0.3rem 0.6rem;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: #fff;
+}
+
+.status-badge.active {
+    background-color: #22c55e; /* Green */
+}
+.status-badge.used {
+    background-color: #64748b; /* Gray */
+}
+.status-badge.canceled {
+    background-color: #ef4444; /* Red */
+}
+
+/* QR Section */
+.qr-section {
+    padding: 1rem;
+    text-align: center;
+}
+
+.qr-code {
+    max-width: 160px;
+    border: 2px dashed #6366f1;
+    border-radius: 12px;
+    padding: 6px;
+    background: #f9fafb;
+    margin-bottom: 0.5rem;
+}
+
+.scan-text {
+    font-size: 0.9rem;
+    color: #6b7280;
+}
+
+/* Footer buttons */
+.ticket-footer {
+    display: flex;
+    justify-content: space-around;
+    padding: 0.8rem;
+    background: #f9fafb;
+    border-top: 1px solid #e5e7eb;
+}
+
+.ticket-footer .btn {
+    padding: 0.5rem 1.2rem;
+    font-weight: 600;
+    border-radius: 6px;
+    text-decoration: none;
+    transition: background 0.3s;

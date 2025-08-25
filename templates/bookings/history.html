@@ -1,0 +1,69 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load math_filters %}
+
+{% block title %}Booking History - Fiji Ferry Booking{% endblock %}
+
+{% block content %}
+<section class="container mx-auto px-4 sm:px-6 lg:px-8 py-12" data-aos="fade-up">
+    <h1 class="text-3xl font-bold text-center mb-4" style="font-family: 'Playfair Display', serif; color: var(--text-color);">Your Booking History</h1>
+    <h2 class="text-xl text-center mb-8" style="color: var(--text-color);">View and Manage Your Island Adventures</h2>
+    <div class="flex justify-center mb-8">
+        <a href="{% url 'bookings:book' %}" class="bg-[var(--button-bg)] bg-blue-500 text-white font-semibold px-6 py-3 rounded-lg hover:bg-[var(--button-hover)] hover:bg-blue-600 transition-colors duration-300" aria-label="Book another ferry ticket">Book Another Ferry</a>
+    </div>
+
+    <div class="max-w-5xl mx-auto">
+        <h3 class="text-2xl font-semibold mb-6" style="font-family: 'Playfair Display', serif; color: var(--text-color);">Your Bookings</h3>
+        {% if bookings %}
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {% for booking in bookings %}
+                    <div class="bg-[var(--card-bg)] rounded-lg shadow-lg p-6 hover:shadow-xl transition-all duration-300" data-aos="fade-up" data-aos-delay="{{ forloop.counter0|multiply:100 }}">
+                        <div class="text-lg font-bold mb-4" style="color: var(--text-color);">Booking #{{ booking.id }}</div>
+                        <div class="mb-4">
+                            <h4 class="text-md font-semibold mb-2" style="color: var(--text-color);">Trip Details</h4>
+                            <p class="text-[var(--text-color)]"><strong>{{ booking.schedule.route.departure_port }}</strong> → <strong>{{ booking.schedule.route.destination_port }}</strong></p>
+                            <p class="text-[var(--text-color)]">Ferry: {{ booking.schedule.ferry.name }}</p>
+                            <p class="text-[var(--text-color)]">Departure: {{ booking.schedule.departure_time|date:"F d, Y H:i" }}</p>
+                            <p class="text-[var(--text-color)]">Status: <span class="status-badge {{ booking.status|lower }}">{{ booking.status|capfirst }}</span> • FJD {{ booking.total_price|floatformat:2 }}</p>
+                            {% if booking.cargo_set.exists %}
+                                <h4 class="text-md font-semibold mt-4 mb-2" style="color: var(--text-color);">📦 Cargo Details</h4>
+                                {% for cargo in booking.cargo_set.all %}
+                                    <p class="text-sm text-[var(--text-color)]">• {{ cargo.cargo_type|title }} - {{ cargo.weight_kg }}kg ({{ cargo.dimensions_cm }}) — FJD {{ cargo.price|floatformat:2 }}</p>
+                                {% endfor %}
+                            {% endif %}
+                        </div>
+                        <div class="flex flex-wrap gap-3">
+                            {% if booking.status != 'cancelled' %}
+                                {% if booking.schedule.departure_time > cutoff_time %}
+                                    <a href="{% url 'bookings:modify_booking' booking.id %}" class="bg-[var(--button-bg)] bg-blue-500 text-white font-semibold px-4 py-2 rounded-lg hover:bg-[var(--button-hover)] hover:bg-blue-600 transition-colors duration-300" aria-label="Modify booking {{ booking.id }}">Modify</a>
+                                {% else %}
+                                    <button class="bg-gray-400 text-gray-700 font-semibold px-4 py-2 rounded-lg cursor-not-allowed" disabled aria-label="Modify disabled: within 6 hours of departure">Modify</button>
+                                {% endif %}
+                                <a href="{% url 'bookings:cancel_booking' booking.id %}" class="cancel-booking bg-red-500 text-white font-semibold px-4 py-2 rounded-lg hover:bg-red-600 transition-colors duration-300" data-booking-id="{{ booking.id }}" aria-label="Cancel booking {{ booking.id }}">Cancel</a>
+                            {% endif %}
+                            <a href="{% url 'bookings:view_tickets' booking.id %}" class="bg-gray-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors duration-300" aria-label="View tickets for booking {{ booking.id }}">View Tickets</a>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="text-center text-[var(--text-color)]">No bookings available at this time.</p>
+        {% endif %}
+    </div>
+
+    <div class="flex justify-center mt-8 gap-4">
+        <a href="{% url 'bookings:book' %}" class="bg-[var(--button-bg)] bg-blue-500 text-white font-semibold px-6 py-3 rounded-lg hover:bg-[var(--button-hover)] hover:bg-blue-600 transition-colors duration-300" aria-label="Book another ticket">Book Another Ticket</a>
+        <a href="{% url 'home' %}" class="bg-gray-600 text-white font-semibold px-6 py-3 rounded-lg hover:bg-gray-700 transition-colors duration-300" aria-label="Back to home">Back to Home</a>
+    </div>
+</section>
+
+<div id="cancelModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden" role="dialog" aria-labelledby="cancelModalTitle" aria-modal="true">
+    <div class="bg-[var(--card-bg)] rounded-lg p-6 max-w-md w-full" data-aos="zoom-in">
+        <h3 id="cancelModalTitle" class="text-xl font-semibold mb-4" style="color: var(--text-color);">Are you sure you want to cancel this booking?</h3>
+        <div class="flex justify-end gap-3">
+            <button id="confirmCancel" class="bg-red-500 text-white font-semibold px-4 py-2 rounded-lg hover:bg-red-600 transition-colors duration-300" aria-label="Confirm cancellation">Confirm</button>
+            <button id="closeModal" class="bg-gray-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors duration-300" aria-label="Close modal">Close</button>
+        </div>
+    </div>
+</div>
+{% endblock %}

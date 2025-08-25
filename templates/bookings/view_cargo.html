@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<section class="container mx-auto px-4 sm:px-6 lg:px-8 py-12" data-aos="fade-up">
+    <h2 class="text-3xl font-bold text-center mb-8 font-['Playfair_Display']" style="color: var(--text-color);">View Cargo Booking</h2>
+    <div class="max-w-2xl mx-auto bg-[var(--dropdown-bg)] p-8 rounded-lg shadow-lg" data-aos="fade-up" data-aos-delay="100">
+        <h3 class="text-xl font-semibold mb-4 font-['Playfair_Display']" style="color: var(--text-color);">Cargo Details</h3>
+        <p class="text-[var(--text-color)]">Cargo Type: {{ cargo.cargo_type|title }}</p>
+        <p class="text-[var(--text-color)]">Weight (kg): {{ cargo.weight_kg }}</p>
+        <p class="text-[var(--text-color)]">Dimensions (cm): {{ cargo.dimensions_cm }}</p>
+        <p class="text-[var(--text-color)]">Booking ID: #{{ cargo.booking.id }}</p>
+        <p class="text-[var(--text-color)]">Status: {{ cargo.booking.status|capfirst }}</p>
+        <p class="text-[var(--text-color)]">Booking Date: {{ cargo.booking.created_at|date:"F d, Y H:i" }}</p>
+
+        {% if cargo.qr_code %}
+            <div class="mt-6">
+                <h3 class="text-xl font-semibold mb-2 font-['Playfair_Display']" style="color: var(--text-color);">📌 Cargo QR Code</h3>
+                <img src="{{ cargo.qr_code.url }}" alt="Cargo QR Code" class="mx-auto w-48 h-48">
+                <p class="text-[var(--text-color)] text-center mt-2">Show this QR code when dropping off your cargo.</p>
+            </div>
+        {% endif %}
+
+        <div class="text-center mt-6">
+            <a href="{% url 'bookings:booking_history' %}" class="text-[var(--link-color)] hover:text-[var(--link-hover)] font-semibold">← Back to Booking History</a>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&family=Playfair+Display:wght@400;700&display=swap');
+
+section {
+    font-family: 'Poppins', sans-serif;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    AOS.init({
+        duration: 800,
+        once: true
+    });
+</script>
+{% endblock %}

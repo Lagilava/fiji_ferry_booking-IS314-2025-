@@ -1,0 +1,389 @@
+{% load static %}
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Book your Fiji ferry tickets for a seamless island adventure.">
+    <meta name="keywords" content="Fiji, ferry, booking, travel, island adventure">
+    <meta name="author" content="Fiji Ferry Booking">
+    <title>{% block title %}Fiji Ferry Booking{% endblock %}</title>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="{% static 'favicon.png' %}">
+
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&display=swap" rel="stylesheet">
+
+    <!-- Tailwind CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <!-- Animate.css -->
+    <link href="https://cdn.jsdelivr.net/npm/animate.css@4.1.1/animate.min.css" rel="stylesheet">
+    <!-- AOS for scroll animations -->
+    <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
+
+    <!-- Custom CSS -->
+    <style>
+    :root {
+        --bg-color: #e6f3ff;
+        --text-color: #111827;
+        --link-color: #2563eb;
+        --link-hover: #1e40af;
+        --dropdown-bg: #ffffff;
+        --dropdown-hover: #dbeafe;
+        --border-color: #bfdbfe;
+        --button-bg: #3b82f6;
+        --button-hover: #2563eb;
+        --card-bg: #f9fafb;
+        --input-bg: #ffffff;
+        --input-text: #111827;
+        --alert-success-bg: #d1fae5;
+        --alert-success-text: #065f46;
+        --alert-error-bg: #fee2e2;
+        --alert-error-text: #991b1b;
+        --alert-info-bg: #dbeafe;
+        --alert-info-text: #1e3a8a;
+        --footer-bg: #f1f5f9;
+        --footer-text: #4b5563;
+    }
+
+    html.dark-mode {
+        --bg-color: #0f172a;
+        --text-color: #f1f5f9;
+        --link-color: #60a5fa;
+        --link-hover: #93c5fd;
+        --dropdown-bg: #1e293b;
+        --dropdown-hover: #334155;
+        --border-color: #475569;
+        --button-bg: #2563eb;
+        --button-hover: #1e40af;
+        --card-bg: #1e293b;
+        --input-bg: #2d3748;
+        --input-text: #e2e8f0;
+        --alert-success-bg: #065f46;
+        --alert-success-text: #d1fae5;
+        --alert-error-bg: #991b1b;
+        --alert-error-text: #fee2e2;
+        --alert-info-bg: #1e293b;
+        --alert-info-text: #f1f5f9;
+        --footer-bg: #1e293b;
+        --footer-text: #9ca3af;
+    }
+
+    * {
+        transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+    }
+
+    body {
+        margin: 0;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        background-color: var(--bg-color);
+        color: var(--text-color);
+        line-height: 1.6;
+    }
+
+    .navbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1rem 2rem;
+        background-color: var(--bg-color);
+        border-bottom: 1px solid var(--border-color);
+        position: sticky;
+        top: 0;
+        z-index: 50;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .logo img {
+        height: 60px;
+        width: auto;
+        object-fit: contain;
+        transition: opacity 0.3s ease;
+    }
+
+    @media (min-width: 1024px) {
+        .logo img { height: 70px; }
+    }
+
+    @media (max-width: 640px) {
+        .logo img { height: 50px; }
+    }
+
+    nav {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+    }
+
+    nav a, .dropbtn {
+        text-decoration: none;
+        color: var(--link-color);
+        font-weight: 600;
+        font-size: 1rem;
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        transition: color 0.3s ease, background-color 0.3s ease;
+    }
+
+    nav a:hover, .dropbtn:hover {
+        color: var(--link-hover);
+        background-color: var(--dropdown-hover);
+    }
+
+    nav a:focus, .dropbtn:focus {
+        outline: 2px solid var(--link-hover);
+        outline-offset: 2px;
+    }
+
+    .hamburger {
+        display: none;
+        font-size: 1.75rem;
+        cursor: pointer;
+        color: var(--link-color);
+        background: none;
+        border: none;
+        padding: 0.5rem;
+    }
+
+    @media (max-width: 768px) {
+        .hamburger { display: block; }
+        nav {
+            display: none;
+            flex-direction: column;
+            width: 100%;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            background-color: var(--bg-color);
+            padding: 1rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        nav.show {
+            display: flex;
+        }
+        nav a, .dropdown { width: 100%; text-align: left; }
+    }
+
+    .dropdown {
+        position: relative;
+    }
+
+    .dropbtn {
+        background: none;
+        border: none;
+        cursor: pointer;
+        font: inherit;
+    }
+
+    .dropdown-content {
+        position: absolute;
+        top: 100%;
+        right: 0;
+        background-color: var(--dropdown-bg);
+        min-width: 200px;
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
+        z-index: 100;
+        opacity: 0;
+        visibility: hidden;
+        transform: translateY(8px);
+        transition: opacity 0.3s ease, transform 0.3s ease, visibility 0.3s ease;
+        border-radius: 8px;
+        padding: 0.5rem 0;
+    }
+
+    .dropdown:hover .dropdown-content,
+    .dropdown:focus-within .dropdown-content {
+        opacity: 1;
+        visibility: visible;
+        transform: translateY(0);
+    }
+
+    .dropdown-content a,
+    .dropdown-content button {
+        display: block;
+        padding: 0.75rem 1.25rem;
+        background: none;
+        border: none;
+        width: 100%;
+        text-align: left;
+        color: var(--link-color);
+        font-weight: 500;
+        cursor: pointer;
+        text-decoration: none;
+        transition: background-color 0.2s ease;
+    }
+
+    .dropdown-content a:hover,
+    .dropdown-content button:hover {
+        background-color: var(--dropdown-hover);
+    }
+
+    .dropdown-content a:focus,
+    .dropdown-content button:focus {
+        outline: 2px solid var(--link-hover);
+        outline-offset: 2px;
+    }
+
+    .dark-mode-toggle {
+        background: var(--button-bg);
+        color: #ffffff;
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        border: none;
+        cursor: pointer;
+        font-weight: 600;
+        transition: background-color 0.3s ease;
+    }
+
+    .dark-mode-toggle:hover {
+        background: var(--button-hover);
+    }
+
+    .dark-mode-toggle:focus {
+        outline: 2px solid var(--button-hover);
+        outline-offset: 2px;
+    }
+
+    .messages .alert {
+        padding: 1rem;
+        margin: 1rem auto;
+        border-radius: 8px;
+        max-width: 600px;
+        text-align: center;
+    }
+
+    .messages .alert.success {
+        background: var(--alert-success-bg);
+        color: var(--alert-success-text);
+        border: 1px solid var(--alert-success-text);
+    }
+
+    .messages .alert.error {
+        background: var(--alert-error-bg);
+        color: var(--alert-error-text);
+        border: 1px solid var(--alert-error-text);
+    }
+
+    .messages .alert.info {
+        background: var(--alert-info-bg);
+        color: var(--alert-info-text);
+        border: 1px solid var(--alert-info-text);
+    }
+
+    .status-badge {
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-weight: 600;
+        font-size: 0.85rem;
+        color: #ffffff;
+        text-transform: capitalize;
+        display: inline-block;
+    }
+
+    .status-badge.pending {
+        background-color: #f4a261;
+    }
+
+    .status-badge.confirmed {
+        background-color: #2a9d8f;
+    }
+
+    .status-badge.cancelled {
+        background-color: #e76f51;
+    }
+
+    input, select {
+        background-color: var(--input-bg);
+        color: var(--input-text);
+        border: 1px solid var(--border-color);
+        border-radius: 0.5rem;
+        padding: 0.75rem;
+        width: 100%;
+        font-size: 1rem;
+        transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    input:focus, select:focus {
+        outline: none;
+        border-color: var(--button-bg);
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+    }
+
+    select option {
+        background-color: var(--input-bg);
+        color: var(--input-text);
+    }
+
+    footer {
+        text-align: center;
+        padding: 2rem 1rem;
+        background-color: var(--footer-bg);
+        color: var(--footer-text);
+        font-size: 0.875rem;
+    }
+</style>
+
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <header class="navbar">
+        <div class="logo">
+            <a href="{% url 'home' %}" aria-label="Fiji Ferry Booking Home">
+                <img src="{% static 'logo-light.png' %}" alt="Fiji Ferry Logo" id="site-logo">
+            </a>
+        </div>
+        <button class="hamburger" aria-label="Toggle Navigation Menu" aria-expanded="false">
+            <span class="sr-only">Toggle Menu</span>☰
+        </button>
+        <nav id="navMenu" role="navigation" aria-label="Main Navigation">
+            <a href="{% url 'home' %}" class="nav-link">Home</a>
+            <a href="{% url 'bookings:book' %}" class="nav-link">Book Now</a>
+            {% if user.is_authenticated %}
+                <div class="dropdown" tabindex="0">
+                    <button class="dropbtn" aria-haspopup="true" aria-expanded="false">
+                        My Account <span class="ml-1">▾</span>
+                    </button>
+                    <div class="dropdown-content" role="menu">
+                        <a href="{% url 'bookings:booking_history' %}" role="menuitem">My Bookings</a>
+
+                        <!-- Secure Logout Form -->
+                        <form method="post" action="{% url 'accounts:logout' %}">
+                            {% csrf_token %}
+                            <button type="submit" role="menuitem" class="w-full text-left bg-none border-none px-4 py-2 cursor-pointer hover:bg-gray-100">
+                                Logout
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            {% else %}
+                <a href="{% url 'accounts:login' %}" class="nav-link">Login</a>
+                <a href="{% url 'accounts:register' %}" class="nav-link bg-amber-500 hover:bg-amber-600">Sign Up</a>
+            {% endif %}
+            <button class="dark-mode-toggle" id="theme-icon" aria-label="Toggle dark mode">
+                <span class="dark-mode-icon">🌙</span>
+            </button>
+        </nav>
+    </header>
+
+    <main class="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {% if messages %}
+            <div class="messages">
+                {% for message in messages %}
+                    <div class="alert animate__animated animate__fadeIn {% if message.tags %}{{ message.tags }}{% endif %}">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer>
+        <p>© 2025 Fiji Ferry Booking. All rights reserved.</p>
+    </footer>
+
+    <!-- AOS JavaScript -->
+    <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+    <script src="{% static 'js/script.js' %}"></script>
+    <script src="{% static 'js/book.js' %}"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

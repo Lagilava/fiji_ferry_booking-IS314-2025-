@@ -1,0 +1,587 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load math_filters %}
+
+{% block title %}Fiji Ferry Booking - Home{% endblock %}
+
+{% block content %}
+<header class="hero" role="banner">
+    <div class="hero-slideshow" aria-hidden="true">
+        <div class="hero-slide" style="background-image: url('https://voyagerinfo.com/wp-content/uploads/2023/07/where-is-the-carnival-liberty-cruise-ship-sailing-right-now_88.png');" data-src="https://voyagerinfo.com/wp-content/uploads/2023/07/where-is-the-carnival-liberty-cruise-ship-sailing-right-now_88.png">
+            <div class="slide-caption">Discover Fiji's Stunning Coastlines</div>
+        </div>
+        <div class="hero-slide" data-src="https://media.directferries.com/images/large_2024_e25bf7e342.webp">
+            <div class="slide-caption">Sail Through Paradise</div>
+        </div>
+        <div class="hero-slide" data-src="https://img.freepik.com/premium-photo/cruise-ship-ferry-sailing-bright-sunset_43412-5.jpg?w=740">
+            <div class="slide-caption">Experience Sunset Voyages</div>
+        </div>
+        <div class="hero-slide" data-src="https://maritime-executive.com/media/images/article/Photos/Vessels_Small/Lomaiviti-Princess-7-Goundar-Shipping-Limited.8d62b1.jpg">
+            <div class="slide-caption">Explore Hidden Islands</div>
+        </div>
+    </div>
+    <div class="hero-overlay" aria-hidden="true"></div>
+    <div class="hero-content">
+        <h1 class="text-4xl md:text-5xl font-bold text-white">Explore Fiji by Ferry</h1>
+        <p class="intro-text text-lg md:text-xl text-white">Book your island adventure today</p>
+        <div class="booking-widget bg-var-card-bg p-6 rounded-lg shadow-lg" data-aos="fade-up" data-aos-delay="300">
+            <h3 class="text-xl font-bold text-var-primary">Find Your Ferry</h3>
+            <form class="booking-form space-y-4" id="search-form" action="{% url 'home' %}" method="get" aria-label="Search for ferry schedules">
+                <div class="form-row flex flex-wrap gap-4">
+                    <div class="form-group flex-1 min-w-[180px]">
+                        <label for="route" class="block text-sm font-semibold text-var-text-color">Route</label>
+                        <input type="text" id="route" name="route" required list="routes" value="{{ form_data.route|default:"" }}" placeholder="Select route (e.g., Nadi to Suva)" class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-button-bg" aria-required="true">
+                        <datalist id="routes">
+                            {% for route in routes %}
+                                <option value="{{ route.departure_port|lower }}-to-{{ route.destination_port|lower }}">{{ route.departure_port }} to {{ route.destination_port }}</option>
+                            {% endfor %}
+                        </datalist>
+                    </div>
+                    <div class="form-group flex-1 min-w-[180px]">
+                        <label for="departure-date" class="block text-sm font-semibold text-var-text-color">Departure Date</label>
+                        <input type="text" id="departure-date" name="date" required min="{{ today|date:'Y-m-d' }}" value="{{ form_data.date|default:"" }}" class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-button-bg" aria-required="true" placeholder="Select date">
+                    </div>
+                </div>
+                <button type="submit" class="cta-button search-button w-full bg-var-button-bg text-white py-2 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover">Search Ferries</button>
+            </form>
+            <a href="{% url 'bookings:book' %}" class="cta-button book-now block w-full text-center bg-var-button-bg text-white py-2 rounded mt-4 hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover">Book Now</a>
+        </div>
+    </div>
+    <nav class="hero-nav-dots" aria-label="Hero slideshow navigation">
+        <button class="dot active" aria-label="Go to slide 1" type="button"></button>
+        <button class="dot" aria-label="Go to slide 2" type="button"></button>
+        <button class="dot" aria-label="Go to slide 3" type="button"></button>
+        <button class="dot" aria-label="Go to slide 4" type="button"></button>
+    </nav>
+</header>
+
+<main class="container">
+    <section class="stats-bar flex flex-wrap justify-center gap-6 p-6 bg-var-bg-color rounded-lg my-6" data-aos="fade-up">
+        <div class="stat text-center">
+            <span class="stat-number text-3xl font-bold text-var-primary">12</span>
+            <span class="stat-label block text-sm text-var-text-color">Destinations</span>
+        </div>
+        <div class="stat text-center">
+            <span class="stat-number text-3xl font-bold text-var-primary">8</span>
+            <span class="stat-label block text-sm text-var-text-color">Ferry Operators</span>
+        </div>
+        <div class="stat text-center">
+            <span class="stat-number text-3xl font-bold text-var-primary">50+</span>
+            <span class="stat-label block text-sm text-var-text-color">Daily Departures</span>
+        </div>
+        <div class="stat text-center">
+            <span class="stat-number text-3xl font-bold text-var-primary">98%</span>
+            <span class="stat-label block text-sm text-var-text-color">On-Time Rate</span>
+        </div>
+    </section>
+
+    <section class="welcome-section py-12 text-center" data-aos="fade-up">
+        <div class="welcome-content max-w-2xl mx-auto">
+            {% if user.is_authenticated %}
+                <h2 class="text-3xl font-bold text-var-primary">Welcome, {{ user.username }}!</h2>
+                <p class="welcome-text text-lg my-4 text-var-text-color">Your next Fiji adventure awaits. Book your ferry now!</p>
+                <a href="{% url 'bookings:book' %}" class="cta-button welcome-button bg-var-button-bg text-white py-2 px-6 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover">Book Your Journey</a>
+            {% else %}
+                <h2 class="text-3xl font-bold text-var-primary">Welcome Aboard!</h2>
+                <p class="welcome-text text-lg my-4 text-var-text-color">Explore Fiji’s islands. Login or register to start booking!</p>
+                <div class="welcome-actions flex justify-center gap-4">
+                    <a href="{% url 'accounts:login' %}" class="cta-button welcome-button bg-var-button-bg text-white py-2 px-6 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover">Login</a>
+                    <a href="{% url 'accounts:register' %}" class="cta-button welcome-button highlight bg-var-highlight-bg text-white py-2 px-6 rounded hover:bg-var-highlight-hover focus:outline-none focus:ring-2 focus:ring-var-highlight-hover">Register</a>
+                </div>
+            {% endif %}
+        </div>
+    </section>
+
+    <section class="schedules py-12 bg-gradient-to-b from-var-bg-color to-var-bg-secondary rounded-lg" data-aos="fade-up">
+        <div class="next-departure-banner bg-var-card-bg p-4 rounded text-center mb-6 shadow-sm">
+            <h3 class="text-lg font-semibold text-var-text-color">Next Departure: <span id="next-departure-time" aria-live="polite">Loading...</span></h3>
+        </div>
+        <h2 class="text-3xl font-bold text-center text-var-primary mb-6">Upcoming Ferry Departures</h2>
+        <div class="schedule-filters flex justify-end mb-4">
+            <label for="sort-by" class="sr-only">Sort schedules</label>
+            <select id="sort-by" class="p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-button-bg">
+                <option value="time">Sort by Time</option>
+                <option value="price">Sort by Price</option>
+                <option value="duration">Sort by Duration</option>
+            </select>
+        </div>
+        {% if schedules %}
+            <div class="schedule-list grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {% for schedule in schedules %}
+                    <div class="schedule-card bg-var-card-bg rounded-lg p-6 shadow-lg hover:shadow-xl transition transform hover:-translate-y-1 hover:scale-102" data-schedule-id="{{ schedule.id }}" data-route-id="{{ schedule.route.id }}" data-aos="fade-up" data-aos-delay="{{ forloop.counter0|multiply:100|add:100 }}" tabindex="0" role="article" aria-label="Ferry from {{ schedule.route.departure_port }} to {{ schedule.route.destination_port }}">
+                        <div class="route-info">
+                            <h3 class="text-xl font-bold text-var-primary">{{ schedule.route.departure_port }} → {{ schedule.route.destination_port }}</h3>
+                            <p class="departure-time text-sm text-var-text-color" data-iso="{{ schedule.departure_time.isoformat }}">{{ schedule.departure_time|date:"D, M d, H:i" }}</p>
+                            <p class="ferry-name text-sm text-var-text-color">{{ schedule.ferry.name }}</p>
+                            <p class="seats-available text-sm text-var-text-color">Seats Available: <span class="seat-count font-semibold" aria-live="polite">{{ schedule.available_seats }}</span></p>
+                            <p class="weather-info text-sm flex items-center text-var-text-color">
+                                <span class="weather-icon mr-2" aria-hidden="true"></span>
+                                <span class="weather-label">Weather:</span> <span class="weather-condition font-semibold" aria-live="polite">Loading...</span>
+                            </p>
+                            {% if schedule.route.estimated_duration %}
+                                <p class="duration text-sm text-var-text-color">
+                                    Duration:
+                                    {% with total_seconds=schedule.route.estimated_duration.total_seconds %}
+                                        {% if total_seconds|div:3600 >= 1 %}
+                                            {{ total_seconds|div:3600|floatformat:0 }}h
+                                            {% if total_seconds|div:3600|floatformat:0|add:0 < total_seconds|div:3600 %}
+                                                {{ total_seconds|div:60|mod:60|floatformat:0 }}m
+                                            {% endif %}
+                                        {% else %}
+                                            {{ total_seconds|div:60|floatformat:0 }}m
+                                        {% endif %}
+                                    {% endwith %}
+                                </p>
+                            {% else %}
+                                <p class="duration duration-unavailable text-sm text-var-text-color">Duration Not Available</p>
+                            {% endif %}
+                        </div>
+                        <div class="schedule-actions mt-4 flex flex-col gap-2">
+                            <span class="status-badge
+                                {% if schedule.status == 'scheduled' %}status-scheduled bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200{% endif %}
+                                {% if schedule.status == 'cancelled' %}status-cancelled bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200{% endif %}
+                                {% if schedule.status == 'delayed' %}status-delayed bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200{% endif %}
+                            ">
+                                {{ schedule.status|capfirst }}
+                            </span>
+                            {% if schedule.status == 'scheduled' and schedule.route.base_fare %}
+                                <p class="fare text-lg font-semibold text-var-primary">FJD {{ schedule.route.base_fare|floatformat:2 }}</p>
+                            {% elif schedule.status == 'cancelled' %}
+                                <p class="fare fare-unavailable text-sm text-red-600 dark:text-red-400">Booking Unavailable</p>
+                            {% else %}
+                                <p class="fare fare-unavailable text-sm text-red-600 dark:text-red-400">Fare Not Available</p>
+                            {% endif %}
+                            <a href="{% url 'bookings:book' %}?schedule_id={{ schedule.id }}" class="cta-button book-now block text-center bg-var-button-bg text-white py-2 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover">Book Now</a>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="text-center text-lg text-var-text-color">
+                No scheduled ferries found
+                {% if form_data.route or form_data.date %}
+                    for
+                    {% if form_data.route %}{{ form_data.route|capfirst }}{% endif %}
+                    {% if form_data.date %}{% if form_data.route %} on {% endif %}{{ form_data.date }}{% endif %}.
+                {% endif %}
+                Please try a different route or date.
+            </p>
+        {% endif %}
+    </section>
+
+    <section class="destinations py-12 bg-gradient-to-b from-var-bg-color to-var-bg-secondary rounded-lg" data-aos="fade-up">
+        <div class="section-header text-center mb-6">
+            <h2 class="text-3xl font-bold text-var-primary">Explore Our Island Destinations</h2>
+            <p class="text-lg text-var-text-color">Discover the beauty of Fiji's diverse islands</p>
+        </div>
+        <div class="destination-list grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div class="destination-card bg-var-card-bg rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition transform hover:-translate-y-1 hover:scale-102" data-aos="fade-up" data-aos-delay="100">
+                <div class="destination-img-container relative h-48">
+                    <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn=Y9GcQ7hgqMrzrh8h3MGwlHx97UA2FUKUpOz4qrTA&s" alt="Nadi" class="destination-img w-full h-full object-cover" loading="lazy" onerror="this.src='{% static 'images/placeholder.jpg' %}'">
+                    <div class="destination-overlay absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                        <a href="{% url 'bookings:book' %}?to_port=nadi" class="destination-btn bg-var-button-bg text-white py-2 px-4 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover">Book to Nadi</a>
+                    </div>
+                </div>
+                <h3 class="text-xl font-bold m-4 text-var-primary">Nadi</h3>
+                <p class="destination-desc text-sm m-4 text-var-text-color">Gateway to Fiji's tropical adventures and vibrant markets.</p>
+                <p class="travel-time text-sm m-4 italic text-var-text-color">Average trip: 30min-2hr</p>
+            </div>
+            <div class="destination-card bg-var-card-bg rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition transform hover:-translate-y-1 hover:scale-102" data-aos="fade-up" data-aos-delay="200">
+                <div class="destination-img-container relative h-48">
+                    <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn=Y9GcQG6x8VOi9X42TPWSC1jNP5hvDA0zgpFv7Oeg&s" alt="Suva" class="destination-img w-full h-full object-cover" loading="lazy" onerror="this.src='{% static 'images/placeholder.jpg' %}'">
+                    <div class="destination-overlay absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                        <a href="{% url 'bookings:book' %}?to_port=suva" class="destination-btn bg-var-button-bg text-white py-2 px-4 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover">Book to Suva</a>
+                    </div>
+                </div>
+                <h3 class="text-xl font-bold m-4 text-var-primary">Suva</h3>
+                <p class="destination-desc text-sm m-4 text-var-text-color">Fiji's bustling capital, rich in culture and history.</p>
+                <p class="travel-time text-sm m-4 italic text-var-text-color">Average trip: 3-4hr</p>
+            </div>
+            <div class="destination-card bg-var-card-bg rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition transform hover:-translate-y-1 hover:scale-102" data-aos="fade-up" data-aos-delay="300">
+                <div class="destination-img-container relative h-48">
+                    <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn=Y9GcS_hOfplOMYyiFy2HV2RYCv7bWl9JiaSxfOjQ&s" alt="Taveuni" class="destination-img w-full h-full object-cover" loading="lazy" onerror="this.src='{% static 'images/placeholder.jpg' %}'">
+                    <div class="destination-overlay absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                        <a href="{% url 'bookings:book' %}?to_port=taveuni" class="destination-btn bg-var-button-bg text-white py-2 px-4 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover">Book to Taveuni</a>
+                    </div>
+                </div>
+                <h3 class="text-xl font-bold m-4 text-var-primary">Taveuni</h3>
+                <p class="destination-desc text-sm m-4 text-var-text-color">The Garden Island, renowned for lush rainforests and waterfalls.</p>
+                <p class="travel-time text-sm m-4 italic text-var-text-color">Average trip: 12-14hr</p>
+            </div>
+            <div class="destination-card bg-var-card-bg rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition transform hover:-translate-y-1 hover:scale-102" data-aos="fade-up" data-aos-delay="400">
+                <div class="destination-img-container relative h-48">
+                    <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn=Y9GcSKeSgWLhr-2O8KGQyL61xcazonDt3JVs83zA&s" alt="Savusavu" class="destination-img w-full h-full object-cover" loading="lazy" onerror="this.src='{% static 'images/placeholder.jpg' %}'">
+                    <div class="destination-overlay absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                        <a href="{% url 'bookings:book' %}?to_port=savusavu" class="destination-btn bg-var-button-bg text-white py-2 px-4 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover">Book to Savusavu</a>
+                    </div>
+                </div>
+                <h3 class="text-xl font-bold m-4 text-var-primary">Savusavu</h3>
+                <p class="destination-desc text-sm m-4 text-var-text-color">A charming town with natural hot springs and friendly vibes.</p>
+                <p class="travel-time text-sm m-4 italic text-var-text-color">Average trip: 10-12hr</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="fiji-map py-12 bg-gradient-to-b from-var-bg-color to-var-bg-secondary rounded-lg" data-aos="fade-up">
+        <h2 class="text-3xl font-bold text-center text-var-primary mb-6">Explore Fiji</h2>
+        <div id="fiji-map" class="h-96 w-full rounded-lg shadow-lg"></div>
+    </section>
+
+    <section class="features py-12 bg-gradient-to-b from-var-bg-color to-var-bg-secondary rounded-lg" data-aos="fade-up">
+        <h2 class="text-3xl font-bold text-center text-var-primary mb-6">Why Book With Us</h2>
+        <div class="features-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div class="feature-card bg-var-card-bg rounded-lg p-6 text-center shadow-lg hover:shadow-xl transition transform hover:-translate-y-1 hover:scale-102">
+                <div class="feature-icon text-4xl mb-4">🔒</div>
+                <h3 class="text-xl font-bold text-var-primary">Secure Booking</h3>
+                <p class="text-sm text-var-text-color">Your personal and payment information is protected with industry-standard encryption.</p>
+            </div>
+            <div class="feature-card bg-var-card-bg rounded-lg p-6 text-center shadow-lg hover:shadow-xl transition transform hover:-translate-y-1 hover:scale-102">
+                <div class="feature-icon text-4xl mb-4">⏱️</div>
+                <h3 class="text-xl font-bold text-var-primary">Instant Confirmation</h3>
+                <p class="text-sm text-var-text-color">Receive your booking confirmation immediately via email with e-ticket attachment.</p>
+            </div>
+            <div class="feature-card bg-var-card-bg rounded-lg p-6 text-center shadow-lg hover:shadow-xl transition transform hover:-translate-y-1 hover:scale-102">
+                <div class="feature-icon text-4xl mb-4">🔄</div>
+                <h3 class="text-xl font-bold text-var-primary">Easy Changes</h3>
+                <p class="text-sm text-var-text-color">Modify or cancel your booking online with our self-service portal.</p>
+            </div>
+            <div class="feature-card bg-var-card-bg rounded-lg p-6 text-center shadow-lg hover:shadow-xl transition transform hover:-translate-y-1 hover:scale-102">
+                <div class="feature-icon text-4xl mb-4">📱</div>
+                <h3 class="text-xl font-bold text-var-primary">Mobile Tickets</h3>
+                <p class="text-sm text-var-text-color">No need to print - show your e-ticket on your mobile device at boarding.</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="testimonials py-12 bg-gradient-to-b from-var-bg-color to-var-bg-secondary" data-aos="fade-up">
+        <h2 class="text-3xl font-bold text-center text-var-primary mb-6">What Our Customers Say</h2>
+        <div class="testimonial-slider max-w-2xl mx-auto">
+            <div class="testimonial bg-var-card-bg rounded-lg p-6 shadow-lg hover:shadow-xl transition transform hover:-translate-y-1">
+                <div class="testimonial-content">
+                    <p class="text-sm text-var-text-color">"The booking process was incredibly smooth, and the ferry departed right on time. The crew was friendly and helpful."</p>
+                </div>
+                <div class="testimonial-author mt-4">
+                    <h4 class="text-lg font-bold text-var-primary">Sarah J.</h4>
+                    <p class="text-sm text-var-text-color">Traveled to Yasawa Islands</p>
+                </div>
+            </div>
+            <div class="testimonial bg-var-card-bg rounded-lg p-6 shadow-lg hover:shadow-xl transition transform hover:-translate-y-1">
+                <div class="testimonial-content">
+                    <p class="text-sm text-var-text-color">"I've used Fiji Ferry Booking multiple times for island hopping. Their website is easy to use, and I always find the best fares."</p>
+                </div>
+                <div class="testimonial-author mt-4">
+                    <h4 class="text-lg font-bold text-var-primary">David M.</h4>
+                    <p class="text-sm text-var-text-color">Frequent Traveler</p>
+                </div>
+            </div>
+            <div class="testimonial bg-var-card-bg rounded-lg p-6 shadow-lg hover:shadow-xl transition transform hover:-translate-y-1">
+                <div class="testimonial-content">
+                    <p class="text-sm text-var-text-color">"The air-conditioned ferries made the journey comfortable even on a hot day. Will definitely book again."</p>
+                </div>
+                <div class="testimonial-author mt-4">
+                    <h4 class="text-lg font-bold text-var-primary">Lisa K.</h4>
+                    <p class="text-sm text-var-text-color">Traveled to Mamanuca Islands</p>
+                </div>
+            </div>
+        </div>
+    </section>
+</main>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+:root {
+    --bg-color: #F5F6F5; /* Soft off-white, sandy beach */
+    --bg-secondary: #FFFFFF; /* Pure white for gradient */
+    --card-bg: #FFFFFF; /* White for cards */
+    --input-bg: #E8ECEF; /* Light gray for inputs */
+    --text-color: #263238; /* Dark slate for text */
+    --primary: #1E88E5; /* Vivid sky blue for headings, buttons */
+    --button-bg: #1E88E5; /* Sky blue for buttons */
+    --button-hover: #1565C0; /* Darker blue for hover */
+    --highlight-bg: #FF6F61; /* Coral for register button */
+    --highlight-hover: #E55A4F; /* Darker coral for hover */
+}
+
+.dark {
+    --bg-color: #1A2526; /* Dark slate, night sky */
+    --bg-secondary: #12191A; /* Darker slate for gradient */
+    --card-bg: #263238; /* Dark gray for cards */
+    --input-bg: #37474F; /* Darker gray for inputs */
+    --text-color: #CFD8DC; /* Light gray for text */
+    --primary: #42A5F5; /* Lighter blue for headings */
+    --button-bg: #0D47A1; /* Deep navy for buttons */
+    --button-hover: #1565C0; /* Lighter navy for hover */
+    --highlight-bg: #26A69A; /* Muted teal for register button */
+    --highlight-hover: #00897B; /* Darker teal for hover */
+}
+
+.hero {
+    position: relative;
+    height: 75vh;
+    min-height: 500px;
+    max-height: 900px;
+    overflow: hidden;
+    text-align: center;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    font-family: 'Playfair Display', serif;
+}
+
+.hero-slideshow {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+}
+
+.hero-slide {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    opacity: 0;
+    transition: opacity 0.5s ease-in-out;
+}
+
+.hero-slide:first-child {
+    opacity: 1;
+}
+
+.slide-caption {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #FFFFFF;
+    font-family: 'Poppins', sans-serif;
+    font-size: 1.2rem;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.7);
+    opacity: 0;
+    transition: opacity 0.5s ease;
+}
+
+.hero-slide[aria-hidden="false"] .slide-caption {
+    opacity: 1;
+}
+
+.hero-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.3) 0%, rgba(0, 0, 0, 0.7) 100%);
+    z-index: 2;
+}
+
+.hero-content {
+    position: relative;
+    z-index: 3;
+    max-width: 700px;
+    margin: 40px auto 0 auto;
+    padding: 0 20px;
+}
+
+.hero-nav-dots {
+    position: absolute;
+    bottom: 15px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 12px;
+    z-index: 5;
+}
+
+.hero-nav-dots .dot {
+    width: 12px;
+    height: 12px;
+    background: rgba(255, 255, 255, 0.7);
+    border-radius: 50%;
+    cursor: pointer;
+    border: none;
+    transition: background 0.3s ease;
+}
+
+.hero-nav-dots .dot:hover,
+.hero-nav-dots .dot.active {
+    background: var(--button-bg);
+    box-shadow: 0 0 5px var(--button-bg);
+}
+
+.container {
+    max-width: 1280px;
+    margin: 60px auto;
+    padding: 0 20px;
+}
+
+.schedule-card {
+    transition: transform 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
+}
+
+.schedule-card.next-departure {
+    border: 2px solid var(--button-bg);
+    background: rgba(30, 136, 229, 0.05); /* Light mode: faint blue tint */
+}
+
+.dark .schedule-card.next-departure {
+    background: rgba(13, 71, 161, 0.1); /* Dark mode: faint navy tint */
+}
+
+.weather-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.weather-label {
+    flex-shrink: 0;
+}
+
+.weather-condition.warning {
+    color: #D32F2F; /* Red for warnings, consistent across modes */
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.7; }
+    100% { opacity: 1; }
+}
+
+.weather-icon {
+    font-size: 1.2rem;
+    transition: opacity 0.5s ease;
+}
+
+.testimonial {
+    display: none;
+    transition: opacity 0.5s ease;
+}
+
+.testimonial:first-child {
+    display: block;
+}
+
+@media (max-width: 1024px) {
+    .container {
+        max-width: 90%;
+    }
+}
+
+@media (max-width: 768px) {
+    .hero {
+        height: 65vh;
+        min-height: 400px;
+        margin-top: 60px;
+        padding: 10px 0;
+    }
+    .hero-content h1 {
+        font-size: 2.4rem;
+    }
+    .intro-text {
+        font-size: 1.1rem;
+    }
+    .booking-widget {
+        padding: 1rem;
+        margin: 1rem auto;
+        max-width: 90%;
+    }
+    .form-row {
+        flex-direction: column;
+    }
+    .form-group {
+        min-w: 100%;
+    }
+}
+
+/* Flatpickr Styling */
+.flatpickr-calendar {
+    background: var(--input-bg);
+    color: var(--text-color);
+}
+
+.flatpickr-day.selected {
+    background: var(--button-bg);
+    border-color: var(--button-bg);
+}
+
+.dark .flatpickr-calendar {
+    background: var(--input-bg);
+    color: var(--text-color);
+}
+
+.dark .flatpickr-day.selected {
+    background: var(--button-bg);
+    border-color: var(--button-bg);
+}
+
+/* Map Styling */
+#fiji-map {
+    background-color: var(--bg-color);
+}
+
+/* Image Placeholder */
+.destination-img-container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: var(--card-bg);
+    z-index: -1;
+}
+
+/* Status Badges */
+.status-scheduled {
+    background-color: #C8E6C9; /* Light green */
+    color: #2E7D32;
+}
+
+.dark .status-scheduled {
+    background-color: #1B5E20; /* Dark green */
+    color: #81C784;
+}
+
+.status-cancelled {
+    background-color: #FFCDD2;
+    color: #C62828;
+}
+
+.dark .status-cancelled {
+    background-color: #B71C1C;
+    color: #EF5350;
+}
+
+.status-delayed {
+    background-color: #FFE0B2;
+    color: #EF6C00;
+}
+
+.dark .status-delayed {
+    background-color: #EF6C00;
+    color: #FFCA28;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/aos@2.3.4/dist/aos.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr" defer></script>
+<script src="https://momentjs.com/downloads/moment.min.js" defer></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+<script src="https://unpkg.com/aos@2.3.4/dist/aos.js" defer></script>
+<script src="{% static 'js/home.js' %}" defer></script>
+{{ form_data|json_script:"form-data" }}
+{{ weather_data|json_script:"weather-data" }}
+{% endblock %}

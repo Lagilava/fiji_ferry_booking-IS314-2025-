@@ -1,0 +1,131 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load math_filters %}
+
+{% block title %}Tickets for Booking #{{ booking.id }} - Fiji Ferry Booking{% endblock %}
+
+{% block content %}
+<section class="container mx-auto px-4 sm:px-6 lg:px-8 py-12" data-aos="fade-up">
+    <h2 class="text-3xl font-bold text-center mb-8" style="font-family: 'Playfair Display', serif; color: var(--text-color);">🎟️ Tickets for Booking #{{ booking.id }}</h2>
+
+    {% if messages %}
+        <div class="messages">
+            {% for message in messages %}
+                <div class="alert animate__animated animate__fadeIn {% if message.tags %}{{ message.tags }}{% endif %}">{{ message }}</div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <div class="max-w-2xl mx-auto bg-[var(--card-bg)] p-8 rounded-lg shadow-lg" data-aos="fade-up" data-aos-delay="100">
+        <div class="mb-6">
+            <h3 class="text-xl font-semibold mb-2" style="font-family: 'Playfair Display', serif; color: var(--text-color);">Schedule</h3>
+            <p class="text-[var(--text-color)]"><strong>{{ booking.schedule.route.departure_port }}</strong> → <strong>{{ booking.schedule.route.destination_port }}</strong></p>
+            <p class="text-[var(--text-color)]">Ferry: {{ booking.schedule.ferry.name }}</p>
+            <p class="text-[var(--text-color)]">Departure: {{ booking.schedule.departure_time|date:"F d, Y H:i" }}</p>
+            <p class="text-[var(--text-color)]">Total Price: FJD {{ booking.total_price|floatformat:2 }}</p>
+            <p class="text-[var(--text-color)]">Status: <span class="status-badge {{ booking.status|lower }}">{{ booking.status|capfirst }}</span></p>
+        </div>
+
+        {% if booking.status == 'pending' %}
+            <div class="mb-6 flex justify-center">
+                <form id="payment-form" class="w-full max-w-xs">
+                    {% csrf_token %}
+                    <button type="submit" id="pay-button" class="bg-[var(--button-bg)] bg-blue-500 text-white font-semibold px-6 py-3 rounded-lg hover:bg-[var(--button-hover)] hover:bg-blue-600 transition-colors duration-300 w-full disabled:opacity-50 disabled:cursor-not-allowed" aria-label="Pay now with Stripe" disabled>💳 Pay Now</button>
+                </form>
+            </div>
+        {% endif %}
+
+        <div class="mb-6">
+            <h3 class="text-xl font-semibold mb-2" style="font-family: 'Playfair Display', serif; color: var(--text-color);">Passengers & Tickets</h3>
+            {% if tickets %}
+                {% for ticket in tickets %}
+                    <div class="border-t border-[var(--border-color)] pt-4 mt-4" data-aos="fade-up" data-aos-delay="{{ forloop.counter0|multiply:100 }}">
+                        <p class="text-[var(--text-color)] font-semibold">{{ ticket.passenger.first_name }} {{ ticket.passenger.last_name }} ({{ ticket.passenger.passenger_type|capfirst }})</p>
+                        <p class="text-[var(--text-color)]">Ticket Status: {{ ticket.ticket_status|capfirst }}</p>
+                        <p class="text-[var(--text-color)]">Issued At: {{ ticket.issued_at|date:"F d, Y H:i" }}</p>
+                        {% if ticket.qr_code %}
+                            <p class="text-[var(--text-color)] font-semibold mt-2">Scan this QR code when boarding the ferry</p>
+                            <img src="{{ ticket.qr_code.url }}" alt="Boarding QR Code for {{ ticket.passenger.first_name }} {{ ticket.passenger.last_name }}" class="qr-code mx-auto">
+                        {% else %}
+                            <p class="text-[var(--text-color)]">No QR code available for this ticket. Please contact support if payment was completed.</p>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            {% else %}
+                <p class="text-[var(--text-color)]">No tickets found for this booking. {% if booking.status == 'confirmed' %}Tickets should have been generated. Please contact support.{% else %}Please complete the payment to generate tickets.{% endif %}</p>
+            {% endif %}
+        </div>
+
+        {% if cargo %}
+            <div class="mb-6">
+                <h3 class="text-xl font-semibold mb-2" style="font-family: 'Playfair Display', serif; color: var(--text-color);">Cargo</h3>
+                <p class="text-[var(--text-color)]">Type: {{ cargo.cargo_type|capfirst }}</p>
+                <p class="text-[var(--text-color)]">Weight: {{ cargo.weight_kg }} kg</p>
+                <p class="text-[var(--text-color)]">Price: FJD {{ cargo.price|floatformat:2 }}</p>
+                {% if cargo.qr_code %}
+                    <p class="text-[var(--text-color)] font-semibold mt-2">Cargo QR Code</p>
+                    <img src="{{ cargo.qr_code.url }}" alt="QR Code for Cargo" class="qr-code mx-auto">
+                {% endif %}
+            </div>
+        {% endif %}
+
+        <div class="text-center">
+            <a href="{% url 'bookings:booking_history' %}" class="text-[var(--link-color)] hover:text-[var(--link-hover)] font-semibold" aria-label="Back to booking history">← Back to Booking History</a>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .qr-code {
+        width: 192px;
+        height: 192px;
+        margin: 0 auto;
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://js.stripe.com/v3/"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const stripe = Stripe('{{ stripe_publishable_key }}');
+    const payButton = document.getElementById('pay-button');
+    const form = document.getElementById('payment-form');
+
+    if (payButton && form) {
+        payButton.disabled = false;
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            payButton.disabled = true;
+
+            try {
+                const response = await fetch('/bookings/process_payment/{{ booking.id }}/', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                const data = await response.json();
+                if (data.sessionId) {
+                    const result = await stripe.redirectToCheckout({ sessionId: data.sessionId });
+                    if (result.error) {
+                        throw new Error(result.error.message);
+                    }
+                } else {
+                    alert('Error creating payment session: ' + (data.error || 'Unknown error'));
+                    payButton.disabled = false;
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Payment initiation failed: ' + error.message);
+                payButton.disabled = false;
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

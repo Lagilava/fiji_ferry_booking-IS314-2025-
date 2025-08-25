@@ -1,0 +1,169 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="auth-container">
+    <h1 class="text-[var(--text-color)]">Welcome Back</h1>
+    <p class="subtitle text-[var(--text-color)]">Embark on a tropical journey with seamless bookings and stunning sea views.</p>
+
+    {% if messages %}
+        <div class="messages" id="messages">
+            {% for message in messages %}
+                <div class="alert animate__animated animate__fadeIn">{{ message }}</div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <form method="post" action="{% url 'accounts:login' %}" novalidate id="login-form">
+        {% csrf_token %}
+        <div class="input-group">
+            <input type="text" name="identifier" id="identifier" placeholder=" " required autocomplete="username">
+            <label for="identifier">Username or Email</label>
+            <span class="error-message" id="identifier-error"></span>
+        </div>
+
+        <div class="input-group">
+            <input type="password" name="password" id="password" placeholder=" " required autocomplete="current-password">
+            <label for="password">Password</label>
+            <span class="error-message" id="password-error"></span>
+        </div>
+
+        <button type="submit" class="btn-ripple auth-button">Login</button>
+        <noscript><p class="text-[var(--alert-text)] text-sm">Please enable JavaScript for better validation.</p></noscript>
+    </form>
+
+    <p class="register-link">Don't have an account? <a href="{% url 'accounts:register' %}" class="text-[var(--link-color)] hover:text-[var(--link-hover)]">Register</a></p>
+    <p class="home-link"><a href="{% url 'home' %}" class="text-[var(--link-color)] hover:text-[var(--link-hover)]">← Back to Home</a></p>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap');
+
+.auth-container {
+    background: var(--dropdown-bg);
+    padding: 40px;
+    border-radius: 15px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+    max-width: 420px;
+    width: 92%;
+    margin: 50px auto;
+    text-align: center;
+    animation: slideUp 0.8s ease-out forwards;
+}
+
+@keyframes slideUp { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
+
+h1 { font-size: 2rem; margin-bottom: 5px; }
+.subtitle { font-size: 0.95rem; margin-bottom: 20px; }
+
+.input-group { position: relative; margin-bottom: 20px; }
+input {
+    padding: 14px 12px;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    width: 100%;
+    background: var(--bg-color);
+    color: var(--text-color);
+    outline: none;
+    transition: border-color 0.3s ease;
+    font-size: 1rem;
+}
+input:focus { border-color: var(--button-bg); background: var(--dropdown-bg); }
+label {
+    position: absolute;
+    top: 50%; left: 12px;
+    transform: translateY(-50%);
+    color: #777;
+    font-size: 0.95rem;
+    transition: 0.3s ease;
+    pointer-events: none;
+}
+input:focus + label,
+input:not(:placeholder-shown) + label {
+    top: -8px; background: var(--dropdown-bg); padding: 0 6px; font-size: 0.8rem; color: var(--button-bg);
+}
+
+.auth-container .auth-button {
+    background: var(--button-bg);
+    color: white !important;
+    padding: 14px;
+    border-radius: 10px;
+    font-weight: 700;
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    width: 100%;
+}
+.auth-container .auth-button:hover {
+    background: var(--button-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(37, 99, 235, 0.5);
+}
+.auth-container .auth-button:after {
+    content: "";
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    width: 0; height: 0;
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 50%;
+    opacity: 0;
+    transition: width 0.4s ease, height 0.4s ease, opacity 0.4s ease;
+}
+.auth-container .auth-button:active:after {
+    width: 200px; height: 200px; opacity: 1; transition: 0s;
+}
+
+.auth-container .messages, .auth-container .error-message {
+    background: var(--alert-bg);
+    color: var(--alert-text);
+    padding: 8px;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    margin-top: 5px;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+}
+.auth-container .messages.show, .auth-container .error-message.show {
+    opacity: 1;
+}
+
+.register-link, .home-link { margin-top: 20px; font-size: 0.9rem; }
+
+@media (max-width: 480px) {
+    .auth-container { padding: 30px 20px; }
+    h1 { font-size: 1.7rem; }
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const messages = document.getElementById('messages');
+    const identifierInput = document.getElementById('identifier');
+    const passwordInput = document.getElementById('password');
+    const identifierError = document.getElementById('identifier-error');
+    const passwordError = document.getElementById('password-error');
+
+    if (messages) {
+        messages.classList.add('show');
+        setTimeout(() => messages.classList.remove('show'), 5000);
+    }
+
+    identifierInput.addEventListener('input', () => {
+        identifierInput.value.length >= 3
+            ? identifierError.classList.remove('show')
+            : (identifierError.textContent = 'Enter a valid username or email (min 3 chars).', identifierError.classList.add('show'));
+    });
+
+    passwordInput.addEventListener('input', () => {
+        passwordInput.value.length >= 4
+            ? passwordError.classList.remove('show')
+            : (passwordError.textContent = 'Password too short.', passwordError.classList.add('show'));
+    });
+});
+</script>
+{% endblock %}

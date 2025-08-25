@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<section class="container mx-auto px-4 sm:px-6 lg:px-8 py-12 text-center" data-aos="fade-up">
+    <h2 class="text-3xl font-bold mb-6 font-['Playfair_Display']" style="color: var(--text-color);">Payment Successful!</h2>
+    <p class="text-lg mb-8" style="color: var(--text-color);">{{ message|default:"Your payment was successful. View your booking history or return to the home page." }}</p>
+
+    <div class="flex justify-center gap-4">
+        <a href="{% url 'bookings:booking_history' %}" class="bg-[var(--button-bg)] text-white font-semibold px-6 py-3 rounded-lg hover:bg-[var(--button-hover)] transition-colors duration-300">View Booking History</a>
+        <a href="{% url 'home' %}" class="text-[var(--link-color)] hover:text-[var(--link-hover)] font-semibold px-6 py-3">Back to Home</a>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&family=Playfair+Display:wght@400;700&display=swap');
+
+section {
+    font-family: 'Poppins', sans-serif;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    // Initialize AOS
+    function initializeAOS() {
+        if (typeof AOS === 'undefined') {
+            setTimeout(initializeAOS, 100);
+            return;
+        }
+        AOS.init({
+            duration: 800,
+            easing: 'ease-in-out',
+            once: true,
+            mirror: false,
+            anchorPlacement: 'top-bottom',
+            offset: 100,
+            disable: 'mobile'
+        });
+    }
+    initializeAOS();
+});
+</script>
+{% endblock %}

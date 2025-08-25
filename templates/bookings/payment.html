@@ -1,0 +1,157 @@
+```html
+{% extends 'base.html' %}
+{% load static %}
+{% load math_filters %}
+
+{% block title %}Payment for Booking #{{ booking.id }} - Fiji Ferry Booking{% endblock %}
+
+{% block content %}
+<section class="container mx-auto px-4 sm:px-6 lg:px-8 py-12" data-aos="fade-up">
+    <h2 class="text-3xl font-bold text-center mb-8" style="font-family: 'Playfair Display', serif; color: var(--text-color);">Payment for Booking #{{ booking.id }}</h2>
+
+    {% if messages %}
+        <div class="messages">
+            {% for message in messages %}
+                <div class="alert {{ message.tags }} animate__animated animate__fadeIn" role="alert">{{ message }}</div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <div class="max-w-2xl mx-auto bg-[var(--dropdown-bg)] p-8 rounded-lg shadow-lg" data-aos="fade-up" data-aos-delay="100">
+        <h3 class="text-xl font-semibold mb-4" style="font-family: 'Playfair Display', serif; color: var(--text-color);">💳 Total Amount: FJD {{ amount_to_charge|floatformat:2 }}</h3>
+        <div class="mb-6">
+            <h4 class="text-lg font-semibold mb-2" style="color: var(--text-color);">Receipt Breakdown:</h4>
+            <ul class="text-[var(--text-color)] space-y-2">
+                <li>Adults ({{ booking.passenger_adults }} × FJD {{ booking.schedule.route.base_fare|floatformat:2 }}): FJD {{ price_adults|floatformat:2 }}</li>
+                <li>Children ({{ booking.passenger_children }} × FJD {{ booking.schedule.route.base_fare|multiply:0.5|floatformat:2 }}): FJD {{ price_children|floatformat:2 }}</li>
+                <li>Infants ({{ booking.passenger_infants }} × FJD {{ booking.schedule.route.base_fare|multiply:0.1|floatformat:2 }}): FJD {{ price_infants|floatformat:2 }}</li>
+                {% if cargo_price > 0 %}
+                    <li class="mt-2">Cargo: FJD {{ cargo_price|floatformat:2 }}</li>
+                {% endif %}
+            </ul>
+        </div>
+
+        <div id="payment-error" class="text-red-600 dark:text-red-400 text-sm hidden mb-4"></div>
+
+        <form id="payment-form" class="flex justify-center">
+            {% csrf_token %}
+            <button type="submit" id="pay-button" class="bg-[var(--button-bg)] bg-blue-500 font-semibold px-6 py-3 rounded-lg hover:bg-[var(--button-hover)] hover:bg-blue-600 transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed" style="color: var(--text-color);" aria-label="Pay securely with Stripe" disabled>
+                <span class="button-text">💰 Pay Securely with Stripe</span>
+                <span class="loading-text hidden">Processing...</span>
+            </button>
+        </form>
+
+        <div class="text-center mt-6">
+            <a href="{% url 'bookings:book' %}" class="text-[var(--link-color)] hover:text-[var(--link-hover)] font-semibold">← Back to Booking</a>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    #pay-button:disabled .button-text {
+        display: none;
+    }
+    #pay-button:disabled .loading-text {
+        display: inline;
+    }
+    #pay-button:disabled {
+        position: relative;
+    }
+    #pay-button:disabled::before {
+        content: '';
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border: 2px solid var(--text-color);
+        border-top-color: transparent;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-right: 8px;
+    }
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://js.stripe.com/v3/"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const stripe = Stripe('{{ stripe_publishable_key }}');
+    const paymentForm = document.getElementById('payment-form');
+    const payButton = document.getElementById('pay-button');
+    const paymentError = document.getElementById('payment-error');
+    const isDebug = true;
+
+    // Enable button only if Stripe.js is loaded
+    if (typeof Stripe !== 'undefined') {
+        payButton.disabled = false;
+    } else {
+        console.error('Stripe.js failed to load');
+        paymentError.textContent = 'Payment system unavailable. Please try again later.';
+        paymentError.classList.remove('hidden');
+        return;
+    }
+
+    // Get CSRF token
+    function getCsrfToken() {
+        const name = 'csrftoken';
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    paymentForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        payButton.disabled = true;
+        paymentError.classList.add('hidden');
+
+        if (isDebug) console.log('Submitting payment for booking {{ booking.id }}');
+
+        try {
+            const response = await fetch('/bookings/process_payment/{{ booking.id }}/', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCsrfToken()
+                }
+            });
+
+            const data = await response.json();
+            if (isDebug) console.log('Response from process_payment:', data);
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Unknown payment error');
+            }
+
+            if (data.sessionId) {
+                if (isDebug) console.log('Redirecting to Stripe Checkout with sessionId:', data.sessionId);
+                const { error } = await stripe.redirectToCheckout({ sessionId: data.sessionId });
+                if (error) {
+                    throw new Error(error.message);
+                }
+            } else {
+                throw new Error('No session ID received from server');
+            }
+        } catch (err) {
+            console.error('Payment error:', err);
+            paymentError.textContent = 'Payment error: ' + err.message;
+            paymentError.classList.remove('hidden');
+            payButton.disabled = false;
+        }
+    });
+});
+</script>
+{% endblock %}
+```

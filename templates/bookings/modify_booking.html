@@ -1,0 +1,112 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<section class="container mx-auto px-4 sm:px-6 lg:px-8 py-12" data-aos="fade-up">
+    <h2 class="text-3xl font-bold text-center mb-8 font-['Playfair_Display'] text-[var(--text-color)]">Modify Booking #{{ booking.id|default:"Unknown" }}</h2>
+
+    {% if form.non_field_errors %}
+        <div class="messages">
+            <div class="alert bg-[var(--alert-bg)] text-[var(--alert-text)] border-[var(--border-color)] animate__animated animate__fadeIn" role="alert">{{ form.non_field_errors }}</div>
+        </div>
+    {% endif %}
+
+    <form method="post" action="{% url 'bookings:modify_booking' booking.id|default:0 %}" class="max-w-2xl mx-auto bg-[var(--dropdown-bg)] p-8 rounded-lg shadow-lg" data-aos="fade-up" data-aos-delay="100">
+        {% csrf_token %}
+        <div class="mb-6">
+            <label for="{{ form.passenger_adults.id_for_label|default:'passenger_adults' }}" class="block text-lg font-semibold mb-2 text-[var(--text-color)]">Adults</label>
+            {{ form.passenger_adults|default:"<input type='number' name='passenger_adults' id='passenger_adults' min='0' value='0' class='w-full p-3 border rounded-lg bg-[var(--bg-color)] text-[var(--text-color)] border-[var(--border-color)] focus:outline-none focus:ring-2 focus:ring-[var(--button-bg)]'>" }}
+        </div>
+
+        <div class="mb-6">
+            <label for="{{ form.passenger_children.id_for_label|default:'passenger_children' }}" class="block text-lg font-semibold mb-2 text-[var(--text-color)]">Children</label>
+            {{ form.passenger_children|default:"<input type='number' name='passenger_children' id='passenger_children' min='0' value='0' class='w-full p-3 border rounded-lg bg-[var(--bg-color)] text-[var(--text-color)] border-[var(--border-color)] focus:outline-none focus:ring-2 focus:ring-[var(--button-bg)]'>" }}
+        </div>
+
+        <div class="mb-6">
+            <label for="{{ form.passenger_infants.id_for_label|default:'passenger_infants' }}" class="block text-lg font-semibold mb-2 text-[var(--text-color)]">Infants</label>
+            {{ form.passenger_infants|default:"<input type='number' name='passenger_infants' id='passenger_infants' min='0' value='0' class='w-full p-3 border rounded-lg bg-[var(--bg-color)] text-[var(--text-color)] border-[var(--border-color)] focus:outline-none focus:ring-2 focus:ring-[var(--button-bg)]'>" }}
+        </div>
+
+        <div class="mb-6">
+            <h3 class="text-xl font-semibold mb-4 font-['Playfair_Display'] text-[var(--text-color)]">Modify Cargo</h3>
+            <div class="border-t border-[var(--border-color)] pt-4">
+                <label for="{{ cargo_form.cargo_type.id_for_label|default:'cargo_type' }}" class="block text-lg font-semibold mb-2 text-[var(--text-color)]">Cargo Type</label>
+                {{ cargo_form.cargo_type|default:"<select name='cargo_type' id='cargo_type' class='w-full p-3 border rounded-lg bg-[var(--bg-color)] text-[var(--text-color)] border-[var(--border-color)] focus:outline-none focus:ring-2 focus:ring-[var(--button-bg)]'><option value=''>Select cargo type</option><option value='small_parcel'>Small Parcel</option><option value='pallet'>Pallet</option><option value='vehicle'>Vehicle</option><option value='bulk_goods'>Bulk Goods</option></select>" }}
+
+                <label for="{{ cargo_form.weight_kg.id_for_label|default:'weight_kg' }}" class="block text-lg font-semibold mt-4 mb-2 text-[var(--text-color)]">Weight (kg)</label>
+                {{ cargo_form.weight_kg|default:"<input type='number' name='weight_kg' id='weight_kg' min='0' step='0.1' class='w-full p-3 border rounded-lg bg-[var(--bg-color)] text-[var(--text-color)] border-[var(--border-color)] focus:outline-none focus:ring-2 focus:ring-[var(--button-bg)]'>" }}
+
+                <label for="{{ cargo_form.dimensions_cm.id_for_label|default:'dimensions_cm' }}" class="block text-lg font-semibold mt-4 mb-2 text-[var(--text-color)]">Dimensions (cm)</label>
+                {{ cargo_form.dimensions_cm|default:"<input type='text' name='dimensions_cm' id='dimensions_cm' placeholder='e.g., 100x50x30' class='w-full p-3 border rounded-lg bg-[var(--bg-color)] text-[var(--text-color)] border-[var(--border-color)] focus:outline-none focus:ring-2 focus:ring-[var(--button-bg)]'>" }}
+            </div>
+        </div>
+
+        <div class="flex justify-center gap-4">
+            <button type="submit" class="bg-[var(--button-bg)] text-white font-semibold px-6 py-3 rounded-lg hover:bg-[var(--button-hover)] transition-colors duration-300 modify-button">Update Booking</button>
+            <a href="{% url 'bookings:booking_history' %}" class="text-[var(--link-color)] hover:text-[var(--link-hover)] font-semibold px-6 py-3">Cancel</a>
+        </div>
+    </form>
+</section>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&family=Playfair+Display:wght@400;700&display=swap');
+
+form {
+    font-family: 'Poppins', sans-serif;
+}
+
+input, select {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 0.5rem;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    font-size: 1rem;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+input:focus, select:focus {
+    outline: none;
+    border-color: var(--button-bg);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+}
+
+.modify-button {
+    background-color: var(--button-bg);
+    color: white !important;
+    font-weight: 600;
+}
+
+.modify-button:hover {
+    background-color: var(--button-hover);
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    // Initialize AOS
+    function initializeAOS() {
+        if (typeof AOS === 'undefined') {
+            setTimeout(initializeAOS, 100);
+            return;
+        }
+        AOS.init({
+            duration: 800,
+            easing: 'ease-in-out',
+            once: true,
+            mirror: false,
+            anchorPlacement: 'top-bottom',
+            offset: 100,
+            disable: 'mobile'
+        });
+    }
+    initializeAOS();
+});
+</script>
+{% endblock %}

@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Privacy Policy - Fiji Ferry Booking{% endblock %}
+
+{% block content %}
+<section class="container mx-auto px-4 sm:px-6 lg:px-8 py-12" data-aos="fade-up">
+    <h2 class="text-3xl font-bold text-center mb-8" style="font-family: 'Playfair Display', serif; color: var(--text-color);">Privacy Policy</h2>
+    <div class="max-w-3xl mx-auto bg-[var(--card-bg)] p-8 rounded-lg shadow-lg">
+        <p class="text-[var(--text-color)] mb-4">Your privacy is important to us. This Privacy Policy outlines how Fiji Ferry Booking collects, uses, and protects your personal information.</p>
+        <h3 class="text-xl font-semibold mb-2 text-[var(--text-color)]">Information We Collect</h3>
+        <p class="text-[var(--text-color)] mb-4">We collect information such as your name, email, contact details, and payment information to process bookings and comply with legal requirements.</p>
+        <h3 class="text-xl font-semibold mb-2 text-[var(--text-color)]">How We Use Your Information</h3>
+        <p class="text-[var(--text-color)] mb-4">Your information is used to manage your ferry bookings, process payments, and send confirmation emails. We may also use it to notify you of schedule changes or important updates.</p>
+        <h3 class="text-xl font-semibold mb-2 text-[var(--text-color)]">Data Security</h3>
+        <p class="text-[var(--text-color)] mb-4">We use secure protocols (e.g., HTTPS) and encryption to protect your data. Payment details are processed securely via Stripe.</p>
+        <h3 class="text-xl font-semibold mb-2 text-[var(--text-color)]">Contact Us</h3>
+        <p class="text-[var(--text-color)] mb-4">If you have questions about this Privacy Policy, please contact us at <a href="mailto:support@ferrysystem.com" class="text-[var(--link-color)] hover:text-[var(--link-hover)]">support@ferrysystem.com</a>.</p>
+    </div>
+    <div class="text-center mt-6">
+        <a href="{% url 'home' %}" class="text-[var(--link-color)] hover:text-[var(--link-hover)] font-semibold" aria-label="Back to home">← Back to Home</a>
+    </div>
+</section>
+{% endblock %}

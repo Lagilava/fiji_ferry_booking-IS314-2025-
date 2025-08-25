@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<h1>⛴ Fiji Ferry Booking</h1>
+
+<div>
+    <h3>👤 Passenger</h3>
+    <p>Type: {{ ticket.passenger.passenger_type|title }}</p>
+</div>
+
+<div>
+    <h3>📄 Booking</h3>
+    <p>ID: #{{ ticket.booking.id }}</p>
+    <p>Status: {{ ticket.ticket_status|title }}</p>
+    <p>Issued: {{ ticket.issued_at|date:"M d, Y H:i" }}</p>
+</div>
+
+<div>
+    <h3>🛳 Schedule</h3>
+    <p>Ferry: {{ ticket.booking.schedule.ferry.name }}</p>
+    <p>Route: {{ ticket.booking.schedule.route.departure_port }} → {{ ticket.booking.schedule.route.destination_port }}</p>
+    <p>Departure: {{ ticket.booking.schedule.departure_time|date:"M d, Y H:i" }}</p>
+    <p>Arrival: {{ ticket.booking.schedule.arrival_time|date:"M d, Y H:i" }}</p>
+</div>
+
+<div>
+    {% if ticket.qr_code %}
+        <p>✅ Get this code scanned to board</p>
+        <img src="{{ ticket.qr_code.url }}" alt="QR Code">
+    {% else %}
+        <p>QR Code not available for this ticket.</p>
+    {% endif %}
+</div>
+
+{% if ticket.booking.cargo_set.all %}
+    <div>
+        <h3>📦 Cargo Details</h3>
+        {% for cargo in ticket.booking.cargo_set.all %}
+            <div>
+                <p>Type: {{ cargo.cargo_type|title }}</p>
+                <p>Weight: {{ cargo.weight_kg }} kg</p>
+                <p>Price: FJD {{ cargo.price }}</p>
+                {% if cargo.qr_code %}
+                    <p>✅ Get this code scanned at cargo check-in</p>
+                    <img src="{{ cargo.qr_code.url }}" alt="Cargo QR Code">
+                {% else %}
+                    <p>QR Code not available for this cargo item.</p>
+                {% endif %}
+            </div>
+        {% endfor %}
+    </div>
+{% endif %}
+
+<div>
+    <a href="{% url 'bookings:booking_history' %}">Back</a>
+    <a href="#">Download Ticket</a>
+</div>
+{% endblock %}
