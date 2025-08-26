@@ -7,44 +7,64 @@
 {% block content %}
 <header class="hero" role="banner">
     <div class="hero-slideshow" aria-hidden="true">
-        <div class="hero-slide" style="background-image: url('https://voyagerinfo.com/wp-content/uploads/2023/07/where-is-the-carnival-liberty-cruise-ship-sailing-right-now_88.png');" data-src="https://voyagerinfo.com/wp-content/uploads/2023/07/where-is-the-carnival-liberty-cruise-ship-sailing-right-now_88.png">
+        <div class="hero-slide slide-1" data-src-light="https://images.pexels.com/photos/531035/pexels-photo-531035.jpeg?auto=format&fit=crop" data-src-dark="https://images.pexels.com/photos/1287145/pexels-photo-1287145.jpeg?auto=format&fit=crop">
             <div class="slide-caption">Discover Fiji's Stunning Coastlines</div>
         </div>
-        <div class="hero-slide" data-src="https://media.directferries.com/images/large_2024_e25bf7e342.webp">
+        <div class="hero-slide slide-2" data-src-light="https://images.pexels.com/photos/4262989/pexels-photo-4262989.jpeg?auto=format&fit=crop" data-src-dark="https://images.pexels.com/photos/847393/pexels-photo-847393.jpeg?auto=format&fit=crop">
             <div class="slide-caption">Sail Through Paradise</div>
         </div>
-        <div class="hero-slide" data-src="https://img.freepik.com/premium-photo/cruise-ship-ferry-sailing-bright-sunset_43412-5.jpg?w=740">
-            <div class="slide-caption">Experience Sunset Voyages</div>
-        </div>
-        <div class="hero-slide" data-src="https://maritime-executive.com/media/images/article/Photos/Vessels_Small/Lomaiviti-Princess-7-Goundar-Shipping-Limited.8d62b1.jpg">
+        <div class="hero-slide slide-3" data-src-light="https://images.pexels.com/photos/1752461/pexels-photo-1752461.jpeg?auto=format&fit=crop" data-src-dark="https://images.pexels.com/photos/1612462/pexels-photo-1612462.jpeg?auto=format&fit=crop">
             <div class="slide-caption">Explore Hidden Islands</div>
+        </div>
+        <div class="hero-slide slide-4" data-src-light="https://images.pexels.com/photos/11820070/pexels-photo-11820070.jpeg?auto=format&fit=crop" data-src-dark="https://images.pexels.com/photos/2356045/pexels-photo-2356045.jpeg?auto=format&fit=crop">
+            <div class="slide-caption">Experience Sunset Voyages</div>
         </div>
     </div>
     <div class="hero-overlay" aria-hidden="true"></div>
     <div class="hero-content">
-        <h1 class="text-4xl md:text-5xl font-bold text-white">Explore Fiji by Ferry</h1>
+        <h1 class="text-4xl md:text-5xl font-bold text-white font-playfair">Explore Fiji by Ferry</h1>
         <p class="intro-text text-lg md:text-xl text-white">Book your island adventure today</p>
-        <div class="booking-widget bg-var-card-bg p-6 rounded-lg shadow-lg" data-aos="fade-up" data-aos-delay="300">
-            <h3 class="text-xl font-bold text-var-primary">Find Your Ferry</h3>
+        <div class="booking-widget bg-var-card-bg p-6 rounded-lg shadow-lg max-w-md mx-auto" data-aos="fade-up" data-aos-delay="300">
+            <h3 class="text-xl font-bold text-var-primary font-poppins">Find Your Ferry</h3>
             <form class="booking-form space-y-4" id="search-form" action="{% url 'home' %}" method="get" aria-label="Search for ferry schedules">
                 <div class="form-row flex flex-wrap gap-4">
                     <div class="form-group flex-1 min-w-[180px]">
                         <label for="route" class="block text-sm font-semibold text-var-text-color">Route</label>
-                        <input type="text" id="route" name="route" required list="routes" value="{{ form_data.route|default:"" }}" placeholder="Select route (e.g., Nadi to Suva)" class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-button-bg" aria-required="true">
-                        <datalist id="routes">
-                            {% for route in routes %}
-                                <option value="{{ route.departure_port|lower }}-to-{{ route.destination_port|lower }}">{{ route.departure_port }} to {{ route.destination_port }}</option>
-                            {% endfor %}
-                        </datalist>
+                        <div class="relative">
+                            <svg class="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-var-text-color" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                            </svg>
+                            <input type="text" id="route" name="route" required list="routes" value="{{ form_data.route|default:"" }}" placeholder="Select route (e.g., Nadi to Suva)" class="w-full pl-10 p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-button-bg" aria-required="true">
+                            <datalist id="routes">
+                                {% for route in routes %}
+                                    <option value="{{ route.departure_port|lower }}-to-{{ route.destination_port|lower }}">{{ route.departure_port }} to {{ route.destination_port }}</option>
+                                {% endfor %}
+                            </datalist>
+                        </div>
                     </div>
                     <div class="form-group flex-1 min-w-[180px]">
                         <label for="departure-date" class="block text-sm font-semibold text-var-text-color">Departure Date</label>
-                        <input type="text" id="departure-date" name="date" required min="{{ today|date:'Y-m-d' }}" value="{{ form_data.date|default:"" }}" class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-button-bg" aria-required="true" placeholder="Select date">
+                        <div class="relative">
+                            <svg class="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-var-text-color" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 002-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                            </svg>
+                            <input type="text" id="departure-date" name="date" required min="{{ today|date:'Y-m-d' }}" value="{{ form_data.date|default:"" }}" class="w-full pl-10 p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-button-bg" aria-required="true" placeholder="Select date">
+                        </div>
                     </div>
                 </div>
-                <button type="submit" class="cta-button search-button w-full bg-var-button-bg text-white py-2 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover">Search Ferries</button>
+                <button type="submit" class="cta-button search-button w-full bg-var-button-bg text-white py-2 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover flex items-center justify-center">
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    </svg>
+                    Search Ferries
+                </button>
             </form>
-            <a href="{% url 'bookings:book' %}" class="cta-button book-now block w-full text-center bg-var-button-bg text-white py-2 rounded mt-4 hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover">Book Now</a>
+            <a href="{% url 'bookings:book' %}" class="cta-button book-now block w-full text-center bg-var-button-bg text-white py-2 rounded mt-4 hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover flex items-center justify-center">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                </svg>
+                Book Now
+            </a>
         </div>
     </div>
     <nav class="hero-nav-dots" aria-label="Hero slideshow navigation">
@@ -55,8 +75,8 @@
     </nav>
 </header>
 
-<main class="container">
-    <section class="stats-bar flex flex-wrap justify-center gap-6 p-6 bg-var-bg-color rounded-lg my-6" data-aos="fade-up">
+<main class="container mx-auto px-4">
+    <section class="stats-bar flex flex-wrap justify-center gap-6 p-6 bg-var-bg-color rounded-lg my-8" data-aos="fade-up">
         <div class="stat text-center">
             <span class="stat-number text-3xl font-bold text-var-primary">12</span>
             <span class="stat-label block text-sm text-var-text-color">Destinations</span>
@@ -78,15 +98,30 @@
     <section class="welcome-section py-12 text-center" data-aos="fade-up">
         <div class="welcome-content max-w-2xl mx-auto">
             {% if user.is_authenticated %}
-                <h2 class="text-3xl font-bold text-var-primary">Welcome, {{ user.username }}!</h2>
+                <h2 class="text-3xl font-bold text-var-primary font-playfair">Welcome, {{ user.username }}!</h2>
                 <p class="welcome-text text-lg my-4 text-var-text-color">Your next Fiji adventure awaits. Book your ferry now!</p>
-                <a href="{% url 'bookings:book' %}" class="cta-button welcome-button bg-var-button-bg text-white py-2 px-6 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover">Book Your Journey</a>
+                <a href="{% url 'bookings:book' %}" class="cta-button welcome-button bg-var-button-bg text-white py-2 px-6 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover flex items-center justify-center mx-auto">
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                    </svg>
+                    Book Your Journey
+                </a>
             {% else %}
-                <h2 class="text-3xl font-bold text-var-primary">Welcome Aboard!</h2>
+                <h2 class="text-3xl font-bold text-var-primary font-playfair">Welcome Aboard!</h2>
                 <p class="welcome-text text-lg my-4 text-var-text-color">Explore Fiji’s islands. Login or register to start booking!</p>
                 <div class="welcome-actions flex justify-center gap-4">
-                    <a href="{% url 'accounts:login' %}" class="cta-button welcome-button bg-var-button-bg text-white py-2 px-6 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover">Login</a>
-                    <a href="{% url 'accounts:register' %}" class="cta-button welcome-button highlight bg-var-highlight-bg text-white py-2 px-6 rounded hover:bg-var-highlight-hover focus:outline-none focus:ring-2 focus:ring-var-highlight-hover">Register</a>
+                    <a href="{% url 'accounts:login' %}" class="cta-button welcome-button bg-var-button-bg text-white py-2 px-6 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover flex items-center">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"/>
+                        </svg>
+                        Login
+                    </a>
+                    <a href="{% url 'accounts:register' %}" class="cta-button welcome-button highlight bg-var-highlight-bg text-white py-2 px-6 rounded hover:bg-var-highlight-hover focus:outline-none focus:ring-2 focus:ring-var-highlight-hover flex items-center">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/>
+                        </svg>
+                        Register
+                    </a>
                 </div>
             {% endif %}
         </div>
@@ -94,30 +129,42 @@
 
     <section class="schedules py-12 bg-gradient-to-b from-var-bg-color to-var-bg-secondary rounded-lg" data-aos="fade-up">
         <div class="next-departure-banner bg-var-card-bg p-4 rounded text-center mb-6 shadow-sm">
-            <h3 class="text-lg font-semibold text-var-text-color">Next Departure: <span id="next-departure-time" aria-live="polite">Loading...</span></h3>
+            <h3 class="text-lg font-semibold text-var-text-color font-poppins">Next Departure: <span id="next-departure-time" aria-live="polite">Loading...</span></h3>
         </div>
-        <h2 class="text-3xl font-bold text-center text-var-primary mb-6">Upcoming Ferry Departures</h2>
+        <h2 class="text-3xl font-bold text-center text-var-primary mb-6 font-playfair">Upcoming Ferry Departures</h2>
         <div class="schedule-filters flex justify-end mb-4">
             <label for="sort-by" class="sr-only">Sort schedules</label>
-            <select id="sort-by" class="p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-button-bg">
-                <option value="time">Sort by Time</option>
-                <option value="price">Sort by Price</option>
-                <option value="duration">Sort by Duration</option>
-            </select>
+            <div class="relative">
+                <svg class="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-var-text-color" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"/>
+                </svg>
+                <select id="sort-by" class="pl-10 p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-button-bg">
+                    <option value="time">Sort by Time</option>
+                    <option value="price">Sort by Price</option>
+                    <option value="duration">Sort by Duration</option>
+                </select>
+            </div>
         </div>
         {% if schedules %}
             <div class="schedule-list grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {% for schedule in schedules %}
                     <div class="schedule-card bg-var-card-bg rounded-lg p-6 shadow-lg hover:shadow-xl transition transform hover:-translate-y-1 hover:scale-102" data-schedule-id="{{ schedule.id }}" data-route-id="{{ schedule.route.id }}" data-aos="fade-up" data-aos-delay="{{ forloop.counter0|multiply:100|add:100 }}" tabindex="0" role="article" aria-label="Ferry from {{ schedule.route.departure_port }} to {{ schedule.route.destination_port }}">
                         <div class="route-info">
-                            <h3 class="text-xl font-bold text-var-primary">{{ schedule.route.departure_port }} → {{ schedule.route.destination_port }}</h3>
+                            <h3 class="text-xl font-bold text-var-primary font-poppins">{{ schedule.route.departure_port }} → {{ schedule.route.destination_port }}</h3>
                             <p class="departure-time text-sm text-var-text-color" data-iso="{{ schedule.departure_time.isoformat }}">{{ schedule.departure_time|date:"D, M d, H:i" }}</p>
                             <p class="ferry-name text-sm text-var-text-color">{{ schedule.ferry.name }}</p>
                             <p class="seats-available text-sm text-var-text-color">Seats Available: <span class="seat-count font-semibold" aria-live="polite">{{ schedule.available_seats }}</span></p>
-                            <p class="weather-info text-sm flex items-center text-var-text-color">
-                                <span class="weather-icon mr-2" aria-hidden="true"></span>
-                                <span class="weather-label">Weather:</span> <span class="weather-condition font-semibold" aria-live="polite">Loading...</span>
-                            </p>
+                            <div class="weather-info flex flex-col gap-2 text-sm text-var-text-color" aria-label="Weather forecast">
+                                <div class="weather-row flex items-center gap-2">
+                                    <span class="weather-icon text-2xl" aria-hidden="true"></span>
+                                    <span class="weather-condition font-semibold" aria-live="polite">Loading...</span>
+                                </div>
+                                <div class="weather-details flex flex-wrap gap-4">
+                                    <span class="weather-temp" data-tooltip="Current temperature">Temp: <span class="temp-value"></span></span>
+                                    <span class="weather-wind" data-tooltip="Wind speed (Warning: >30kph may affect ferry stability)">Wind: <span class="wind-value"></span></span>
+                                    <span class="weather-precip" data-tooltip="Chance of precipitation">Precip: <span class="precip-value"></span></span>
+                                </div>
+                            </div>
                             {% if schedule.route.estimated_duration %}
                                 <p class="duration text-sm text-var-text-color">
                                     Duration:
@@ -151,13 +198,18 @@
                             {% else %}
                                 <p class="fare fare-unavailable text-sm text-red-600 dark:text-red-400">Fare Not Available</p>
                             {% endif %}
-                            <a href="{% url 'bookings:book' %}?schedule_id={{ schedule.id }}" class="cta-button book-now block text-center bg-var-button-bg text-white py-2 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover">Book Now</a>
+                            <a href="{% url 'bookings:book' %}?schedule_id={{ schedule.id }}" class="cta-button book-now block text-center bg-var-button-bg text-white py-2 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover flex items-center justify-center">
+                                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                                </svg>
+                                Book Now
+                            </a>
                         </div>
                     </div>
                 {% endfor %}
             </div>
         {% else %}
-            <p class="text-center text-lg text-var-text-color">
+            <p class="text-center text-lg text-var-text-color font-poppins">
                 No scheduled ferries found
                 {% if form_data.route or form_data.date %}
                     for
@@ -171,116 +223,136 @@
 
     <section class="destinations py-12 bg-gradient-to-b from-var-bg-color to-var-bg-secondary rounded-lg" data-aos="fade-up">
         <div class="section-header text-center mb-6">
-            <h2 class="text-3xl font-bold text-var-primary">Explore Our Island Destinations</h2>
-            <p class="text-lg text-var-text-color">Discover the beauty of Fiji's diverse islands</p>
+            <h2 class="text-3xl font-bold text-var-primary font-playfair">Explore Our Island Destinations</h2>
+            <p class="text-lg text-var-text-color font-poppins">Discover the beauty of Fiji's diverse islands</p>
         </div>
         <div class="destination-list grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <div class="destination-card bg-var-card-bg rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition transform hover:-translate-y-1 hover:scale-102" data-aos="fade-up" data-aos-delay="100">
                 <div class="destination-img-container relative h-48">
-                    <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn=Y9GcQ7hgqMrzrh8h3MGwlHx97UA2FUKUpOz4qrTA&s" alt="Nadi" class="destination-img w-full h-full object-cover" loading="lazy" onerror="this.src='{% static 'images/placeholder.jpg' %}'">
+                    <img src="https://images.unsplash.com/photo-1715171032354-b6aa7151ea1e?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MzB8fGZpamklMjByZXNvcnR8ZW58MHwxfDB8fHww&auto=format&fit=crop" alt="Nadi" class="destination-img w-full h-full object-cover" loading="lazy" onerror="this.src='{% static 'images/placeholder.jpg' %}'">
                     <div class="destination-overlay absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                        <a href="{% url 'bookings:book' %}?to_port=nadi" class="destination-btn bg-var-button-bg text-white py-2 px-4 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover">Book to Nadi</a>
+                        <a href="{% url 'bookings:book' %}?to_port=nadi" class="destination-btn bg-var-button-bg text-white py-2 px-4 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover flex items-center">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                            </svg>
+                            Book to Nadi
+                        </a>
                     </div>
                 </div>
-                <h3 class="text-xl font-bold m-4 text-var-primary">Nadi</h3>
-                <p class="destination-desc text-sm m-4 text-var-text-color">Gateway to Fiji's tropical adventures and vibrant markets.</p>
-                <p class="travel-time text-sm m-4 italic text-var-text-color">Average trip: 30min-2hr</p>
+                <h3 class="text-xl font-bold m-4 text-var-primary font-poppins">Nadi</h3>
+                <p class="destination-desc text-sm m-4 text-var-text-color font-poppins">Gateway to Fiji's tropical adventures and vibrant markets.</p>
+                <p class="travel-time text-sm m-4 italic text-var-text-color font-poppins">Average trip: 30min-2hr</p>
             </div>
             <div class="destination-card bg-var-card-bg rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition transform hover:-translate-y-1 hover:scale-102" data-aos="fade-up" data-aos-delay="200">
                 <div class="destination-img-container relative h-48">
-                    <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn=Y9GcQG6x8VOi9X42TPWSC1jNP5hvDA0zgpFv7Oeg&s" alt="Suva" class="destination-img w-full h-full object-cover" loading="lazy" onerror="this.src='{% static 'images/placeholder.jpg' %}'">
+                    <img src="https://images.unsplash.com/photo-1700809737677-3a250cbf0954?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTV8fHN1dmElMjBmaWppfGVufDB8MXwwfHx8MA%3D%3D&auto=format&fit=crop" alt="Suva" class="destination-img w-full h-full object-cover" loading="lazy" onerror="this.src='{% static 'images/placeholder.jpg' %}'">
                     <div class="destination-overlay absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                        <a href="{% url 'bookings:book' %}?to_port=suva" class="destination-btn bg-var-button-bg text-white py-2 px-4 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover">Book to Suva</a>
+                        <a href="{% url 'bookings:book' %}?to_port=suva" class="destination-btn bg-var-button-bg text-white py-2 px-4 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover flex items-center">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                            </svg>
+                            Book to Suva
+                        </a>
                     </div>
                 </div>
-                <h3 class="text-xl font-bold m-4 text-var-primary">Suva</h3>
-                <p class="destination-desc text-sm m-4 text-var-text-color">Fiji's bustling capital, rich in culture and history.</p>
-                <p class="travel-time text-sm m-4 italic text-var-text-color">Average trip: 3-4hr</p>
+                <h3 class="text-xl font-bold m-4 text-var-primary font-poppins">Suva</h3>
+                <p class="destination-desc text-sm m-4 text-var-text-color font-poppins">Fiji's bustling capital, rich in culture and history.</p>
+                <p class="travel-time text-sm m-4 italic text-var-text-color font-poppins">Average trip: 3-4hr</p>
             </div>
             <div class="destination-card bg-var-card-bg rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition transform hover:-translate-y-1 hover:scale-102" data-aos="fade-up" data-aos-delay="300">
                 <div class="destination-img-container relative h-48">
-                    <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn=Y9GcS_hOfplOMYyiFy2HV2RYCv7bWl9JiaSxfOjQ&s" alt="Taveuni" class="destination-img w-full h-full object-cover" loading="lazy" onerror="this.src='{% static 'images/placeholder.jpg' %}'">
+                    <img src="https://images.unsplash.com/photo-1707485318629-dfd15ab0945f?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTI0fHx5YXRjaHMlMjBmaWppfGVufDB8MXwwfHx8MA%3D%3Dauto=format&fit=crop" alt="Taveuni" class="destination-img w-full h-full object-cover" loading="lazy" onerror="this.src='{% static 'images/placeholder.jpg' %}'">
                     <div class="destination-overlay absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                        <a href="{% url 'bookings:book' %}?to_port=taveuni" class="destination-btn bg-var-button-bg text-white py-2 px-4 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover">Book to Taveuni</a>
+                        <a href="{% url 'bookings:book' %}?to_port=taveuni" class="destination-btn bg-var-button-bg text-white py-2 px-4 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover flex items-center">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                            </svg>
+                            Book to Taveuni
+                        </a>
                     </div>
                 </div>
-                <h3 class="text-xl font-bold m-4 text-var-primary">Taveuni</h3>
-                <p class="destination-desc text-sm m-4 text-var-text-color">The Garden Island, renowned for lush rainforests and waterfalls.</p>
-                <p class="travel-time text-sm m-4 italic text-var-text-color">Average trip: 12-14hr</p>
+                <h3 class="text-xl font-bold m-4 text-var-primary font-poppins">Taveuni</h3>
+                <p class="destination-desc text-sm m-4 text-var-text-color font-poppins">The Garden Island, renowned for lush rainforests and waterfalls.</p>
+                <p class="travel-time text-sm m-4 italic text-var-text-color font-poppins">Average trip: 12-14hr</p>
             </div>
             <div class="destination-card bg-var-card-bg rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition transform hover:-translate-y-1 hover:scale-102" data-aos="fade-up" data-aos-delay="400">
                 <div class="destination-img-container relative h-48">
-                    <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn=Y9GcSKeSgWLhr-2O8KGQyL61xcazonDt3JVs83zA&s" alt="Savusavu" class="destination-img w-full h-full object-cover" loading="lazy" onerror="this.src='{% static 'images/placeholder.jpg' %}'">
+                    <img src="https://images.unsplash.com/photo-1585465548423-6058abfc75ec?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTIzfHx5YXRjaHMlMjBmaWppfGVufDB8MXwwfHx8MA%3D%3D&auto=format&fit=crop" alt="Savusavu" class="destination-img w-full h-full object-cover" loading="lazy" onerror="this.src='{% static 'images/placeholder.jpg' %}'">
                     <div class="destination-overlay absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                        <a href="{% url 'bookings:book' %}?to_port=savusavu" class="destination-btn bg-var-button-bg text-white py-2 px-4 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover">Book to Savusavu</a>
+                        <a href="{% url 'bookings:book' %}?to_port=savusavu" class="destination-btn bg-var-button-bg text-white py-2 px-4 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover flex items-center">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                            </svg>
+                            Book to Savusavu
+                        </a>
                     </div>
                 </div>
-                <h3 class="text-xl font-bold m-4 text-var-primary">Savusavu</h3>
-                <p class="destination-desc text-sm m-4 text-var-text-color">A charming town with natural hot springs and friendly vibes.</p>
-                <p class="travel-time text-sm m-4 italic text-var-text-color">Average trip: 10-12hr</p>
+                <h3 class="text-xl font-bold m-4 text-var-primary font-poppins">Savusavu</h3>
+                <p class="destination-desc text-sm m-4 text-var-text-color font-poppins">A charming town with natural hot springs and friendly vibes.</p>
+                <p class="travel-time text-sm m-4 italic text-var-text-color font-poppins">Average trip: 10-12hr</p>
             </div>
         </div>
     </section>
 
     <section class="fiji-map py-12 bg-gradient-to-b from-var-bg-color to-var-bg-secondary rounded-lg" data-aos="fade-up">
-        <h2 class="text-3xl font-bold text-center text-var-primary mb-6">Explore Fiji</h2>
+        <h2 class="text-3xl font-bold text-center text-var-primary mb-6 font-playfair">Explore Fiji</h2>
         <div id="fiji-map" class="h-96 w-full rounded-lg shadow-lg"></div>
     </section>
 
     <section class="features py-12 bg-gradient-to-b from-var-bg-color to-var-bg-secondary rounded-lg" data-aos="fade-up">
-        <h2 class="text-3xl font-bold text-center text-var-primary mb-6">Why Book With Us</h2>
+        <h2 class="text-3xl font-bold text-center text-var-primary mb-6 font-playfair">Why Book With Us</h2>
         <div class="features-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <div class="feature-card bg-var-card-bg rounded-lg p-6 text-center shadow-lg hover:shadow-xl transition transform hover:-translate-y-1 hover:scale-102">
                 <div class="feature-icon text-4xl mb-4">🔒</div>
-                <h3 class="text-xl font-bold text-var-primary">Secure Booking</h3>
-                <p class="text-sm text-var-text-color">Your personal and payment information is protected with industry-standard encryption.</p>
+                <h3 class="text-xl font-bold text-var-primary font-poppins">Secure Booking</h3>
+                <p class="text-sm text-var-text-color font-poppins">Your personal and payment information is protected with industry-standard encryption.</p>
             </div>
             <div class="feature-card bg-var-card-bg rounded-lg p-6 text-center shadow-lg hover:shadow-xl transition transform hover:-translate-y-1 hover:scale-102">
                 <div class="feature-icon text-4xl mb-4">⏱️</div>
-                <h3 class="text-xl font-bold text-var-primary">Instant Confirmation</h3>
-                <p class="text-sm text-var-text-color">Receive your booking confirmation immediately via email with e-ticket attachment.</p>
+                <h3 class="text-xl font-bold text-var-primary font-poppins">Instant Confirmation</h3>
+                <p class="text-sm text-var-text-color font-poppins">Receive your booking confirmation immediately via email with e-ticket attachment.</p>
             </div>
             <div class="feature-card bg-var-card-bg rounded-lg p-6 text-center shadow-lg hover:shadow-xl transition transform hover:-translate-y-1 hover:scale-102">
                 <div class="feature-icon text-4xl mb-4">🔄</div>
-                <h3 class="text-xl font-bold text-var-primary">Easy Changes</h3>
-                <p class="text-sm text-var-text-color">Modify or cancel your booking online with our self-service portal.</p>
+                <h3 class="text-xl font-bold text-var-primary font-poppins">Easy Changes</h3>
+                <p class="text-sm text-var-text-color font-poppins">Modify or cancel your booking online with our self-service portal.</p>
             </div>
             <div class="feature-card bg-var-card-bg rounded-lg p-6 text-center shadow-lg hover:shadow-xl transition transform hover:-translate-y-1 hover:scale-102">
                 <div class="feature-icon text-4xl mb-4">📱</div>
-                <h3 class="text-xl font-bold text-var-primary">Mobile Tickets</h3>
-                <p class="text-sm text-var-text-color">No need to print - show your e-ticket on your mobile device at boarding.</p>
+                <h3 class="text-xl font-bold text-var-primary font-poppins">Mobile Tickets</h3>
+                <p class="text-sm text-var-text-color font-poppins">No need to print - show your e-ticket on your mobile device at boarding.</p>
             </div>
         </div>
     </section>
 
     <section class="testimonials py-12 bg-gradient-to-b from-var-bg-color to-var-bg-secondary" data-aos="fade-up">
-        <h2 class="text-3xl font-bold text-center text-var-primary mb-6">What Our Customers Say</h2>
+        <h2 class="text-3xl font-bold text-center text-var-primary mb-6 font-playfair">What Our Customers Say</h2>
         <div class="testimonial-slider max-w-2xl mx-auto">
             <div class="testimonial bg-var-card-bg rounded-lg p-6 shadow-lg hover:shadow-xl transition transform hover:-translate-y-1">
                 <div class="testimonial-content">
-                    <p class="text-sm text-var-text-color">"The booking process was incredibly smooth, and the ferry departed right on time. The crew was friendly and helpful."</p>
+                    <p class="text-sm text-var-text-color font-poppins">"The booking process was incredibly smooth, and the ferry departed right on time. The crew was friendly and helpful."</p>
                 </div>
                 <div class="testimonial-author mt-4">
-                    <h4 class="text-lg font-bold text-var-primary">Sarah J.</h4>
-                    <p class="text-sm text-var-text-color">Traveled to Yasawa Islands</p>
+                    <h4 class="text-lg font-bold text-var-primary font-poppins">Sarah J.</h4>
+                    <p class="text-sm text-var-text-color font-poppins">Traveled to Yasawa Islands</p>
                 </div>
             </div>
             <div class="testimonial bg-var-card-bg rounded-lg p-6 shadow-lg hover:shadow-xl transition transform hover:-translate-y-1">
                 <div class="testimonial-content">
-                    <p class="text-sm text-var-text-color">"I've used Fiji Ferry Booking multiple times for island hopping. Their website is easy to use, and I always find the best fares."</p>
+                    <p class="text-sm text-var-text-color font-poppins">"I've used Fiji Ferry Booking multiple times for island hopping. Their website is easy to use, and I always find the best fares."</p>
                 </div>
                 <div class="testimonial-author mt-4">
-                    <h4 class="text-lg font-bold text-var-primary">David M.</h4>
-                    <p class="text-sm text-var-text-color">Frequent Traveler</p>
+                    <h4 class="text-lg font-bold text-var-primary font-poppins">David M.</h4>
+                    <p class="text-sm text-var-text-color font-poppins">Frequent Traveler</p>
                 </div>
             </div>
             <div class="testimonial bg-var-card-bg rounded-lg p-6 shadow-lg hover:shadow-xl transition transform hover:-translate-y-1">
                 <div class="testimonial-content">
-                    <p class="text-sm text-var-text-color">"The air-conditioned ferries made the journey comfortable even on a hot day. Will definitely book again."</p>
+                    <p class="text-sm text-var-text-color font-poppins">"The air-conditioned ferries made the journey comfortable even on a hot day. Will definitely book again."</p>
                 </div>
                 <div class="testimonial-author mt-4">
-                    <h4 class="text-lg font-bold text-var-primary">Lisa K.</h4>
-                    <p class="text-sm text-var-text-color">Traveled to Mamanuca Islands</p>
+                    <h4 class="text-lg font-bold text-var-primary font-poppins">Lisa K.</h4>
+                    <p class="text-sm text-var-text-color font-poppins">Traveled to Mamanuca Islands</p>
                 </div>
             </div>
         </div>
@@ -291,30 +363,40 @@
 {% block extra_css %}
 <style>
 :root {
-    --bg-color: #F5F6F5; /* Soft off-white, sandy beach */
-    --bg-secondary: #FFFFFF; /* Pure white for gradient */
-    --card-bg: #FFFFFF; /* White for cards */
-    --input-bg: #E8ECEF; /* Light gray for inputs */
-    --text-color: #263238; /* Dark slate for text */
-    --primary: #1E88E5; /* Vivid sky blue for headings, buttons */
-    --button-bg: #1E88E5; /* Sky blue for buttons */
-    --button-hover: #1565C0; /* Darker blue for hover */
-    --highlight-bg: #FF6F61; /* Coral for register button */
-    --highlight-hover: #E55A4F; /* Darker coral for hover */
+    --bg-color: #F5F6F5;
+    --bg-secondary: #FFFFFF;
+    --card-bg: #FFFFFF;
+    --input-bg: #E8ECEF;
+    --text-color: #263238;
+    --primary: #1E88E5;
+    --button-bg: #1E88E5;
+    --button-hover: #1565C0;
+    --highlight-bg: #FF6F61;
+    --highlight-hover: #E55A4F;
+    --slide-1-bg: url('https://images.pexels.com/photos/29350896/pexels-photo-29350896.jpeg?auto=format&fit=crop');
+    --slide-2-bg: url('https://images.pexels.com/photos/9656584/pexels-photo-9656584.jpeg?auto=format&fit=crop');
+    --slide-3-bg: url('https://images.pexels.com/photos/26088018/pexels-photo-26088018.jpeg?auto=format&fit=crop');
+    --slide-4-bg: url('https://images.pexels.com/photos/29350894/pexels-photo-29350894.jpeg?auto=format&fit=crop');
 }
 
 .dark {
-    --bg-color: #1A2526; /* Dark slate, night sky */
-    --bg-secondary: #12191A; /* Darker slate for gradient */
-    --card-bg: #263238; /* Dark gray for cards */
-    --input-bg: #37474F; /* Darker gray for inputs */
-    --text-color: #CFD8DC; /* Light gray for text */
-    --primary: #42A5F5; /* Lighter blue for headings */
-    --button-bg: #0D47A1; /* Deep navy for buttons */
-    --button-hover: #1565C0; /* Lighter navy for hover */
-    --highlight-bg: #26A69A; /* Muted teal for register button */
-    --highlight-hover: #00897B; /* Darker teal for hover */
+    --bg-color: #1A2526;
+    --bg-secondary: #12191A;
+    --card-bg: #263238;
+    --input-bg: #37474F;
+    --text-color: #CFD8DC;
+    --primary: #42A5F5;
+    --button-bg: #0D47A1;
+    --button-hover: #1565C0;
+    --highlight-bg: #26A69A;
+    --highlight-hover: #00897B;
+    --slide-1-bg: url('https://images.pexels.com/photos/1287145/pexels-photo-1287145.jpeg?auto=format&fit=crop');
+    --slide-2-bg: url('https://images.pexels.com/photos/847393/pexels-photo-847393.jpeg?auto=format&fit=crop');
+    --slide-3-bg: url('https://images.pexels.com/photos/1612462/pexels-photo-1612462.jpeg?auto=format&fit=crop');
+    --slide-4-bg: url('https://images.pexels.com/photos/2356045/pexels-photo-2356045.jpeg?auto=format&fit=crop');
 }
+
+body { font-family: 'Poppins', sans-serif; }
 
 .hero {
     position: relative;
@@ -326,7 +408,6 @@
     display: flex;
     align-items: flex-start;
     justify-content: center;
-    font-family: 'Playfair Display', serif;
 }
 
 .hero-slideshow {
@@ -348,12 +429,15 @@
     background-position: center;
     background-repeat: no-repeat;
     opacity: 0;
-    transition: opacity 0.5s ease-in-out;
+    transition: opacity 1.2s ease-in-out;
 }
 
-.hero-slide:first-child {
-    opacity: 1;
-}
+.hero-slide:first-child { opacity: 1; }
+
+.hero-slide.slide-1 { background-image: var(--slide-1-bg); }
+.hero-slide.slide-2 { background-image: var(--slide-2-bg); }
+.hero-slide.slide-3 { background-image: var(--slide-3-bg); }
+.hero-slide.slide-4 { background-image: var(--slide-4-bg); }
 
 .slide-caption {
     position: absolute;
@@ -365,12 +449,10 @@
     font-size: 1.2rem;
     text-shadow: 0 2px 4px rgba(0, 0, 0, 0.7);
     opacity: 0;
-    transition: opacity 0.5s ease;
+    transition: opacity 1.2s ease;
 }
 
-.hero-slide[aria-hidden="false"] .slide-caption {
-    opacity: 1;
-}
+.hero-slide[aria-hidden="false"] .slide-caption { opacity: 1; }
 
 .hero-overlay {
     position: absolute;
@@ -407,13 +489,14 @@
     border-radius: 50%;
     cursor: pointer;
     border: none;
-    transition: background 0.3s ease;
+    transition: background 0.3s ease, transform 0.3s ease;
 }
 
 .hero-nav-dots .dot:hover,
 .hero-nav-dots .dot.active {
     background: var(--button-bg);
     box-shadow: 0 0 5px var(--button-bg);
+    transform: scale(1.2);
 }
 
 .container {
@@ -428,25 +511,73 @@
 
 .schedule-card.next-departure {
     border: 2px solid var(--button-bg);
-    background: rgba(30, 136, 229, 0.05); /* Light mode: faint blue tint */
+    background: rgba(30, 136, 229, 0.05);
 }
 
 .dark .schedule-card.next-departure {
-    background: rgba(13, 71, 161, 0.1); /* Dark mode: faint navy tint */
+    background: rgba(13, 71, 161, 0.1);
 }
 
 .weather-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.weather-row {
     display: flex;
     align-items: center;
     gap: 0.5rem;
 }
 
-.weather-label {
-    flex-shrink: 0;
+.weather-icon {
+    font-size: 1.8rem;
+    transition: opacity 0.5s ease;
 }
 
 .weather-condition.warning {
-    color: #D32F2F; /* Red for warnings, consistent across modes */
+    color: #D32F2F;
+    animation: pulse 2s infinite;
+}
+
+.weather-details {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.weather-temp, .weather-wind, .weather-precip {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+.weather-temp::after, .weather-wind::after, .weather-precip::after {
+    content: attr(data-tooltip);
+    visibility: hidden;
+    opacity: 0;
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: var(--card-bg);
+    color: var(--text-color);
+    padding: 0.5rem;
+    border-radius: 0.25rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    white-space: nowrap;
+    font-size: 0.75rem;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+    z-index: 10;
+}
+
+.weather-temp:hover::after, .weather-wind:hover::after, .weather-precip:hover::after {
+    visibility: visible;
+    opacity: 1;
+}
+
+.weather-wind.warning {
+    color: #D32F2F;
     animation: pulse 2s infinite;
 }
 
@@ -456,79 +587,30 @@
     100% { opacity: 1; }
 }
 
-.weather-icon {
-    font-size: 1.2rem;
-    transition: opacity 0.5s ease;
-}
-
-.testimonial {
-    display: none;
-    transition: opacity 0.5s ease;
-}
-
-.testimonial:first-child {
-    display: block;
-}
+.testimonial { display: none; transition: opacity 0.5s ease; }
+.testimonial:first-child { display: block; }
 
 @media (max-width: 1024px) {
-    .container {
-        max-width: 90%;
-    }
+    .container { max-width: 90%; }
 }
 
 @media (max-width: 768px) {
-    .hero {
-        height: 65vh;
-        min-height: 400px;
-        margin-top: 60px;
-        padding: 10px 0;
-    }
-    .hero-content h1 {
-        font-size: 2.4rem;
-    }
-    .intro-text {
-        font-size: 1.1rem;
-    }
-    .booking-widget {
-        padding: 1rem;
-        margin: 1rem auto;
-        max-width: 90%;
-    }
-    .form-row {
-        flex-direction: column;
-    }
-    .form-group {
-        min-w: 100%;
-    }
+    .hero { height: 65vh; min-height: 400px; padding: 10px 0; }
+    .hero-content h1 { font-size: 2.4rem; }
+    .intro-text { font-size: 1.1rem; }
+    .booking-widget { padding: 1rem; margin: 1rem auto; max-width: 90%; }
+    .form-row { flex-direction: column; }
+    .form-group { min-width: 100%; }
+    .weather-details { flex-direction: column; gap: 0.5rem; }
 }
 
-/* Flatpickr Styling */
-.flatpickr-calendar {
-    background: var(--input-bg);
-    color: var(--text-color);
-}
+.flatpickr-calendar { background: var(--input-bg); color: var(--text-color); }
+.flatpickr-day.selected { background: var(--button-bg); border-color: var(--button-bg); }
+.dark .flatpickr-calendar { background: var(--input-bg); color: var(--text-color); }
+.dark .flatpickr-day.selected { background: var(--button-bg); border-color: var(--button-bg); }
 
-.flatpickr-day.selected {
-    background: var(--button-bg);
-    border-color: var(--button-bg);
-}
+#fiji-map { height: 100%; width: 100%; background-color: var(--bg-secondary); }
 
-.dark .flatpickr-calendar {
-    background: var(--input-bg);
-    color: var(--text-color);
-}
-
-.dark .flatpickr-day.selected {
-    background: var(--button-bg);
-    border-color: var(--button-bg);
-}
-
-/* Map Styling */
-#fiji-map {
-    background-color: var(--bg-color);
-}
-
-/* Image Placeholder */
 .destination-img-container::before {
     content: '';
     position: absolute;
@@ -540,48 +622,33 @@
     z-index: -1;
 }
 
-/* Status Badges */
-.status-scheduled {
-    background-color: #C8E6C9; /* Light green */
-    color: #2E7D32;
-}
+.status-scheduled { background-color: #C8E6C9; color: #2E7D32; }
+.dark .status-scheduled { background-color: #1B5E20; color: #81C784; }
+.status-cancelled { background-color: #FFCDD2; color: #C62828; }
+.dark .status-cancelled { background-color: #B71C1C; color: #EF5350; }
+.status-delayed { background-color: #FFE0B2; color: #EF6C00; }
+.dark .status-delayed { background-color: #EF6C00; color: #FFCA28; }
 
-.dark .status-scheduled {
-    background-color: #1B5E20; /* Dark green */
-    color: #81C784;
-}
-
-.status-cancelled {
-    background-color: #FFCDD2;
-    color: #C62828;
-}
-
-.dark .status-cancelled {
-    background-color: #B71C1C;
-    color: #EF5350;
-}
-
-.status-delayed {
-    background-color: #FFE0B2;
-    color: #EF6C00;
-}
-
-.dark .status-delayed {
-    background-color: #EF6C00;
-    color: #FFCA28;
-}
+.font-playfair { font-family: 'Playfair Display', serif; }
+.font-poppins { font-family: 'Poppins', sans-serif; }
 </style>
 {% endblock %}
 
 {% block extra_js %}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
 <link rel="stylesheet" href="https://unpkg.com/aos@2.3.4/dist/aos.css">
 <script src="https://cdn.jsdelivr.net/npm/flatpickr" defer></script>
 <script src="https://momentjs.com/downloads/moment.min.js" defer></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js" defer></script>
 <script src="https://unpkg.com/aos@2.3.4/dist/aos.js" defer></script>
 <script src="{% static 'js/home.js' %}" defer></script>
+<script>
+    window.TILE_ERROR_URL = "{{ tile_error_url }}";
+</script>
 {{ form_data|json_script:"form-data" }}
 {{ weather_data|json_script:"weather-data" }}
 {% endblock %}

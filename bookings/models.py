@@ -64,7 +64,8 @@ class WeatherCondition(models.Model):
     temperature = models.FloatField(null=True)
     wind_speed = models.FloatField(null=True)
     wave_height = models.FloatField(null=True)
-    condition = models.CharField(max_length=100, null=True)  # e.g., "Clear", "Rain"
+    condition = models.CharField(max_length=100, null=True)
+    precipitation_probability = models.FloatField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
     expires_at = models.DateTimeField()
 

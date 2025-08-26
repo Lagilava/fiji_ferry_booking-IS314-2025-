@@ -12,7 +12,7 @@
     <link rel="icon" type="image/png" href="{% static 'favicon.png' %}">
 
     <!-- Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;700&family=Playfair+Display:wght@400;700&display=swap" rel="stylesheet">
 
     <!-- Tailwind CSS -->
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
@@ -44,6 +44,10 @@
         --alert-info-text: #1e3a8a;
         --footer-bg: #f1f5f9;
         --footer-text: #4b5563;
+        --primary: #06b6d4; /* Fiji turquoise */
+        --highlight-bg: #f59e0b; /* Amber for Sign Up */
+        --highlight-hover: #d97706;
+        --wave-color: rgba(255, 255, 255, 0.3);
     }
 
     html.dark-mode {
@@ -67,6 +71,10 @@
         --alert-info-text: #f1f5f9;
         --footer-bg: #1e293b;
         --footer-text: #9ca3af;
+        --primary: #075985; /* Darker turquoise for dark mode */
+        --highlight-bg: #b45309;
+        --highlight-hover: #92400e;
+        --wave-color: rgba(147, 197, 253, 0.3);
     }
 
     * {
@@ -75,175 +83,348 @@
 
     body {
         margin: 0;
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        font-family: 'Poppins', sans-serif;
         background-color: var(--bg-color);
         color: var(--text-color);
         line-height: 1.6;
+        scroll-behavior: smooth;
     }
 
+    /* Navbar */
     .navbar {
         display: flex;
-        align-items: center;
         justify-content: space-between;
-        padding: 1rem 2rem;
-        background-color: var(--bg-color);
-        border-bottom: 1px solid var(--border-color);
+        align-items: center;
+        padding: 14px 30px;
+        background: linear-gradient(90deg, var(--button-bg), var(--primary));
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         position: sticky;
         top: 0;
-        z-index: 50;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        z-index: 1000;
+        transition: background 0.3s ease;
     }
 
-    .logo img {
-        height: 60px;
-        width: auto;
-        object-fit: contain;
-        transition: opacity 0.3s ease;
+    .navbar .logo img {
+        height: 45px;
+        transition: transform 0.3s ease;
     }
 
-    @media (min-width: 1024px) {
-        .logo img { height: 70px; }
+    .navbar .logo img:hover {
+        transform: scale(1.05);
     }
 
-    @media (max-width: 640px) {
-        .logo img { height: 50px; }
-    }
-
-    nav {
+    .navbar nav {
         display: flex;
         align-items: center;
-        gap: 1.5rem;
+        gap: 20px;
+        transition: all 0.3s ease;
     }
 
-    nav a, .dropbtn {
+    .navbar .nav-link {
+        color: #ffffff;
         text-decoration: none;
-        color: var(--link-color);
-        font-weight: 600;
-        font-size: 1rem;
-        padding: 0.5rem 1rem;
+        font-family: 'Poppins', sans-serif;
+        font-weight: 500;
+        padding: 8px 16px;
+        transition: all 0.3s ease;
         border-radius: 6px;
-        transition: color 0.3s ease, background-color 0.3s ease;
+        position: relative;
+        overflow: hidden;
     }
 
-    nav a:hover, .dropbtn:hover {
-        color: var(--link-hover);
-        background-color: var(--dropdown-hover);
+    .navbar .nav-link::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: -100%;
+        width: 100%;
+        height: 2px;
+        background: var(--wave-color);
+        transition: left 0.3s ease;
     }
 
-    nav a:focus, .dropbtn:focus {
-        outline: 2px solid var(--link-hover);
-        outline-offset: 2px;
+    .navbar .nav-link:hover::after {
+        left: 0;
     }
 
-    .hamburger {
-        display: none;
-        font-size: 1.75rem;
-        cursor: pointer;
-        color: var(--link-color);
-        background: none;
-        border: none;
-        padding: 0.5rem;
+    .navbar .nav-link:hover {
+        background: rgba(255, 255, 255, 0.2);
+        transform: translateY(-2px);
     }
 
-    @media (max-width: 768px) {
-        .hamburger { display: block; }
-        nav {
-            display: none;
-            flex-direction: column;
-            width: 100%;
-            position: absolute;
-            top: 100%;
-            left: 0;
-            background-color: var(--bg-color);
-            padding: 1rem;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-        nav.show {
-            display: flex;
-        }
-        nav a, .dropdown { width: 100%; text-align: left; }
+    .navbar .nav-link.active {
+        background: var(--button-hover);
     }
 
+    .navbar .nav-link.bg-amber-500 {
+        background-color: var(--highlight-bg);
+        color: #ffffff;
+        font-weight: 600;
+        border-radius: 6px;
+    }
+
+    .navbar .nav-link.bg-amber-500:hover {
+        background-color: var(--highlight-hover);
+        transform: translateY(-2px);
+    }
+
+    /* Dropdown */
     .dropdown {
         position: relative;
+        display: inline-block;
+        vertical-align: middle;
     }
 
     .dropbtn {
         background: none;
+        color: #ffffff;
+        font-family: 'Poppins', sans-serif;
+        font-weight: 500;
+        padding: 8px 16px;
         border: none;
         cursor: pointer;
-        font: inherit;
+        font-size: 16px;
+        transition: background 0.3s ease;
+        border-radius: 6px;
+    }
+
+    .dropbtn:hover {
+        background: rgba(255, 255, 255, 0.2);
+    }
+
+    .dropbtn[aria-expanded="true"] {
+        background: rgba(255, 255, 255, 0.3);
     }
 
     .dropdown-content {
+        display: none;
         position: absolute;
-        top: 100%;
         right: 0;
-        background-color: var(--dropdown-bg);
-        min-width: 200px;
-        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
-        z-index: 100;
+        background-color: var(--card-bg);
+        min-width: 180px;
+        box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+        z-index: 1;
+        border-radius: 6px;
+        padding: 8px 0;
         opacity: 0;
         visibility: hidden;
-        transform: translateY(8px);
+        transform: translateY(10px);
         transition: opacity 0.3s ease, transform 0.3s ease, visibility 0.3s ease;
-        border-radius: 8px;
-        padding: 0.5rem 0;
     }
 
     .dropdown:hover .dropdown-content,
-    .dropdown:focus-within .dropdown-content {
+    .dropdown:focus-within .dropdown-content,
+    .dropdown .dropbtn[aria-expanded="true"] + .dropdown-content {
+        display: block;
         opacity: 1;
         visibility: visible;
         transform: translateY(0);
     }
 
+    .dropdown-content::before {
+        content: '';
+        position: absolute;
+        top: -10px;
+        right: 20px;
+        border-width: 6px;
+        border-style: solid;
+        border-color: transparent transparent var(--card-bg) transparent;
+        filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.05));
+    }
+
     .dropdown-content a,
     .dropdown-content button {
         display: block;
-        padding: 0.75rem 1.25rem;
-        background: none;
-        border: none;
-        width: 100%;
+        padding: 12px 20px;
+        background: var(--card-bg);
         text-align: left;
-        color: var(--link-color);
-        font-weight: 500;
+        border: none;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+        font-family: 'Poppins', sans-serif;
+        font-size: 14px;
         cursor: pointer;
         text-decoration: none;
-        transition: background-color 0.2s ease;
+        color: var(--link-color);
+        font-weight: 600;
+        transition: background-color 0.25s ease, color 0.25s ease;
     }
 
     .dropdown-content a:hover,
     .dropdown-content button:hover {
         background-color: var(--dropdown-hover);
+        color: var(--link-hover);
     }
 
-    .dropdown-content a:focus,
-    .dropdown-content button:focus {
-        outline: 2px solid var(--link-hover);
-        outline-offset: 2px;
-    }
-
-    .dark-mode-toggle {
-        background: var(--button-bg);
-        color: #ffffff;
-        padding: 0.5rem 1rem;
-        border-radius: 6px;
-        border: none;
+    /* Hamburger */
+    .hamburger {
+        display: none;
+        font-size: 24px;
         cursor: pointer;
-        font-weight: 600;
-        transition: background-color 0.3s ease;
+        color: #ffffff;
+        background: none;
+        border: none;
+        transition: transform 0.3s ease;
     }
 
-    .dark-mode-toggle:hover {
-        background: var(--button-hover);
+    .hamburger[aria-expanded="true"] {
+        transform: rotate(90deg);
     }
 
-    .dark-mode-toggle:focus {
-        outline: 2px solid var(--button-hover);
-        outline-offset: 2px;
+    /* Mobile Menu */
+    @media (max-width: 768px) {
+        .hamburger {
+            display: block;
+        }
+
+        .navbar nav {
+            display: none;
+            flex-direction: column;
+            background: var(--button-bg);
+            position: absolute;
+            top: 70px;
+            right: 20px;
+            width: 240px;
+            padding: 10px;
+            border-radius: 6px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+            opacity: 0;
+            transform: translateY(-10px);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+
+        .navbar nav.show {
+            display: flex;
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .navbar .nav-link {
+            padding: 12px 16px;
+            width: 100%;
+            text-align: left;
+        }
+
+        .dropdown-content {
+            position: static;
+            width: 100%;
+            background: var(--card-bg);
+            box-shadow: none;
+            transform: none;
+        }
+
+        .dropdown-content::before {
+            display: none;
+        }
     }
 
+    @media (max-width: 480px) {
+        .navbar {
+            padding: 10px 20px;
+        }
+
+        .navbar .logo img {
+            height: 36px;
+        }
+
+        .navbar nav {
+            width: 200px;
+            top: 60px;
+        }
+    }
+
+    /* Footer */
+    footer {
+        background: var(--footer-bg);
+        color: var(--footer-text);
+        padding: 3rem 2rem;
+        text-align: center;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .footer-content {
+        max-width: 1200px;
+        margin: 0 auto;
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 2rem;
+    }
+
+    .footer-contact h3 {
+        font-family: 'Playfair Display', serif;
+        font-size: 1.5rem;
+        margin-bottom: 1rem;
+        color: var(--text-color);
+    }
+
+    .footer-contact p,
+    .footer-contact a {
+        font-size: 1rem;
+        color: var(--footer-text);
+        text-decoration: none;
+        transition: color 0.3s ease;
+    }
+
+    .footer-contact a:hover {
+        color: var(--link-hover);
+    }
+
+    .social-links {
+        display: flex;
+        justify-content: center;
+        gap: 1.5rem;
+        margin-top: 1rem;
+    }
+
+    .social-links a {
+        font-size: 1.5rem;
+        color: var(--footer-text);
+        transition: transform 0.3s ease, color 0.3s ease;
+    }
+
+    .social-links a:hover {
+        color: var(--link-hover);
+        transform: scale(1.2);
+    }
+
+    .footer-wave {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(to right, rgba(59, 130, 246, 0.1), rgba(6, 182, 212, 0.1));
+        animation: waveAnimation 8s infinite linear;
+        z-index: -1;
+    }
+
+    @keyframes waveAnimation {
+        0% {
+            background-position: 0 0;
+        }
+        100% {
+            background-position: 200% 0;
+        }
+    }
+
+    @media (min-width: 768px) {
+        .footer-content {
+            grid-template-columns: repeat(3, 1fr);
+            text-align: left;
+        }
+    }
+
+    @media (max-width: 480px) {
+        .footer-contact h3 {
+            font-size: 1.25rem;
+        }
+
+        .social-links a {
+            font-size: 1.25rem;
+        }
+    }
+
+    /* Messages */
     .messages .alert {
         padding: 1rem;
         margin: 1rem auto;
@@ -270,6 +451,7 @@
         border: 1px solid var(--alert-info-text);
     }
 
+    /* Status Badges */
     .status-badge {
         padding: 4px 10px;
         border-radius: 20px;
@@ -292,6 +474,7 @@
         background-color: #e76f51;
     }
 
+    /* Inputs */
     input, select {
         background-color: var(--input-bg);
         color: var(--input-text);
@@ -313,15 +496,7 @@
         background-color: var(--input-bg);
         color: var(--input-text);
     }
-
-    footer {
-        text-align: center;
-        padding: 2rem 1rem;
-        background-color: var(--footer-bg);
-        color: var(--footer-text);
-        font-size: 0.875rem;
-    }
-</style>
+    </style>
 
     {% block extra_css %}{% endblock %}
 </head>
@@ -329,7 +504,7 @@
     <header class="navbar">
         <div class="logo">
             <a href="{% url 'home' %}" aria-label="Fiji Ferry Booking Home">
-                <img src="{% static 'logo-light.png' %}" alt="Fiji Ferry Logo" id="site-logo">
+                <img src="{% static 'logo.png' %}" alt="Fiji Ferry Booking Logo" id="site-logo">
             </a>
         </div>
         <button class="hamburger" aria-label="Toggle Navigation Menu" aria-expanded="false">
@@ -345,19 +520,15 @@
                     </button>
                     <div class="dropdown-content" role="menu">
                         <a href="{% url 'bookings:booking_history' %}" role="menuitem">My Bookings</a>
-
-                        <!-- Secure Logout Form -->
                         <form method="post" action="{% url 'accounts:logout' %}">
                             {% csrf_token %}
-                            <button type="submit" role="menuitem" class="w-full text-left bg-none border-none px-4 py-2 cursor-pointer hover:bg-gray-100">
-                                Logout
-                            </button>
+                            <button type="submit" role="menuitem">Logout</button>
                         </form>
                     </div>
                 </div>
             {% else %}
                 <a href="{% url 'accounts:login' %}" class="nav-link">Login</a>
-                <a href="{% url 'accounts:register' %}" class="nav-link bg-amber-500 hover:bg-amber-600">Sign Up</a>
+                <a href="{% url 'accounts:register' %}" class="nav-link bg-amber-500">Sign Up</a>
             {% endif %}
             <button class="dark-mode-toggle" id="theme-icon" aria-label="Toggle dark mode">
                 <span class="dark-mode-icon">🌙</span>
@@ -376,12 +547,34 @@
         {% block content %}{% endblock %}
     </main>
 
-    <footer>
-        <p>© 2025 Fiji Ferry Booking. All rights reserved.</p>
+    <footer data-aos="slide-up" data-aos-duration="800">
+        <div class="footer-wave"></div>
+        <div class="footer-content">
+            <div class="footer-contact">
+                <h3>Contact Us</h3>
+                <p>Email: <a href="https://www.youtube.com/watch?v=mOYZaiDZ7BM&ab_channel=RednexVideos">info@fijiferrybooking.com</a></p>
+                <p>Phone: <a href="tel:+6797388496">+679 7388496</a></p>
+            </div>
+            <div class="footer-contact">
+                <h3>Follow Us</h3>
+                <div class="social-links">
+                    <a href="https://facebook.com/fijiferrybooking" aria-label="Facebook"><span class="fab fa-facebook-f"></span></a>
+                    <a href="https://twitter.com/fijiferry" aria-label="Twitter"><span class="fab fa-twitter"></span></a>
+                    <a href="https://instagram.com/fijiferrybooking" aria-label="Instagram"><span class="fab fa-instagram"></span></a>
+                </div>
+            </div>
+            <div class="footer-contact">
+                <h3>About Fiji Ferry Booking</h3>
+                <p>Explore Fiji’s islands with ease. Book your ferry tickets for a seamless tropical adventure.</p>
+            </div>
+        </div>
+        <p class="mt-4">© 2025 Fiji Ferry Booking. All rights reserved.</p>
     </footer>
 
     <!-- AOS JavaScript -->
     <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+    <!-- Font Awesome for social icons -->
+    <script src="https://kit.fontawesome.com/4775611cda.js" crossorigin="anonymous"></script>
     <script src="{% static 'js/script.js' %}"></script>
     <script src="{% static 'js/book.js' %}"></script>
     {% block extra_js %}{% endblock %}

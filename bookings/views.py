@@ -30,14 +30,14 @@ logger = logging.getLogger(__name__)
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
 
+def safe_float(val):
+    try:
+        return float(val) if val is not None else None
+    except (TypeError, ValueError):
+        return None
+
 @require_GET
 def weather_stream(request):
-    def safe_float(val):
-        try:
-            return float(val) if val is not None else None
-        except (TypeError, ValueError):
-            return None
-
     def stream():
         since = request.GET.get('since')
         last_sent = None
@@ -91,10 +91,11 @@ def weather_stream(request):
                             'condition': wc.condition,
                             'temperature': safe_float(wc.temperature),
                             'wind_speed': safe_float(wc.wind_speed),
-                            'wave_height': safe_float(wc.wave_height),
+                            'precipitation_probability': safe_float(wc.precipitation_probability),
                             'port': wc.port.name,
                             'is_expired': wc.is_expired(),
                             'updated_at': wc.updated_at.isoformat(),
+                            'expires_at': wc.expires_at.isoformat(),
                             'error': None
                         })
                     elif not last_sent:
@@ -104,10 +105,11 @@ def weather_stream(request):
                             'condition': None,
                             'temperature': None,
                             'wind_speed': None,
-                            'wave_height': None,
+                            'precipitation_probability': None,
                             'port': route.departure_port.name,
                             'is_expired': True,
                             'updated_at': None,
+                            'expires_at': None,
                             'error': 'No valid weather data available'
                         })
 
@@ -125,7 +127,6 @@ def weather_stream(request):
     response['Cache-Control'] = 'no-cache'
     response['X-Accel-Buffering'] = 'no'
     return response
-
 
 @require_GET
 @cache_page(60 * 10)  # Cache for 10 minutes
@@ -172,11 +173,12 @@ def get_weather_conditions(request):
             weather_data.append({
                 'route_id': route.id,
                 'port': route.departure_port.name,
-                'temperature': weather.temperature,
-                'wind_speed': weather.wind_speed,
-                'wave_height': weather.wave_height,
+                'temperature': safe_float(weather.temperature),
+                'wind_speed': safe_float(weather.wind_speed),
+                'precipitation_probability': safe_float(weather.precipitation_probability),
                 'condition': weather.condition,
-                'updated_at': weather.updated_at.isoformat()
+                'updated_at': weather.updated_at.isoformat(),
+                'expires_at': weather.expires_at.isoformat()
             })
             continue
 
@@ -198,7 +200,7 @@ def get_weather_conditions(request):
                 temperature = data['current']['temp_c']
                 wind_speed = data['current']['wind_kph']
                 condition = data['current']['condition']['text']
-                wave_height = None  # premium marine endpoint required
+                precipitation_probability = data['current'].get('precip_in', 0) * 100  # Convert inches to percentage
 
                 # Save/update in DB
                 WeatherCondition.objects.update_or_create(
@@ -207,7 +209,7 @@ def get_weather_conditions(request):
                     defaults={
                         'temperature': temperature,
                         'wind_speed': wind_speed,
-                        'wave_height': wave_height,
+                        'precipitation_probability': precipitation_probability,
                         'condition': condition,
                         'expires_at': timezone.now() + timedelta(minutes=30),
                         'updated_at': timezone.now()
@@ -219,9 +221,10 @@ def get_weather_conditions(request):
                     'port': route.departure_port.name,
                     'temperature': temperature,
                     'wind_speed': wind_speed,
-                    'wave_height': wave_height,
+                    'precipitation_probability': precipitation_probability,
                     'condition': condition,
-                    'updated_at': timezone.now().isoformat()
+                    'updated_at': timezone.now().isoformat(),
+                    'expires_at': (timezone.now() + timedelta(minutes=30)).isoformat()
                 })
 
             except requests.RequestException as e:
@@ -229,11 +232,17 @@ def get_weather_conditions(request):
                 weather_data.append({
                     'route_id': route.id,
                     'port': route.departure_port.name,
-                    'error': 'Weather data unavailable',
-                    'updated_at': None
+                    'temperature': None,
+                    'wind_speed': None,
+                    'precipitation_probability': None,
+                    'condition': None,
+                    'updated_at': None,
+                    'expires_at': None,
+                    'error': 'Weather data unavailable'
                 })
 
     return JsonResponse({'weather': weather_data})
+
 
 
 def privacy_policy(request):
@@ -353,7 +362,7 @@ def homepage(request):
                 'condition': wc.condition,
                 'temperature': float(wc.temperature) if wc.temperature is not None else None,
                 'wind_speed': float(wc.wind_speed) if wc.wind_speed is not None else None,
-                'wave_height': float(wc.wave_height) if wc.wave_height is not None else None,
+                'precipitation_probability': float(wc.precipitation_probability) if wc.precipitation_probability is not None else None,
                 'expires_at': wc.expires_at.isoformat(),
                 'updated_at': wc.updated_at.isoformat(),
                 'is_expired': wc.is_expired(),
@@ -366,7 +375,7 @@ def homepage(request):
                 'condition': None,
                 'temperature': None,
                 'wind_speed': None,
-                'wave_height': None,
+                'precipitation_probability': None,
                 'expires_at': None,
                 'updated_at': None,
                 'is_expired': True,
