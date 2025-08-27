@@ -223,6 +223,7 @@ Use Agile methodology with sprints:
 - Superuser: `python manage.py createsuperuser`
 - Tests: `python manage.py test`
 - Static files: `python manage.py collectstatic`
+- Help: `python manage.py help`
 
 ## Project Structure
 
