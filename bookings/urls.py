@@ -21,5 +21,7 @@ urlpatterns = [
     path('get_pricing/', views.get_pricing, name='get_pricing'),
     path('stripe_webhook/', views.stripe_webhook, name='stripe_webhook'),
     path('weather/stream/', views.weather_stream, name='weather_stream'),
+    path('validate_file/', views.validate_file, name='validate_file'),
+    path('validate-step/', views.validate_step, name='validate_step'),
     path('privacy-policy/', TemplateView.as_view(template_name='privacy_policy.html'), name='privacy_policy'),
 ]

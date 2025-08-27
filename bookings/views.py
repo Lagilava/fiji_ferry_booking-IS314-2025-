@@ -595,6 +595,114 @@ def generate_manifest(booking, passengers):
     return manifest
 
 
+@csrf_exempt
+def validate_step(request):
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'errors': ['Invalid request method'], 'step': 1})
+
+    step = request.POST.get('step')
+    errors = []
+
+    if step == '1':
+        schedule_id = request.POST.get('schedule_id', '').strip()
+        is_authenticated = request.POST.get('user_authenticated') == 'true'
+        guest_email = request.POST.get('guest_email', '').strip()
+
+        if not schedule_id or not Schedule.objects.filter(id=schedule_id).exists():
+            errors.append('Please select a valid ferry trip.')
+        if not is_authenticated and not guest_email:
+            errors.append('Guest email is required.')
+
+    elif step == '2':
+        adults = int(request.POST.get('adults', 0))
+        children = int(request.POST.get('children', 0))
+        infants = int(request.POST.get('infants', 0))
+
+        if adults + children + infants == 0:
+            errors.append('At least one passenger is required.')
+        if infants > 0 and adults == 0:
+            errors.append('Infants cannot be booked without an adult.')
+
+        for type in ['adult', 'child', 'infant']:
+            count = adults if type == 'adult' else children if type == 'child' else infants
+            for i in range(count):
+                first_name = request.POST.get(f'passenger_{type}_{i}_first_name', '').strip()
+                last_name = request.POST.get(f'passenger_{type}_{i}_last_name', '').strip()
+                age = request.POST.get(f'passenger_{type}_{i}_age', '')
+
+                if not first_name:
+                    errors.append(f'{type.capitalize()} {i + 1}: First name is required.')
+                if not last_name:
+                    errors.append(f'{type.capitalize()} {i + 1}: Last name is required.')
+                try:
+                    age = int(age)
+                    if type == 'infant' and not (0 <= age <= 1):
+                        errors.append(f'Infant {i + 1}: Age must be 0-1.')
+                    elif type == 'child' and not (2 <= age <= 11):
+                        errors.append(f'Child {i + 1}: Age must be 2-11.')
+                    elif type == 'adult' and age < 12:
+                        errors.append(f'Adult {i + 1}: Age must be 12 or older.')
+                except ValueError:
+                    errors.append(f'{type.capitalize()} {i + 1}: Invalid age.')
+
+        has_minors = children > 0 or infants > 0
+        has_parent = any(
+            request.POST.get(f'passenger_adult_{i}_is_parent') == 'on'
+            for i in range(adults)
+        )
+        responsibility_declaration = 'responsibility_declaration' in request.FILES
+        if has_minors and adults > 0 and not has_parent and not responsibility_declaration:
+            errors.append('Responsibility declaration is required if no adult is a parent.')
+
+    elif step == '3':
+        is_unaccompanied_minor = request.POST.get('is_unaccompanied_minor') == 'on'
+        has_minors = int(request.POST.get('children', 0)) > 0 or int(request.POST.get('infants', 0)) > 0
+        if is_unaccompanied_minor and has_minors:
+            if not request.POST.get('guardian_contact', '').strip():
+                errors.append('Guardian contact is required for unaccompanied minors.')
+            if 'consent_form' not in request.FILES:
+                errors.append('Consent form is required for unaccompanied minors.')
+        if request.POST.get('add_cargo_checkbox') == 'on':
+            if not request.POST.get('cargo_type', '').strip():
+                errors.append('Cargo type is required.')
+            try:
+                weight = float(request.POST.get('weight_kg', 0))
+                if weight <= 0:
+                    errors.append('Cargo weight must be a positive number.')
+            except ValueError:
+                errors.append('Cargo weight must be a positive number.')
+
+    elif step == '4':
+        if request.POST.get('privacy_consent') != 'on':
+            errors.append('You must agree to the privacy policy.')
+
+    if errors:
+        return JsonResponse({'success': False, 'errors': errors, 'step': step})
+    return JsonResponse({'success': True, 'step': step})
+
+@csrf_exempt
+def validate_file(request):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Invalid request method.'}, status=405)
+
+    file = request.FILES.get('file')
+    if not file:
+        logger.error('No file provided for validation')
+        return JsonResponse({'error': 'No file provided.'}, status=400)
+
+    file_validator = FileExtensionValidator(allowed_extensions=['pdf', 'jpg', 'jpeg', 'png'])
+    try:
+        file_validator(file)
+        if file.size > 5 * 1024 * 1024:
+            logger.error(f'File too large: {file.size} bytes')
+            return JsonResponse({'error': 'File size must be less than 5MB.'}, status=400)
+        return JsonResponse({'success': True})
+    except ValidationError as e:
+        logger.error(f'Invalid file: {str(e)}')
+        return JsonResponse({'error': f'File must be a PDF, JPG, JPEG, or PNG.'}, status=400)
+
+
+
 @login_required_allow_anonymous
 def book_ticket(request):
     available_schedules = Schedule.objects.filter(
@@ -619,6 +727,13 @@ def book_ticket(request):
             logger.error('Negative passenger counts')
             return JsonResponse({
                 'error': 'Passenger counts cannot be negative.',
+                'step': 2
+            }, status=400)
+
+        if infants > 0 and adults == 0:
+            logger.error('Infants cannot be booked without an adult')
+            return JsonResponse({
+                'error': 'Infants cannot be booked without an adult.',
                 'step': 2
             }, status=400)
 
@@ -676,13 +791,11 @@ def book_ticket(request):
         passenger_types = [('adult', adults), ('child', children), ('infant', infants)]
         for p_type, count in passenger_types:
             for i in range(count):
-                form_data[f'passenger_{p_type}_{i}_first_name'] = request.POST.get(f'passenger_{p_type}_{i}_first_name',
-                                                                                   '')
-                form_data[f'passenger_{p_type}_{i}_last_name'] = request.POST.get(f'passenger_{p_type}_{i}_last_name',
-                                                                                  '')
+                form_data[f'passenger_{p_type}_{i}_first_name'] = request.POST.get(f'passenger_{p_type}_{i}_first_name', '')
+                form_data[f'passenger_{p_type}_{i}_last_name'] = request.POST.get(f'passenger_{p_type}_{i}_last_name', '')
                 form_data[f'passenger_{p_type}_{i}_age'] = request.POST.get(f'passenger_{p_type}_{i}_age', '')
-                form_data[f'passenger_{p_type}_{i}_is_group_leader'] = request.POST.get(
-                    f'passenger_{p_type}_{i}_is_group_leader', '')
+                form_data[f'passenger_{p_type}_{i}_is_group_leader'] = request.POST.get(f'passenger_{p_type}_{i}_is_group_leader', '')
+                form_data[f'passenger_{p_type}_{i}_is_parent'] = request.POST.get(f'passenger_{p_type}_{i}_is_parent', '')
                 document = request.FILES.get(f'passenger_{p_type}_{i}_document')
                 if document:
                     try:
@@ -695,18 +808,7 @@ def book_ticket(request):
                         }, status=400)
                 form_data[f'passenger_{p_type}_{i}_document'] = document
 
-        has_parent = False
-        verified_adult = None
-        if request.user.is_authenticated:
-            verified_passengers = Passenger.objects.filter(
-                booking__user=request.user,
-                passenger_type='adult',
-                verification_status__in=['verified', 'temporary']
-            )
-            if verified_passengers.exists():
-                verified_adult = verified_passengers.first()
-                has_parent = True
-        form_data['hasParent'] = has_parent
+        has_parent = any(form_data.get(f'passenger_adult_{i}_is_parent') == 'on' for i in range(adults))
 
         if not schedule_id:
             logger.error('No schedule selected')
@@ -751,16 +853,19 @@ def book_ticket(request):
                         'step': 2
                     }, status=400)
 
-        if not is_emergency:
-            for p_type, count in passenger_types:
-                for i in range(count):
-                    document = form_data[f'passenger_{p_type}_{i}_document']
-                    if p_type in ['child', 'infant'] and not document:
-                        logger.error(f'Missing document for {p_type} {i + 1}')
-                        return JsonResponse({
-                            'error': f'Document required for {p_type.capitalize()} {i + 1}.',
-                            'step': 2
-                        }, status=400)
+        if children > 0 and adults == 0 and not responsibility_declaration:
+            logger.error('Missing responsibility declaration for unaccompanied minors')
+            return JsonResponse({
+                'error': 'Responsibility declaration is required for unaccompanied minors.',
+                'step': 2
+            }, status=400)
+
+        if has_minors and adults > 0 and not has_parent and not responsibility_declaration:
+            logger.error('Missing responsibility declaration for non-parent adults with minors')
+            return JsonResponse({
+                'error': 'Responsibility declaration is required if no adult is a parent.',
+                'step': 2
+            }, status=400)
 
         if is_unaccompanied_minor and has_minors:
             if not guardian_contact:
@@ -776,13 +881,6 @@ def book_ticket(request):
                     'step': 3
                 }, status=400)
 
-        if has_minors and not has_parent and not responsibility_declaration:
-            logger.error('Missing responsibility declaration for non-parent adults with minors')
-            return JsonResponse({
-                'error': 'Responsibility declaration is required for non-parent adults traveling with minors.',
-                'step': 2
-            }, status=400)
-
         if not privacy_consent:
             logger.error('Privacy consent not provided')
             return JsonResponse({
@@ -797,13 +895,6 @@ def book_ticket(request):
             return JsonResponse({
                 'error': 'Not enough seats available.',
                 'step': 1
-            }, status=400)
-
-        if has_minors and not verified_adult and not responsibility_declaration:
-            logger.error('No verified adult or responsibility declaration for minors')
-            return JsonResponse({
-                'error': 'A verified adult or responsibility declaration is required when booking with minors.',
-                'step': 2
             }, status=400)
 
         total_price = calculate_total_price(
@@ -847,9 +938,9 @@ def book_ticket(request):
                 last_name = form_data[f'passenger_{p_type}_{i}_last_name']
                 age = form_data[f'passenger_{p_type}_{i}_age']
                 is_group_leader_flag = form_data[f'passenger_{p_type}_{i}_is_group_leader'] == 'on'
+                is_parent_flag = form_data[f'passenger_{p_type}_{i}_is_parent'] == 'on'
                 document = form_data[f'passenger_{p_type}_{i}_document']
-                verification_status = 'pending' if document else (
-                    'temporary' if is_emergency and p_type in ['child', 'infant'] else 'missing')
+                verification_status = 'pending' if document else 'missing'
                 passenger = Passenger.objects.create(
                     booking=booking,
                     first_name=first_name,
@@ -859,21 +950,16 @@ def book_ticket(request):
                     document=document,
                     verification_status=verification_status,
                     is_group_leader=is_group_leader_flag,
+                    is_parent=is_parent_flag
                 )
                 if is_group_booking and is_group_leader_flag:
                     group_leader = passenger
-                if p_type in ['child', 'infant'] and verified_adult:
-                    passenger.linked_adult = verified_adult
-                    passenger.save()
-                if document or (is_emergency and p_type in ['child', 'infant']) or (
-                        p_type == 'adult' and responsibility_declaration):
+                if document:
                     DocumentVerification.objects.create(
                         passenger=passenger,
-                        document=document or (
-                            responsibility_declaration if p_type == 'adult' and responsibility_declaration else None),
-                        verification_status='pending' if document or responsibility_declaration else 'temporary',
-                        expires_at=schedule.departure_time + timezone.timedelta(
-                            days=1) if not request.user.is_authenticated or is_emergency else None
+                        document=document,
+                        verification_status='pending',
+                        expires_at=schedule.departure_time + timezone.timedelta(days=1) if not request.user.is_authenticated else None
                     )
                 passengers.append(passenger)
 
@@ -948,7 +1034,7 @@ def book_ticket(request):
     return render(request, 'bookings/book.html', {
         'schedules': available_schedules,
         'user': request.user,
-        'form_data': {'step': 1, 'schedule_id': '', 'adults': 0, 'children': 0, 'infants': 0, 'hasParent': False},
+        'form_data': {'step': 1, 'schedule_id': '', 'adults': 0, 'children': 0, 'infants': 0},
         'debug': True
     })
 

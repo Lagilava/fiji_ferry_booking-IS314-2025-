@@ -1,14 +1,19 @@
 {% extends 'base.html' %}
 {% load static %}
 
-{% block title %}Book Your Fiji Ferry Adventure{% endblock %}
+{% block title %}Book Your Fiji Ferry Trip{% endblock %}
 
 {% block content %}
 <div class="min-h-screen py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-blue-100 via-blue-200 to-blue-300 dark:from-blue-900 dark:via-blue-800 dark:to-blue-700">
     <div class="max-w-4xl mx-auto">
         <h1 class="text-4xl font-bold text-center text-gray-900 dark:text-blue-200 mb-8 font-playfair">
-            Book Your Fiji Ferry Adventure
+            Book Your Fiji Ferry Trip
         </h1>
+
+        <!-- Progress Bar -->
+        <div class="progress-bar bg-input-bg dark:bg-gray-700 rounded-lg mb-4">
+            <div class="progress-bar-fill bg-button-bg dark:bg-blue-500 h-2 rounded-lg" style="width: {% if form_data.step|default:1 == 1 %}25%{% elif form_data.step|default:1 == 2 %}50%{% elif form_data.step|default:1 == 3 %}75%{% else %}100%{% endif %}"></div>
+        </div>
 
         <!-- Messages and Validation Errors -->
         <div class="messages mb-6">
@@ -25,6 +30,7 @@
                 </div>
             {% endif %}
             <div id="validation-errors" class="hidden alert error bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 p-4 rounded-lg shadow-md animate__animated animate__fadeIn">
+                <p class="font-semibold">Please fix the following errors:</p>
                 <ul id="validation-error-list" class="list-disc pl-5"></ul>
             </div>
         </div>
@@ -32,7 +38,7 @@
         <!-- Step Indicators -->
         <div class="flex justify-between mb-8">
             <div class="step flex-1 text-center py-3 bg-white dark:bg-gray-800 rounded-lg shadow-md mx-1 {% if form_data.step|default:1 == 1 %}active bg-blue-600 dark:bg-blue-500 text-white{% else %}bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-300{% endif %} transition-all duration-300 font-roboto">
-                <span class="font-bold">1</span> Schedule & Contact
+                <span class="font-bold">1</span> Trip & Contact
             </div>
             <div class="step flex-1 text-center py-3 bg-white dark:bg-gray-800 rounded-lg shadow-md mx-1 {% if form_data.step|default:1 == 2 %}active bg-blue-600 dark:bg-blue-500 text-white{% else %}bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-300{% endif %} transition-all duration-300 font-roboto">
                 <span class="font-bold">2</span> Passengers
@@ -46,39 +52,43 @@
         </div>
 
         <!-- Form -->
-        <form id="booking-form" method="post" enctype="multipart/form-data" class="bg-card-bg dark:bg-gray-800 p-6 rounded-lg shadow-lg">
+        <form id="booking-form" method="post" action="{% url 'bookings:book' %}" enctype="multipart/form-data" class="bg-card-bg dark:bg-gray-800 p-6 rounded-lg shadow-lg">
             {% csrf_token %}
+            <input type="hidden" id="user_authenticated" value="{% if user.is_authenticated %}true{% else %}false{% endif %}">
 
             <!-- Step 1: Schedule & Contact -->
             <div class="form-step {% if form_data.step|default:1 != 1 %}hidden{% endif %}">
-                <h2 class="text-2xl font-semibold mb-4 text-gray-900 dark:text-blue-200 font-playfair">Schedule & Contact</h2>
+                <h2 class="text-2xl font-semibold mb-4 text-gray-900 dark:text-blue-200 font-playfair">Step 1: Choose Your Trip & Contact</h2>
+                <p class="text-sm text-gray-600 dark:text-gray-300 mb-4 font-roboto">Select your ferry trip and enter your email to get your booking details.</p>
                 <div class="space-y-4">
                     {% if not user.is_authenticated %}
-                        <div>
-                            <label for="guest_email" class="block text-sm font-medium text-gray-900 dark:text-gray-300 font-roboto">Guest Email:</label>
-                            <input type="email" name="guest_email" id="guest_email" value="{{ form_data.guest_email|default:'' }}" class="mt-1 w-full p-3 border rounded-lg bg-input-bg dark:bg-gray-700 text-gray-900 dark:text-gray-200 border-border-color dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-button-bg dark:focus:ring-blue-400" required>
-                            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400 font-roboto">Enter a valid email to receive booking confirmation.</p>
-                            <p class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
+                        <div class="relative">
+                            <label for="guest_email" class="block text-sm font-medium text-gray-900 dark:text-gray-300 font-roboto">Your Email:</label>
+                            <input type="email" name="guest_email" id="guest_email" value="{{ form_data.guest_email|default:'' }}" class="mt-1 w-full p-3 border rounded-lg bg-input-bg dark:bg-gray-700 text-gray-900 dark:text-gray-200 border-border-color dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-button-bg dark:focus:ring-blue-400" aria-describedby="error-guest_email">
+                            <span class="tooltip absolute invisible group-hover:visible bg-gray-800 dark:bg-gray-600 text-white text-xs rounded py-1 px-2 -mt-8">Enter your email to receive booking confirmation.</span>
+                            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400 font-roboto">We’ll send your ticket to this email.</p>
+                            <p id="error-guest_email" class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
                         </div>
                     {% endif %}
-                    <div>
-                        <label for="schedule_id" class="block text-sm font-medium text-gray-900 dark:text-gray-300 font-roboto">Select Schedule:</label>
-                        <select name="schedule_id" id="schedule_id" class="mt-1 w-full p-3 border rounded-lg bg-input-bg dark:bg-gray-700 text-gray-900 dark:text-gray-200 border-border-color dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-button-bg dark:focus:ring-blue-400" required>
-                            <option value="">Select a schedule</option>
+                    <div class="relative">
+                        <label for="schedule_id" class="block text-sm font-medium text-gray-900 dark:text-gray-300 font-roboto">Select Ferry Trip:</label>
+                        <select name="schedule_id" id="schedule_id" class="mt-1 w-full p-3 border rounded-lg bg-input-bg dark:bg-gray-700 text-gray-900 dark:text-gray-200 border-border-color dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-button-bg dark:focus:ring-blue-400" aria-describedby="error-schedule_id">
+                            <option value="">Choose a trip</option>
                             {% if schedules %}
                                 {% with selected_schedule=form_data.schedule_id|default:"" %}
                                     {% for schedule in schedules %}
                                         <option value="{{ schedule.id }}" {% if selected_schedule == schedule.id|stringformat:"s" %}selected{% endif %}>
-                                            {{ schedule.ferry.name }} ({{ schedule.route.departure_port }} → {{ schedule.route.destination_port }}) on {{ schedule.departure_time|date:"F d, Y H:i" }} - FJD {{ schedule.route.base_fare|floatformat:2 }}
+                                            {{ schedule.ferry.name }} ({{ schedule.route.departure_port }} to {{ schedule.route.destination_port }}) on {{ schedule.departure_time|date:"F d, Y H:i" }} - FJD {{ schedule.route.base_fare|floatformat:2 }}
                                         </option>
                                     {% endfor %}
                                 {% endwith %}
                             {% else %}
-                                <option value="" disabled>No schedules available</option>
+                                <option value="" disabled>No trips available</option>
                             {% endif %}
                         </select>
-                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400 font-roboto">Choose your ferry route and departure time.</p>
-                        <p class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
+                        <span class="tooltip absolute invisible group-hover:visible bg-gray-800 dark:bg-gray-600 text-white text-xs rounded py-1 px-2 -mt-8">Pick the ferry route and time that works for you.</span>
+                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400 font-roboto">Choose where and when you want to travel.</p>
+                        <p id="error-schedule_id" class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
                     </div>
                 </div>
                 <div class="mt-6 flex justify-end">
@@ -88,33 +98,50 @@
 
             <!-- Step 2: Passengers -->
             <div class="form-step {% if form_data.step|default:1 != 2 %}hidden{% endif %}">
-                <h2 class="text-2xl font-semibold mb-4 text-gray-900 dark:text-blue-200 font-playfair">Passengers</h2>
+                <h2 class="text-2xl font-semibold mb-4 text-gray-900 dark:text-blue-200 font-playfair">Step 2: Add Passengers</h2>
+                <p class="text-sm text-gray-600 dark:text-gray-300 mb-4 font-roboto">Tell us who’s traveling. Fill in names and ages for each person.</p>
                 <div class="space-y-4">
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <div>
+                        <div class="relative">
                             <label for="adults" class="block text-sm font-medium text-gray-900 dark:text-gray-300 font-roboto">Adults (12+):</label>
-                            <input type="number" name="adults" id="adults" min="0" value="{{ form_data.adults|default:'0' }}" class="mt-1 w-full p-3 border rounded-lg bg-input-bg dark:bg-gray-700 text-gray-900 dark:text-gray-200 border-border-color dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-button-bg dark:focus:ring-blue-400" required>
-                            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400 font-roboto">Number of adult passengers (12 years and older).</p>
-                            <p class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
+                            <input type="number" name="adults" id="adults" min="0" value="{{ form_data.adults|default:'1' }}" class="mt-1 w-full p-3 border rounded-lg bg-input-bg dark:bg-gray-700 text-gray-900 dark:text-gray-200 border-border-color dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-button-bg dark:focus:ring-blue-400" aria-describedby="error-adults">
+                            <span class="tooltip absolute invisible group-hover:visible bg-gray-800 dark:bg-gray-600 text-white text-xs rounded py-1 px-2 -mt-8">Enter the number of adults (12 years or older).</span>
+                            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400 font-roboto">Number of adults (12 or older).</p>
+                            <p id="error-adults" class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
                         </div>
-                        <div>
+                        <div class="relative">
                             <label for="children" class="block text-sm font-medium text-gray-900 dark:text-gray-300 font-roboto">Children (2-11):</label>
-                            <input type="number" name="children" id="children" min="0" value="{{ form_data.children|default:'0' }}" class="mt-1 w-full p-3 border rounded-lg bg-input-bg dark:bg-gray-700 text-gray-900 dark:text-gray-200 border-border-color dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-button-bg dark:focus:ring-blue-400" required>
-                            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400 font-roboto">Number of child passengers (2-11 years).</p>
-                            <p class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
+                            <input type="number" name="children" id="children" min="0" value="{{ form_data.children|default:'0' }}" class="mt-1 w-full p-3 border rounded-lg bg-input-bg dark:bg-gray-700 text-gray-900 dark:text-gray-200 border-border-color dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-button-bg dark:focus:ring-blue-400" aria-describedby="error-children">
+                            <span class="tooltip absolute invisible group-hover:visible bg-gray-800 dark:bg-gray-600 text-white text-xs rounded py-1 px-2 -mt-8">Enter the number of children (2 to 11 years old).</span>
+                            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400 font-roboto">Number of children (2-11 years).</p>
+                            <p id="error-children" class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
                         </div>
-                        <div>
+                        <div class="relative">
                             <label for="infants" class="block text-sm font-medium text-gray-900 dark:text-gray-300 font-roboto">Infants (0-1):</label>
-                            <input type="number" name="infants" id="infants" min="0" value="{{ form_data.infants|default:'0' }}" class="mt-1 w-full p-3 border rounded-lg bg-input-bg dark:bg-gray-700 text-gray-900 dark:text-gray-200 border-border-color dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-button-bg dark:focus:ring-blue-400" required>
-                            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400 font-roboto">Number of infant passengers (0-1 years).</p>
-                            <p class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
+                            <input type="number" name="infants" id="infants" min="0" value="{{ form_data.infants|default:'0' }}" class="mt-1 w-full p-3 border rounded-lg bg-input-bg dark:bg-gray-700 text-gray-900 dark:text-gray-200 border-border-color dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-button-bg dark:focus:ring-blue-400" aria-describedby="error-infants">
+                            <span class="tooltip absolute invisible group-hover:visible bg-gray-800 dark:bg-gray-600 text-white text-xs rounded py-1 px-2 -mt-8">Enter the number of infants (0-1 years). Must travel with an adult.</span>
+                            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400 font-roboto">Number of infants (0-1 years).</p>
+                            <p id="error-infants" class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
                         </div>
                     </div>
                     <div id="passenger-details" class="hidden mt-4">
-                        <h3 class="text-lg font-semibold mb-2 text-gray-900 dark:text-blue-200 font-playfair">Passenger Details</h3>
+                        <h3 class="text-lg font-semibold mb-2 text-gray-900 dark:text-blue-200 font-playfair">Passenger Information</h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-300 mb-2 font-roboto">Enter details for each passenger. Click the + to add info.</p>
                         <div id="adult-fields" class="space-y-4"></div>
                         <div id="child-fields" class="space-y-4"></div>
                         <div id="infant-fields" class="space-y-4"></div>
+                        <div id="responsibility-declaration-fields" class="hidden mt-4 bg-blue-50 dark:bg-blue-900 p-4 rounded-lg shadow-md">
+                            <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-300 font-roboto mb-2">Responsibility Declaration</h3>
+                            <p class="text-sm text-gray-600 dark:text-gray-300 mb-2 font-roboto">Required if children travel without an adult or with a non-parent adult.</p>
+                            <div class="relative">
+                                <label for="responsibility_declaration" class="block text-sm font-medium text-gray-900 dark:text-gray-300 font-roboto">Upload Declaration:</label>
+                                <input type="file" name="responsibility_declaration" id="responsibility_declaration" accept=".pdf,.jpg,.jpeg,.png" class="mt-1 w-full p-3 border rounded-lg bg-input-bg dark:bg-gray-700 text-gray-900 dark:text-gray-200 border-border-color dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-button-bg dark:focus:ring-blue-400" aria-describedby="error-responsibility_declaration">
+                                <span class="tooltip absolute invisible group-hover:visible bg-gray-800 dark:bg-gray-600 text-white text-xs rounded py-1 px-2 -mt-8">Upload a signed document if children are not with a parent or guardian.</span>
+                                <div class="file-preview mt-2 hidden"></div>
+                                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400 font-roboto">Upload a signed document for children traveling without a parent.</p>
+                                <p id="error-responsibility_declaration" class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="mt-6 flex justify-between">
@@ -125,96 +152,99 @@
 
             <!-- Step 3: Cargo & Extras -->
             <div class="form-step {% if form_data.step|default:1 != 3 %}hidden{% endif %}">
-                <h2 class="text-2xl font-semibold mb-4 text-gray-900 dark:text-blue-200 font-playfair">Cargo & Extras</h2>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <h2 class="text-2xl font-semibold mb-4 text-gray-900 dark:text-blue-200 font-playfair">Step 3: Add Cargo & Extras</h2>
+                <p class="text-sm text-gray-600 dark:text-gray-300 mb-4 font-roboto">Add any cargo or special options like emergency travel.</p>
+                <div class="grid grid-cols-1 gap-6">
                     <!-- Unaccompanied Minor Card -->
-                    <div class="bg-blue-50 dark:bg-blue-900 p-4 rounded-lg shadow-md">
-                        <label class="flex items-center mb-2">
-                            <input type="checkbox" name="is_unaccompanied_minor" id="is_unaccompanied_minor" class="mr-2 h-5 w-5 text-blue-600 dark:text-blue-400 focus:ring-button-bg dark:focus:ring-blue-400 border-border-color dark:border-gray-600" {% if form_data.is_unaccompanied_minor %}checked{% endif %}>
-                            <span class="text-sm font-medium text-gray-900 dark:text-gray-300 font-roboto">Unaccompanied Minor(s)</span>
+                    <div class="bg-blue-50 dark:bg-blue-900 p-4 rounded-lg shadow-md min-h-[150px]">
+                        <label class="flex items-center mb-2 relative">
+                            <input type="checkbox" name="is_unaccompanied_minor" id="is_unaccompanied_minor" class="mr-2 h-5 w-5 text-blue-600 dark:text-blue-400 focus:ring-button-bg dark:focus:ring-blue-400 border-border-color dark:border-gray-600" {% if form_data.is_unaccompanied_minor %}checked{% endif %} aria-describedby="error-is_unaccompanied_minor">
+                            <span class="text-sm font-semibold text-gray-900 dark:text-gray-300 font-roboto">Unaccompanied Minor(s)</span>
+                            <span class="tooltip absolute invisible group-hover:visible bg-gray-800 dark:bg-gray-600 text-white text-xs rounded py-1 px-2 -mt-8">Check if children are traveling without an adult.</span>
                         </label>
-                        <p class="text-sm text-gray-500 dark:text-gray-400 mb-2 font-roboto">Check if any child or infant is traveling without an adult.</p>
-                        <div id="unaccompanied-minor-fields" class="hidden space-y-4">
-                            <div>
+                        <p class="text-sm text-gray-500 dark:text-gray-400 mb-2 font-roboto">For children traveling alone without an adult.</p>
+                        <div id="unaccompanied-minor-fields" class="space-y-4 transition-all duration-300 {% if not form_data.is_unaccompanied_minor %}hidden{% endif %}">
+                            <div class="relative">
                                 <label for="guardian_contact" class="block text-sm font-medium text-gray-900 dark:text-gray-300 font-roboto">Guardian Contact:</label>
-                                <input type="text" name="guardian_contact" id="guardian_contact" value="{{ form_data.guardian_contact|default:'' }}" class="mt-1 w-full p-3 border rounded-lg bg-input-bg dark:bg-gray-700 text-gray-900 dark:text-gray-200 border-border-color dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-button-bg dark:focus:ring-blue-400">
-                                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400 font-roboto">Provide contact details for the guardian.</p>
-                                <p class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
+                                <input type="text" name="guardian_contact" id="guardian_contact" value="{{ form_data.guardian_contact|default:'' }}" class="mt-1 w-full p-3 border rounded-lg bg-input-bg dark:bg-gray-700 text-gray-900 dark:text-gray-200 border-border-color dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-button-bg dark:focus:ring-blue-400" aria-describedby="error-guardian_contact">
+                                <span class="tooltip absolute invisible group-hover:visible bg-gray-800 dark:bg-gray-600 text-white text-xs rounded py-1 px-2 -mt-8">Enter the phone or email of the child’s guardian.</span>
+                                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400 font-roboto">Phone or email of the child’s guardian.</p>
+                                <p id="error-guardian_contact" class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
                             </div>
-                            <div>
+                            <div class="relative">
                                 <label for="consent_form" class="block text-sm font-medium text-gray-900 dark:text-gray-300 font-roboto">Consent Form:</label>
-                                <input type="file" name="consent_form" id="consent_form" accept=".pdf,.jpg,.jpeg,.png" class="mt-1 w-full p-3 border rounded-lg bg-input-bg dark:bg-gray-700 text-gray-900 dark:text-gray-200 border-border-color dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-button-bg dark:focus:ring-blue-400">
+                                <input type="file" name="consent_form" id="consent_form" accept=".pdf,.jpg,.jpeg,.png" class="mt-1 w-full p-3 border rounded-lg bg-input-bg dark:bg-gray-700 text-gray-900 dark:text-gray-200 border-border-color dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-button-bg dark:focus:ring-blue-400" aria-describedby="error-consent_form">
+                                <span class="tooltip absolute invisible group-hover:visible bg-gray-800 dark:bg-gray-600 text-white text-xs rounded py-1 px-2 -mt-8">Upload a signed consent form for children traveling alone.</span>
                                 <div class="file-preview mt-2 hidden"></div>
-                                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400 font-roboto">Upload a consent form for unaccompanied minors.</p>
-                                <p class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
+                                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400 font-roboto">Upload a signed consent form for children.</p>
+                                <p id="error-consent_form" class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
                             </div>
                         </div>
-                    </div>
-
-                    <!-- Responsibility Declaration Card -->
-                    <div class="bg-blue-50 dark:bg-blue-900 p-4 rounded-lg shadow-md">
-                        <div id="responsibility-declaration-fields" class="hidden space-y-4">
-                            <div>
-                                <label for="responsibility_declaration" class="block text-sm font-medium text-gray-900 dark:text-gray-300 font-roboto">Responsibility Declaration:</label>
-                                <input type="file" name="responsibility_declaration" id="responsibility_declaration" accept=".pdf,.jpg,.jpeg,.png" class="mt-1 w-full p-3 border rounded-lg bg-input-bg dark:bg-gray-700 text-gray-900 dark:text-gray-200 border-border-color dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-button-bg dark:focus:ring-blue-400">
-                                <div class="file-preview mt-2 hidden"></div>
-                                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400 font-roboto">Upload a declaration for non-parent adults traveling with minors.</p>
-                                <p class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Group Booking Card -->
-                    <div class="bg-blue-50 dark:bg-blue-900 p-4 rounded-lg shadow-md">
-                        <label class="flex items-center mb-2">
-                            <input type="checkbox" name="is_group_booking" id="is_group_booking" class="mr-2 h-5 w-5 text-blue-600 dark:text-blue-400 focus:ring-button-bg dark:focus:ring-blue-400 border-border-color dark:border-gray-600" {% if form_data.is_group_booking %}checked{% endif %}>
-                            <span class="text-sm font-medium text-gray-900 dark:text-gray-300 font-roboto">Group Booking</span>
-                        </label>
-                        <p class="text-sm text-gray-500 dark:text-gray-400 font-roboto">Check if booking for a group (multiple passengers).</p>
                     </div>
 
                     <!-- Add Cargo Card -->
-                    <div class="bg-green-50 dark:bg-green-900 p-4 rounded-lg shadow-md">
-                        <label class="flex items-center mb-2">
-                            <input type="checkbox" name="add_cargo_checkbox" id="add_cargo_checkbox" class="mr-2 h-5 w-5 text-green-600 dark:text-green-400 focus:ring-green-500 dark:focus:ring-green-400 border-border-color dark:border-gray-600" {% if form_data.add_cargo %}checked{% endif %}>
-                            <span class="text-sm font-medium text-gray-900 dark:text-gray-300 font-roboto">Add Cargo</span>
+                    <div class="bg-blue-50 dark:bg-blue-900 p-4 rounded-lg shadow-md min-h-[150px]">
+                        <label class="flex items-center mb-2 relative">
+                            <input type="checkbox" name="add_cargo_checkbox" id="add_cargo_checkbox" class="mr-2 h-5 w-5 text-blue-600 dark:text-blue-400 focus:ring-button-bg dark:focus:ring-blue-400 border-border-color dark:border-gray-600" {% if form_data.add_cargo %}checked{% endif %} aria-describedby="error-add_cargo_checkbox">
+                            <span class="text-sm font-semibold text-gray-900 dark:text-gray-300 font-roboto">Add Cargo</span>
+                            <span class="tooltip absolute invisible group-hover:visible bg-gray-800 dark:bg-gray-600 text-white text-xs rounded py-1 px-2 -mt-8">Check to add items like parcels or vehicles.</span>
                         </label>
-                        <p class="text-sm text-gray-500 dark:text-gray-400 mb-2 font-roboto">Check to include cargo in your booking.</p>
-                        <div id="cargo-fields" class="hidden space-y-4">
-                            <div>
+                        <p class="text-sm text-gray-500 dark:text-gray-400 mb-2 font-roboto">Add items like parcels or vehicles to your booking.</p>
+                        <div id="cargo-fields" class="space-y-4 transition-all duration-300 {% if not form_data.add_cargo %}hidden{% endif %}">
+                            <div class="relative">
                                 <label for="cargo_type" class="block text-sm font-medium text-gray-900 dark:text-gray-300 font-roboto">Cargo Type:</label>
-                                <select name="cargo_type" id="cargo_type" class="mt-1 w-full p-3 border rounded-lg bg-input-bg dark:bg-gray-700 text-gray-900 dark:text-gray-200 border-border-color dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500 dark:focus:ring-green-400">
-                                    <option value="">Select cargo type</option>
+                                <select name="cargo_type" id="cargo_type" class="mt-1 w-full p-3 border rounded-lg bg-input-bg dark:bg-gray-700 text-gray-900 dark:text-gray-200 border-border-color dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-button-bg dark:focus:ring-blue-400" aria-describedby="error-cargo_type">
+                                    <option value="">Choose cargo type</option>
                                     <option value="parcel" {% if form_data.cargo_type == 'parcel' %}selected{% endif %}>Parcel</option>
                                     <option value="pallet" {% if form_data.cargo_type == 'pallet' %}selected{% endif %}>Pallet</option>
                                     <option value="vehicle" {% if form_data.cargo_type == 'vehicle' %}selected{% endif %}>Vehicle</option>
                                     <option value="bulk" {% if form_data.cargo_type == 'bulk' %}selected{% endif %}>Bulk</option>
                                 </select>
-                                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400 font-roboto">Select the type of cargo.</p>
-                                <p class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
+                                <span class="tooltip absolute invisible group-hover:visible bg-gray-800 dark:bg-gray-600 text-white text-xs rounded py-1 px-2 -mt-8">Select what kind of cargo you’re bringing.</span>
+                                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400 font-roboto">What kind of cargo are you bringing?</p>
+                                <p id="error-cargo_type" class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
                             </div>
-                            <div>
+                            <div class="relative">
                                 <label for="weight_kg" class="block text-sm font-medium text-gray-900 dark:text-gray-300 font-roboto">Weight (kg):</label>
-                                <input type="number" name="weight_kg" id="weight_kg" min="0" step="0.1" value="{{ form_data.weight_kg|default:'' }}" class="mt-1 w-full p-3 border rounded-lg bg-input-bg dark:bg-gray-700 text-gray-900 dark:text-gray-200 border-border-color dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500 dark:focus:ring-green-400">
-                                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400 font-roboto">Enter the cargo weight in kilograms.</p>
-                                <p class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
+                                <input type="number" name="weight_kg" id="weight_kg" min="0" step="0.1" value="{{ form_data.weight_kg|default:'' }}" class="mt-1 w-full p-3 border rounded-lg bg-input-bg dark:bg-gray-700 text-gray-900 dark:text-gray-200 border-border-color dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-button-bg dark:focus:ring-blue-400" aria-describedby="error-weight_kg">
+                                <span class="tooltip absolute invisible group-hover:visible bg-gray-800 dark:bg-gray-600 text-white text-xs rounded py-1 px-2 -mt-8">Enter the cargo weight in kilograms (e.g., 10.5).</span>
+                                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400 font-roboto">Enter cargo weight in kg.</p>
+                                <p id="error-weight_kg" class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
                             </div>
-                            <div>
+                            <div class="relative">
                                 <label for="dimensions_cm" class="block text-sm font-medium text-gray-900 dark:text-gray-300 font-roboto">Dimensions (cm):</label>
-                                <input type="text" name="dimensions_cm" id="dimensions_cm" value="{{ form_data.dimensions_cm|default:'' }}" class="mt-1 w-full p-3 border rounded-lg bg-input-bg dark:bg-gray-700 text-gray-900 dark:text-gray-200 border-border-color dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500 dark:focus:ring-green-400">
-                                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400 font-roboto">Enter dimensions in the format length x width x height.</p>
-                                <p class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
+                                <input type="text" name="dimensions_cm" id="dimensions_cm" value="{{ form_data.dimensions_cm|default:'' }}" class="mt-1 w-full p-3 border rounded-lg bg-input-bg dark:bg-gray-700 text-gray-900 dark:text-gray-200 border-border-color dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-button-bg dark:focus:ring-blue-400" aria-describedby="error-dimensions_cm">
+                                <span class="tooltip absolute invisible group-hover:visible bg-gray-800 dark:bg-gray-600 text-white text-xs rounded py-1 px-2 -mt-8">Enter cargo size as length x width x height (e.g., 100 x 50 x 30).</span>
+                                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400 font-roboto">Enter size (e.g., 100 x 50 x 30 cm).</p>
+                                <p id="error-dimensions_cm" class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Emergency Travel Card -->
-                    <div class="bg-yellow-50 dark:bg-yellow-900 p-4 rounded-lg shadow-md">
-                        <label class="flex items-center mb-2">
-                            <input type="checkbox" name="is_emergency" id="is_emergency" class="mr-2 h-5 w-5 text-yellow-600 dark:text-yellow-400 focus:ring-yellow-500 dark:focus:ring-yellow-400 border-border-color dark:border-gray-600" {% if form_data.is_emergency %}checked{% endif %}>
-                            <span class="text-sm font-medium text-gray-900 dark:text-gray-300 font-roboto">Emergency Travel</span>
-                        </label>
-                        <p class="text-sm text-gray-500 dark:text-gray-400 font-roboto">Check if this is an emergency travel booking (FJD 50 surcharge).</p>
+                    <!-- Booking Options Card -->
+                    <div class="bg-blue-50 dark:bg-blue-900 p-4 rounded-lg shadow-md min-h-[150px]">
+                        <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-300 font-roboto mb-2">Extra Options</h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-300 mb-2 font-roboto">Select any special options for your trip.</p>
+                        <div class="space-y-4">
+                            <div class="relative">
+                                <label class="flex items-center">
+                                    <input type="checkbox" name="is_group_booking" id="is_group_booking" class="mr-2 h-5 w-5 text-blue-600 dark:text-blue-400 focus:ring-button-bg dark:focus:ring-blue-400 border-border-color dark:border-gray-600" {% if form_data.is_group_booking %}checked{% endif %} aria-describedby="error-is_group_booking">
+                                    <span class="text-sm font-medium text-gray-900 dark:text-gray-300 font-roboto">Group Booking</span>
+                                    <span class="tooltip absolute invisible group-hover:visible bg-gray-800 dark:bg-gray-600 text-white text-xs rounded py-1 px-2 -mt-8">Check if booking for multiple passengers as a group.</span>
+                                </label>
+                                <p class="text-sm text-gray-500 dark:text-gray-400 font-roboto">For groups with multiple passengers.</p>
+                                <p id="error-is_group_booking" class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
+                            </div>
+                            <div class="relative">
+                                <label class="flex items-center">
+                                    <input type="checkbox" name="is_emergency" id="is_emergency" class="mr-2 h-5 w-5 text-blue-600 dark:text-blue-400 focus:ring-button-bg dark:focus:ring-blue-400 border-border-color dark:border-gray-600" {% if form_data.is_emergency %}checked{% endif %} aria-describedby="error-is_emergency">
+                                    <span class="text-sm font-medium text-gray-900 dark:text-gray-300 font-roboto">Emergency Travel</span>
+                                    <span class="tooltip absolute invisible group-hover:visible bg-gray-800 dark:bg-gray-600 text-white text-xs rounded py-1 px-2 -mt-8">Check if you need to travel urgently (adds FJD 50).</span>
+                                </label>
+                                <p class="text-sm text-gray-500 dark:text-gray-400 font-roboto">For urgent travel (adds FJD 50).</p>
+                                <p id="error-is_emergency" class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="mt-6 flex justify-between">
@@ -225,32 +255,30 @@
 
             <!-- Step 4: Review & Pay -->
             <div class="form-step {% if form_data.step|default:1 != 4 %}hidden{% endif %}">
-                <h2 class="text-2xl font-semibold mb-4 text-gray-900 dark:text-blue-200 font-playfair">Review & Pay</h2>
+                <h2 class="text-2xl font-semibold mb-4 text-gray-900 dark:text-blue-200 font-playfair">Step 4: Review & Pay</h2>
+                <p class="text-sm text-gray-600 dark:text-gray-300 mb-4 font-roboto">Check your booking details and agree to the privacy policy to pay.</p>
                 <div class="bg-blue-50 dark:bg-blue-900 p-4 rounded-lg shadow-md">
                     <h3 class="text-lg font-semibold mb-2 text-gray-900 dark:text-blue-200 font-playfair">Booking Summary</h3>
                     <div class="space-y-2 font-roboto text-gray-900 dark:text-gray-300">
-                        <p><strong>Schedule:</strong> <span id="summary-schedule">Not selected</span></p>
+                        <p><strong>Trip:</strong> <span id="summary-schedule">Not selected</span></p>
                         <p><strong>Passengers:</strong> <span id="summary-passengers">0 Adults, 0 Children, 0 Infants</span></p>
                         <p><strong>Cargo:</strong> <span id="summary-cargo">None</span></p>
                         <p><strong>Extras:</strong> <span id="summary-extras">None</span></p>
                         <p><strong>Total Cost:</strong> FJD <span id="summary-total">0.00</span></p>
                     </div>
                 </div>
-                <div class="mt-4">
+                <div class="mt-4 relative">
                     <label class="flex items-center">
-                        <input type="checkbox" name="privacy_consent" id="privacy-consent" class="mr-2 h-5 w-5 text-blue-600 dark:text-blue-400 focus:ring-button-bg dark:focus:ring-blue-400 border-border-color dark:border-gray-600" {% if form_data.privacy_consent %}checked{% endif %}>
+                        <input type="checkbox" name="privacy_consent" id="privacy-consent" class="mr-2 h-5 w-5 text-blue-600 dark:text-blue-400 focus:ring-button-bg dark:focus:ring-blue-400 border-border-color dark:border-gray-600" {% if form_data.privacy_consent %}checked{% endif %} aria-describedby="error-privacy_consent">
                         <span class="text-sm font-medium text-gray-900 dark:text-gray-300 font-roboto">I agree to the <a href="/privacy-policy" class="text-link-color dark:text-blue-400 hover:underline">Privacy Policy</a></span>
+                        <span class="tooltip absolute invisible group-hover:visible bg-gray-800 dark:bg-gray-600 text-white text-xs rounded py-1 px-2 -mt-8">Check to agree to how we use your booking information.</span>
                     </label>
-                    <p class="text-sm text-gray-500 dark:text-gray-400 font-roboto">Your data will be used to process your booking and comply with legal requirements.</p>
-                    <p class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 font-roboto">We use your details to process your booking safely.</p>
+                    <p id="error-privacy_consent" class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
                 </div>
                 <div class="mt-6 flex justify-between">
                     <button type="button" class="prev-step bg-gray-600 dark:bg-gray-500 text-white px-6 py-2 rounded-lg hover:bg-gray-700 dark:hover:bg-gray-600 transition-colors font-roboto" data-prev="3">Previous</button>
-                    <button type="submit" id="submit-button"
-                        class="bg-green-600 dark:bg-green-500 text-white px-6 py-2 rounded-lg hover:bg-green-700 dark:hover:bg-green-600 transition-colors font-roboto">
-    Proceed to Payment
-</button>
-
+                    <button type="submit" id="submit-button" class="bg-green-600 dark:bg-green-500 text-white px-6 py-2 rounded-lg hover:bg-green-700 dark:hover:bg-green-600 transition-colors font-roboto">Proceed to Payment</button>
                 </div>
             </div>
         </form>
@@ -266,7 +294,6 @@
 {% block extra_css %}
 <link href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" rel="stylesheet">
 <style>
-/* Sea-inspired theme using base.html variables */
 :root {
     --card-bg: #ffffff;
     --input-bg: #f3f4f6;
@@ -275,6 +302,7 @@
     --border-color: #d1d5db;
     --link-color: #1d4ed8;
     --text-color: #111827;
+    --alert-error-text: #dc2626;
 }
 
 .dark {
@@ -285,6 +313,7 @@
     --border-color: #4b5563;
     --link-color: #60a5fa;
     --text-color: #e5e7eb;
+    --alert-error-text: #f87171;
 }
 
 .font-playfair {
@@ -360,8 +389,16 @@
 .file-preview .pdf-icon {
     width: 100px;
     height: 100px;
-    background: url('{% static "images/pdf-icon.png" %}') no-repeat center;
-    background-size: contain;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--input-bg);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    border-radius: 0.25rem;
+    font-size: 1rem;
+    font-weight: bold;
+    text-align: center;
 }
 
 button:hover, input[type="checkbox"]:hover {
@@ -378,11 +415,37 @@ select, input[type="text"], input[type="number"], input[type="email"], input[typ
 select:focus, input:focus {
     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.3);
 }
+
+.progress-bar {
+    height: 8px;
+    background: var(--input-bg);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 1rem;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    background: var(--button-bg);
+    transition: width 0.3s ease;
+}
+
+.tooltip {
+    z-index: 10;
+    transition: all 0.3s ease;
+}
+
+.group:hover .tooltip {
+    visibility: visible;
+}
 </style>
 {% endblock %}
 
 {% block extra_js %}
 <script src="https://cdn.tailwindcss.com"></script>
-{{ form_data|default:"{'step': 1, 'hasParent': false}"|json_script:"form_data" }}
+{{ form_data|default:"{'step': 1, 'adults': 1, 'children': 0, 'infants': 0}"|json_script:"form_data" }}
+<script>
+    const userAuthenticated = "{{ request.user.is_authenticated|yesno:'true,false' }}";
+</script>
 <script src="{% static 'js/book.js' %}"></script>
 {% endblock %}

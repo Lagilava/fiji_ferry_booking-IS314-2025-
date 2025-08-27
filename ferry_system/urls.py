@@ -13,6 +13,8 @@ urlpatterns = [
     path('privacy-policy/', bookings_views.privacy_policy, name='privacy_policy'),
     path('api/weather/', bookings_views.get_weather_conditions, name='get_weather_conditions'),
     path('weather/stream/', bookings_views.weather_stream, name='weather_stream'),
+    path('validate-step/', bookings_views.validate_step, name='validate_step'),
+
 ]
 
 if settings.DEBUG:

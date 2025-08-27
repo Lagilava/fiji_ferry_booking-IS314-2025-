@@ -270,7 +270,10 @@ document.addEventListener('DOMContentLoaded', function () {
             : '/api/weather/';
         fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
             .then(response => {
-                if (!response.ok) throw new Error(response.statusText);
+                if (!response.ok) {
+                    console.error(`Weather fetch failed with status: ${response.status}`);
+                    throw new Error(`HTTP ${response.status}`);
+                }
                 return response.json();
             })
             .then(data => {
@@ -299,7 +302,10 @@ document.addEventListener('DOMContentLoaded', function () {
     // ---- Schedule Polling ----
     function pollScheduleUpdates() {
         fetch('/api/schedules/', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-            .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
+            .then(r => {
+                if (!r.ok) throw new Error(r.statusText);
+                return r.json();
+            })
             .then(data => {
                 const nextDepartureElement = document.getElementById('next-departure-time');
                 const now = moment().utcOffset('+12:00');
@@ -383,7 +389,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 minZoom: 6,
                 tileSize: 256,
                 subdomains: 'abcd',
-                errorTileUrl: window.TILE_ERROR_URL || '/static/images/tile-error.png' // Fallback to hardcoded URL
+                errorTileUrl: window.TILE_ERROR_URL || '/static/images/tile-error.png'
             }).addTo(map);
 
             tileLayer.on('tileerror', function(error, tile) {
