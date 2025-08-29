@@ -7,7 +7,7 @@
     <p class="text-lg mb-8" style="color: var(--text-color);">{{ message|default:"Your payment was cancelled. Please try booking again or return to the home page." }}</p>
 
     <div class="flex justify-center gap-4">
-        <a href="{% url 'bookings:book' %}" class="bg-[var(--button-bg)] text-white font-semibold px-6 py-3 rounded-lg hover:bg-[var(--button-hover)] transition-colors duration-300">Try Booking Again</a>
+        <a href="{% url 'bookings:book_ticket' %}" class="bg-[var(--button-bg)] text-white font-semibold px-6 py-3 rounded-lg hover:bg-[var(--button-hover)] transition-colors duration-300">Try Booking Again</a>
         <a href="{% url 'home' %}" class="text-[var(--link-color)] hover:text-[var(--link-hover)] font-semibold px-6 py-3">Back to Home</a>
     </div>
 </section>

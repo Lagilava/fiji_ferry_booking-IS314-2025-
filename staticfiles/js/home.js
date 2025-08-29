@@ -62,7 +62,8 @@ document.addEventListener('DOMContentLoaded', function () {
         function updateSlideImages() {
             const isDarkMode = document.documentElement.classList.contains('dark');
             slides.forEach(slide => {
-                slide.style.backgroundImage = `url('${isDarkMode ? slide.dataset.srcDark : slide.dataset.srcLight}')`;
+                const url = isDarkMode ? slide.dataset.srcDark : slide.dataset.srcLight;
+                slide.style.backgroundImage = `url('${url}')`; // Trusted URLs only
             });
         }
         updateSlideImages();
@@ -75,6 +76,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 showSlide(i);
                 slideInterval = setInterval(nextSlide, 8000);
             });
+        });
+        slides.forEach(slide => {
+            slide.addEventListener('mouseenter', () => clearInterval(slideInterval));
+            slide.addEventListener('mouseleave', () => slideInterval = setInterval(nextSlide, 8000));
+            slide.addEventListener('focusin', () => clearInterval(slideInterval));
+            slide.addEventListener('focusout', () => slideInterval = setInterval(nextSlide, 8000));
         });
         showSlide(currentIndex);
         slideInterval = setInterval(nextSlide, 8000);
@@ -112,55 +119,31 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // ---- Weather ----
-    const weatherIcons = {
-        'Clear': '☀️',
-        'Sunny': '☀️',
-        'Clouds': '☁️',
-        'Rain': '🌧️',
-        'Thunderstorm': '⛈️',
-        'Drizzle': '🌦️',
-        'Mist': '🌫️',
-        'Fog': '🌫️',
-        'Snow': '❄️',
-        'Haze': '🌫️',
-        'default': '🌤️'
+    const conditionMap = {
+        sunny: '☀️', clear: '☀️',
+        cloud: '☁️', overcast: '☁️', 'partly cloudy': '☁️',
+        rain: '🌧️', shower: '🌧️',
+        thunder: '⛈️', thunderstorm: '⛈️',
+        drizzle: '🌦️',
+        mist: '🌫️', fog: '🌫️', haze: '🌫️',
+        snow: '❄️',
+        default: '🌤️'
     };
 
-    function mapWeatherCondition(condition) {
-        if (!condition) return 'default';
-        const cond = condition.toLowerCase();
-        if (cond.includes('sunny') || cond.includes('clear')) return 'Sunny';
-        if (cond.includes('cloud') || cond.includes('overcast') || cond.includes('partly cloudy')) return 'Clouds';
-        if (cond.includes('rain') || cond.includes('shower')) return 'Rain';
-        if (cond.includes('thunder')) return 'Thunderstorm';
-        if (cond.includes('drizzle')) return 'Drizzle';
-        if (cond.includes('mist') || cond.includes('fog')) return 'Mist';
-        if (cond.includes('snow')) return 'Snow';
-        if (cond.includes('haze')) return 'Haze';
-        return 'default';
+    function getWeatherIcon(desc) {
+        if (!desc) return conditionMap.default;
+        const key = Object.keys(conditionMap).find(k => desc.toLowerCase().includes(k));
+        return conditionMap[key] || conditionMap.default;
     }
 
     let latestUpdateTime = null;
     const lastWeatherData = new Map();
 
     function updateWeatherDisplay(weatherData) {
-        console.debug('Updating weather display:', weatherData);
         if (!Array.isArray(weatherData)) {
             console.error('Weather data is not an array:', weatherData);
             document.querySelectorAll('.schedule-card').forEach(card => {
-                const conditionElement = card.querySelector('.weather-condition');
-                const iconElement = card.querySelector('.weather-icon');
-                const tempElement = card.querySelector('.weather-temp .temp-value');
-                const windElement = card.querySelector('.weather-wind .wind-value');
-                const precipElement = card.querySelector('.weather-precip .precip-value');
-                if (conditionElement && iconElement && tempElement && windElement && precipElement) {
-                    conditionElement.textContent = 'Weather data unavailable';
-                    conditionElement.classList.remove('warning');
-                    iconElement.textContent = weatherIcons.default;
-                    tempElement.textContent = 'N/A';
-                    windElement.textContent = 'N/A';
-                    precipElement.textContent = 'N/A';
-                }
+                updateWeatherCard(card, null);
             });
             return;
         }
@@ -185,82 +168,63 @@ document.addEventListener('DOMContentLoaded', function () {
         });
 
         lastWeatherData.forEach((weather, routeId) => {
-            const cards = document.querySelectorAll(`.schedule-card[data-route-id="${routeId}"]`);
-            if (!cards.length) {
-                console.warn(`No schedule cards found for route_id: ${routeId}`);
-                return;
-            }
-            cards.forEach(card => {
-                const conditionElement = card.querySelector('.weather-condition');
-                const iconElement = card.querySelector('.weather-icon');
-                const tempElement = card.querySelector('.weather-temp .temp-value');
-                const windElement = card.querySelector('.weather-wind .wind-value');
-                const precipElement = card.querySelector('.weather-precip .precip-value');
-                if (!conditionElement || !iconElement || !tempElement || !windElement || !precipElement) {
-                    console.warn(`Missing weather elements in card for route_id: ${routeId}`);
-                    return;
-                }
-                const isExpired = !weather.condition ||
-                                  (weather.expires_at && new Date(weather.expires_at) < new Date());
-                if (isExpired) {
-                    conditionElement.textContent = 'Weather data unavailable';
-                    conditionElement.classList.remove('warning');
-                    iconElement.textContent = weatherIcons.default;
-                    tempElement.textContent = 'N/A';
-                    windElement.textContent = 'N/A';
-                    precipElement.textContent = 'N/A';
-                    card.querySelector('.weather-wind').classList.remove('warning');
-                } else {
-                    const mappedCondition = mapWeatherCondition(weather.condition);
-                    conditionElement.textContent = weather.condition;
-                    conditionElement.classList.toggle('warning', weather.wind_speed > 30);
-                    iconElement.textContent = weatherIcons[mappedCondition] || weatherIcons.default;
-                    tempElement.textContent = `${weather.temperature}°C`;
-                    windElement.textContent = `${weather.wind_speed} kph`;
-                    precipElement.textContent = weather.precipitation_probability != null ? `${weather.precipitation_probability}%` : 'N/A';
-                    card.querySelector('.weather-wind').classList.toggle('warning', weather.wind_speed > 30);
-                    [conditionElement, iconElement, tempElement, windElement, precipElement].forEach(el => {
-                        el.style.opacity = '0';
-                        requestAnimationFrame(() => {
-                            el.style.transition = 'opacity 0.5s ease';
-                            el.style.opacity = '1';
-                        });
-                    });
-                }
+            document.querySelectorAll(`.schedule-card[data-route-id="${routeId}"]`).forEach(card => {
+                updateWeatherCard(card, weather);
             });
         });
     }
 
+    function updateWeatherCard(card, weather) {
+        const els = {
+            condition: card.querySelector('.weather-condition'),
+            icon: card.querySelector('.weather-icon'),
+            temp: card.querySelector('.weather-temp .temp-value'),
+            wind: card.querySelector('.weather-wind .wind-value'),
+            precip: card.querySelector('.weather-precip .precip-value'),
+            windContainer: card.querySelector('.weather-wind')
+        };
+        if (!Object.values(els).every(el => el)) {
+            console.warn('Missing weather elements in card');
+            return;
+        }
+        if (!weather || !weather.condition || (weather.expires_at && new Date(weather.expires_at) < new Date())) {
+            els.condition.textContent = 'Weather data unavailable';
+            els.condition.classList.remove('warning');
+            els.condition.setAttribute('role', 'status');
+            els.icon.textContent = conditionMap.default;
+            els.temp.textContent = 'N/A';
+            els.wind.textContent = 'N/A';
+            els.precip.textContent = 'N/A';
+            els.windContainer.classList.remove('warning');
+        } else {
+            const mappedCondition = getWeatherIcon(weather.condition);
+            els.condition.textContent = weather.condition;
+            els.condition.classList.toggle('warning', weather.wind_speed > 30);
+            els.condition.setAttribute('role', weather.wind_speed > 30 ? 'alert' : 'status');
+            els.icon.textContent = mappedCondition;
+            els.temp.textContent = `${weather.temperature}°C`;
+            els.wind.textContent = `${weather.wind_speed} kph`;
+            els.precip.textContent = weather.precipitation_probability != null ? `${weather.precipitation_probability}%` : 'N/A';
+            els.windContainer.classList.toggle('warning', weather.wind_speed > 30);
+            Object.values(els).forEach(el => {
+                el.style.opacity = '0';
+                requestAnimationFrame(() => {
+                    el.style.transition = 'opacity 0.5s ease';
+                    el.style.opacity = '1';
+                });
+            });
+        }
+    }
+
     const initialWeatherData = JSON.parse(document.getElementById('weather-data')?.textContent || '[]');
     if (Array.isArray(initialWeatherData) && initialWeatherData.length) {
-        console.debug('Initial weather data:', initialWeatherData);
         initialWeatherData.forEach(weather => {
-            weather.is_expired = !weather.condition ||
-                                 (weather.expires_at && new Date(weather.expires_at) < new Date());
-            if (weather.updated_at) {
-                const weatherTime = new Date(weather.updated_at);
-                if (!latestUpdateTime || weatherTime > latestUpdateTime) {
-                    latestUpdateTime = weatherTime;
-                }
-            }
+            weather.is_expired = !weather.condition || (weather.expires_at && new Date(weather.expires_at) < new Date());
         });
         updateWeatherDisplay(initialWeatherData);
     } else {
-        console.warn('No initial weather data or invalid format');
         document.querySelectorAll('.schedule-card').forEach(card => {
-            const conditionElement = card.querySelector('.weather-condition');
-            const iconElement = card.querySelector('.weather-icon');
-            const tempElement = card.querySelector('.weather-temp .temp-value');
-            const windElement = card.querySelector('.weather-wind .wind-value');
-            const precipElement = card.querySelector('.weather-precip .precip-value');
-            if (conditionElement && iconElement && tempElement && windElement && precipElement) {
-                conditionElement.textContent = 'Weather data unavailable';
-                conditionElement.classList.remove('warning');
-                iconElement.textContent = weatherIcons.default;
-                tempElement.textContent = 'N/A';
-                windElement.textContent = 'N/A';
-                precipElement.textContent = 'N/A';
-            }
+            updateWeatherCard(card, null);
         });
     }
 
@@ -270,21 +234,15 @@ document.addEventListener('DOMContentLoaded', function () {
             : '/api/weather/';
         fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
             .then(response => {
-                if (!response.ok) {
-                    console.error(`Weather fetch failed with status: ${response.status}`);
-                    throw new Error(`HTTP ${response.status}`);
-                }
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 return response.json();
             })
             .then(data => {
-                console.debug('Received weather data:', data);
                 if (data.error) {
-                    console.warn('Weather fetch error:', data.error);
                     updateWeatherDisplay([]);
                 } else if (Array.isArray(data.weather) && data.weather.length) {
                     updateWeatherDisplay(data.weather);
                 } else {
-                    console.debug('Weather fetch: no new updates');
                     updateWeatherDisplay([]);
                 }
             })
@@ -296,7 +254,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     setTimeout(() => {
         fetchWeatherUpdates();
-        setInterval(fetchWeatherUpdates, 30000);
+        setInterval(fetchWeatherUpdates, 60000); // Increased to 60s
     }, 3000);
 
     // ---- Schedule Polling ----
@@ -308,15 +266,15 @@ document.addEventListener('DOMContentLoaded', function () {
             })
             .then(data => {
                 const nextDepartureElement = document.getElementById('next-departure-time');
-                const now = moment().utcOffset('+12:00');
+                const now = new Date();
                 const schedules = data.schedules
-                    .filter(s => s.status === 'scheduled' && moment.utc(s.departure_time).isAfter(now))
-                    .sort((a, b) => moment.utc(a.departure_time).diff(moment.utc(b.departure_time)));
+                    .filter(s => s.status === 'scheduled' && new Date(s.departure_time) > now)
+                    .sort((a, b) => new Date(a.departure_time) - new Date(b.departure_time));
 
                 if (schedules.length) {
                     const nextDeparture = schedules[0];
                     nextDepartureElement.textContent =
-                        `${moment.utc(nextDeparture.departure_time).format('ddd, MMM D, HH:mm')} - ` +
+                        `${new Intl.DateTimeFormat('en-FJ', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: 'numeric', timeZone: 'Pacific/Fiji' }).format(new Date(nextDeparture.departure_time))} - ` +
                         `${nextDeparture.route.departure_port} to ${nextDeparture.route.destination_port}`;
                     nextDepartureElement.dataset.iso = nextDeparture.departure_time;
                     nextDepartureElement.dataset.scheduleId = nextDeparture.id;
@@ -332,8 +290,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 data.schedules.forEach(schedule => {
                     const card = document.querySelector(`.schedule-card[data-schedule-id="${schedule.id}"]`);
                     if (!card) return;
-                    card.querySelector('.status-badge').textContent =
-                        schedule.status.charAt(0).toUpperCase() + schedule.status.slice(1);
+                    card.querySelector('.status-badge').textContent = schedule.status.charAt(0).toUpperCase() + schedule.status.slice(1);
                     const fareEl = card.querySelector('.fare');
                     fareEl.textContent = schedule.status === 'scheduled' ? `FJD ${schedule.route.base_fare}` : 'Booking Unavailable';
                     const seatCount = card.querySelector('.seat-count');
@@ -341,7 +298,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     seatCount.classList.toggle('low', schedule.available_seats < 5);
                     const departureTime = card.querySelector('.departure-time');
                     departureTime.dataset.iso = schedule.departure_time;
-                    departureTime.textContent = moment.utc(schedule.departure_time).format('ddd, MMM D, HH:mm');
+                    departureTime.textContent = new Intl.DateTimeFormat('en-FJ', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: 'numeric', timeZone: 'Pacific/Fiji' }).format(new Date(schedule.departure_time));
                 });
             })
             .catch(e => {
@@ -360,42 +317,44 @@ document.addEventListener('DOMContentLoaded', function () {
         let idx = 0;
         function showTestimonial(i) {
             testimonials.forEach((t, j) => {
-                t.style.display = j === i ? 'block' : 'none';
                 t.style.opacity = j === i ? '1' : '0';
+                t.style.display = j === i ? 'block' : 'none';
+                t.style.transition = 'opacity 0.5s ease';
             });
         }
         setInterval(() => { idx = (idx + 1) % testimonials.length; showTestimonial(idx); }, 5000);
         showTestimonial(idx);
     }
 
-    // ---- Map ----
+    // ---- Map Functions ----
     const mapEl = document.getElementById('fiji-map');
+
     if (mapEl && typeof L !== 'undefined') {
         try {
             const isMobile = window.matchMedia('(max-width: 768px)').matches;
+
             const map = L.map('fiji-map', {
                 zoomControl: !isMobile,
                 preferCanvas: true,
-                maxBounds: [
-                    [-19.5, 176.0], // Southwest corner (near Fiji)
-                    [-16.0, 180.0]  // Northeast corner
-                ],
+                maxBounds: [[-21.0, 176.0], [-16.0, 181.0]],
                 maxBoundsViscosity: 1.0
             }).setView([-17.7, 178.0], 7);
 
-            const tileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-                maxZoom: 19,
+            // Determine map tiles based on theme
+            const html = document.documentElement;
+            const isDark = html.classList.contains('dark-mode');
+            const lightTiles = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+            const darkTiles =  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+
+
+            const tileLayer = L.tileLayer(isDark ? darkTiles : lightTiles, {
+                attribution: '&copy; OpenStreetMap &copy; CARTO',
+                maxZoom: 10,
                 minZoom: 6,
                 tileSize: 256,
                 subdomains: 'abcd',
                 errorTileUrl: window.TILE_ERROR_URL || '/static/images/tile-error.png'
             }).addTo(map);
-
-            tileLayer.on('tileerror', function(error, tile) {
-                console.warn('Tile load error:', error, 'Tile coords:', tile.coords);
-                mapEl.innerHTML = '<p class="text-center text-var-text-color">Map tiles failed to load. Please try again later.</p>';
-            });
 
             const clusterGroup = typeof L.MarkerClusterGroup !== 'undefined'
                 ? L.markerClusterGroup({
@@ -405,29 +364,130 @@ document.addEventListener('DOMContentLoaded', function () {
                 })
                 : L.layerGroup();
 
-            const destinations = [
-                { name: 'Nadi', coords: [-17.7765, 177.4356], url: '/bookings/book/?to_port=nadi' },
-                { name: 'Suva', coords: [-18.1416, 178.4419], url: '/bookings/book/?to_port=suva' },
-                { name: 'Taveuni', coords: [-16.9892, -179.8797], url: '/bookings/book/?to_port=taveuni' },
-                { name: 'Savusavu', coords: [-16.7769, 179.3321], url: '/bookings/book/?to_port=savusavu' }
-            ];
+            // Helper functions (curved line & gradient)
+            function getCurvedLineCoords(start, end, curvature = 0.2) {
+                const latOffset = (end[0] - start[0]) * curvature;
+                const lngOffset = (end[1] - start[1]) * curvature;
+                const midLat = (start[0] + end[0]) / 2 + latOffset;
+                const midLng = (start[1] + end[1]) / 2 + lngOffset;
+                return [start, [midLat, midLng], end];
+            }
 
-            destinations.forEach(dest => {
-                const marker = L.marker(dest.coords)
-                    .bindPopup(`<b>${dest.name}</b><br><a href="${dest.url}">Book Now</a>`);
-                clusterGroup.addLayer(marker);
+            function getGradientColors(startColor, endColor, steps) {
+                const start = parseInt(startColor.slice(1), 16);
+                const end = parseInt(endColor.slice(1), 16);
+                const startR = (start >> 16) & 0xff, startG = (start >> 8) & 0xff, startB = start & 0xff;
+                const endR = (end >> 16) & 0xff, endG = (end >> 8) & 0xff, endB = end & 0xff;
+                const colors = [];
+                for (let i = 0; i <= steps; i++) {
+                    const t = i / steps;
+                    const r = Math.round(startR + t * (endR - startR));
+                    const g = Math.round(startG + t * (endG - startG));
+                    const b = Math.round(startB + t * (endB - startB));
+                    colors.push(`#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`);
+                }
+                return colors;
+            }
+
+            function colorForTier(tier) {
+                switch (tier) {
+                    case 'major': return ['#ff7f50', '#ff4500'];
+                    case 'regional': return ['#1e90ff', '#104e8b'];
+                    default: return ['#32cd32', '#228b22'];
+                }
+            }
+
+            // Fetch and draw routes
+            fetch('/bookings/api/routes/', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(response => response.ok ? response.json() : Promise.reject(`HTTP ${response.status}`))
+                .then(data => {
+                    const routes = data.routes || [];
+                    const markers = {};
+                    const layers = {};
+
+                    routes.forEach(route => {
+                        if (!route.schedule_id) return; // only scheduled routes
+
+                        const dep = route.departure_port;
+                        const dest = route.destination_port;
+                        const tier = route.service_tier || 'local';
+
+                        if (!layers[tier]) layers[tier] = L.layerGroup().addTo(map);
+
+                        // Markers
+                        if (!markers[dep.name]) markers[dep.name] = L.marker([dep.lat, dep.lng])
+                            .addTo(clusterGroup)
+                            .bindPopup(`<b>${sanitizeHTML(dep.name)}</b>`);
+                        if (!markers[dest.name]) markers[dest.name] = L.marker([dest.lat, dest.lng])
+                            .addTo(clusterGroup)
+                            .bindPopup(`<b>${sanitizeHTML(dest.name)}</b>`);
+
+                        const routeCoords = route.waypoints.length ? route.waypoints : getCurvedLineCoords([dep.lat, dep.lng], [dest.lat, dest.lng]);
+                        const gradientColors = getGradientColors(colorForTier(tier)[0], colorForTier(tier)[1], routeCoords.length - 1);
+
+                        for (let i = 0; i < routeCoords.length - 1; i++) {
+                            L.polyline([routeCoords[i], routeCoords[i + 1]], {
+                                color: gradientColors[i],
+                                weight: 2,
+                                opacity: 0.8
+                            }).addTo(layers[tier]);
+                        }
+
+                        const midIndex = Math.floor(routeCoords.length / 2);
+                        const popupContent = `
+                            <b>${sanitizeHTML(dep.name)} → ${sanitizeHTML(dest.name)}</b><br>
+                            Distance: ${sanitizeHTML(route.distance_km)} km<br>
+                            Duration: ${sanitizeHTML(formatDuration(route.estimated_duration))}<br>
+                            Fare: FJD ${sanitizeHTML(route.base_fare)}<br>
+                            <a href="{% url 'bookings:book_ticket' %}?schedule_id={{ route.schedule_id }}">Book Now</a>
+                        `;
+                        L.polyline(routeCoords).on('click', () => {
+                            L.popup().setLatLng(routeCoords[midIndex]).setContent(popupContent).openOn(map);
+                        });
+                    });
+
+                    map.addLayer(clusterGroup);
+                    const markerGroup = L.featureGroup(Object.values(markers));
+                    map.fitBounds(markerGroup.getBounds().pad(0.2));
+
+                    L.control.layers(null, layers, { collapsed: false }).addTo(map);
+                })
+                .catch(err => {
+                    console.error('Error fetching routes:', err);
+                    mapEl.innerHTML = '<p>Failed to load map routes.</p>';
+                });
+
+            // Listen for theme changes to update map tiles dynamically
+            const observer = new MutationObserver(() => {
+                const dark = html.classList.contains('dark-mode');
+                const newUrl = dark ? darkTiles : lightTiles;
+                tileLayer.setUrl(newUrl);
             });
+            observer.observe(html, { attributes: true, attributeFilter: ['class'] });
 
-            map.addLayer(clusterGroup);
             setTimeout(() => map.invalidateSize(), 100);
-        } catch (error) {
-            console.error('Map initialization failed:', error);
-            mapEl.innerHTML = '<p class="text-center text-var-text-color">Map failed to load. Please try again later.</p>';
+
+        } catch (err) {
+            console.error('Map initialization failed:', err);
+            mapEl.innerHTML = '<p>Map failed to load. Please try again later.</p>';
         }
     } else {
         console.warn('Map element or Leaflet not found');
-        if (mapEl) {
-            mapEl.innerHTML = '<p class="text-center text-var-text-color">Map failed to load. Please try again later.</p>';
-        }
+        if (mapEl) mapEl.innerHTML = '<p>Map failed to load. Please try again later.</p>';
+    }
+
+
+
+    // ---- Utility Functions ----
+    function sanitizeHTML(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    function formatDuration(seconds) {
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        return `${hours}h ${minutes}m`;
     }
 });

@@ -37,7 +37,7 @@
                             <input type="text" id="route" name="route" required list="routes" value="{{ form_data.route|default:"" }}" placeholder="Select route (e.g., Nadi to Suva)" class="w-full pl-10 p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-button-bg" aria-required="true">
                             <datalist id="routes">
                                 {% for route in routes %}
-                                    <option value="{{ route.departure_port|lower }}-to-{{ route.destination_port|lower }}">{{ route.departure_port }} to {{ route.destination_port }}</option>
+                                    <option value="{{ route.departure_port.name|lower }}-to-{{ route.destination_port.name|lower }}">{{ route.departure_port.name }} to {{ route.destination_port.name }}</option>
                                 {% endfor %}
                             </datalist>
                         </div>
@@ -59,7 +59,7 @@
                     Search Ferries
                 </button>
             </form>
-            <a href="{% url 'bookings:book' %}" class="cta-button book-now block w-full text-center bg-var-button-bg text-white py-2 rounded mt-4 hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover flex items-center justify-center">
+            <a href="{% url 'bookings:book_ticket' %}" class="cta-button book-now block w-full text-center bg-var-button-bg text-white py-2 rounded mt-4 hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover flex items-center justify-center">
                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
                 </svg>
@@ -98,9 +98,9 @@
     <section class="welcome-section py-12 text-center" data-aos="fade-up">
         <div class="welcome-content max-w-2xl mx-auto">
             {% if user.is_authenticated %}
-                <h2 class="text-3xl font-bold text-var-primary font-playfair">Welcome, {{ user.username }}!</h2>
+                <h2 class="text-3xl font-bold text-var-primary font-playfair">Welcome, {{ user.username|default:"Guest" }}!</h2>
                 <p class="welcome-text text-lg my-4 text-var-text-color">Your next Fiji adventure awaits. Book your ferry now!</p>
-                <a href="{% url 'bookings:book' %}" class="cta-button welcome-button bg-var-button-bg text-white py-2 px-6 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover flex items-center justify-center mx-auto">
+                <a href="{% url 'bookings:book_ticket' %}" class="cta-button welcome-button bg-var-button-bg text-white py-2 px-6 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover flex items-center justify-center mx-auto">
                     <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
                     </svg>
@@ -129,7 +129,7 @@
 
     <section class="schedules py-12 bg-gradient-to-b from-var-bg-color to-var-bg-secondary rounded-lg" data-aos="fade-up">
         <div class="next-departure-banner bg-var-card-bg p-4 rounded text-center mb-6 shadow-sm">
-            <h3 class="text-lg font-semibold text-var-text-color font-poppins">Next Departure: <span id="next-departure-time" aria-live="polite">Loading...</span></h3>
+            <h3 class="text-lg font-semibold text-var-text-color font-poppins">Next Departure: <span id="next-departure-time" aria-live="polite">{{ next_departure.time|default:"Loading..." }}</span></h3>
         </div>
         <h2 class="text-3xl font-bold text-center text-var-primary mb-6 font-playfair">Upcoming Ferry Departures</h2>
         <div class="schedule-filters flex justify-end mb-4">
@@ -148,13 +148,13 @@
         {% if schedules %}
             <div class="schedule-list grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {% for schedule in schedules %}
-                    <div class="schedule-card bg-var-card-bg rounded-lg p-6 shadow-lg hover:shadow-xl transition transform hover:-translate-y-1 hover:scale-102" data-schedule-id="{{ schedule.id }}" data-route-id="{{ schedule.route.id }}" data-aos="fade-up" data-aos-delay="{{ forloop.counter0|multiply:100|add:100 }}" tabindex="0" role="article" aria-label="Ferry from {{ schedule.route.departure_port }} to {{ schedule.route.destination_port }}">
+                    <div class="schedule-card bg-var-card-bg rounded-lg p-6 shadow-lg hover:shadow-xl transition transform hover:-translate-y-1 hover:scale-102 {% if next_departure.schedule_id == schedule.id %}next-departure{% endif %}" data-schedule-id="{{ schedule.id }}" data-route-id="{{ schedule.route.id }}" data-aos="fade-up" data-aos-delay="{{ forloop.counter0|multiply:100|add:100 }}" tabindex="0" role="article" aria-label="Ferry from {{ schedule.route.departure_port.name }} to {{ schedule.route.destination_port.name }}">
                         <div class="route-info">
-                            <h3 class="text-xl font-bold text-var-primary font-poppins">{{ schedule.route.departure_port }} → {{ schedule.route.destination_port }}</h3>
+                            <h3 class="text-xl font-bold text-var-primary font-poppins">{{ schedule.route.departure_port.name }} → {{ schedule.route.destination_port.name }}</h3>
                             <p class="departure-time text-sm text-var-text-color" data-iso="{{ schedule.departure_time.isoformat }}">{{ schedule.departure_time|date:"D, M d, H:i" }}</p>
                             <p class="ferry-name text-sm text-var-text-color">{{ schedule.ferry.name }}</p>
                             <p class="seats-available text-sm text-var-text-color">Seats Available: <span class="seat-count font-semibold" aria-live="polite">{{ schedule.available_seats }}</span></p>
-                            <div class="weather-info flex flex-col gap-2 text-sm text-var-text-color" aria-label="Weather forecast">
+                            <div class="weather-info flex flex-col gap-2 text-sm text-var-text-color" aria-label="Weather forecast for {{ schedule.route.departure_port.name }} to {{ schedule.route.destination_port.name }}">
                                 <div class="weather-row flex items-center gap-2">
                                     <span class="weather-icon text-2xl" aria-hidden="true"></span>
                                     <span class="weather-condition font-semibold" aria-live="polite">Loading...</span>
@@ -198,7 +198,7 @@
                             {% else %}
                                 <p class="fare fare-unavailable text-sm text-red-600 dark:text-red-400">Fare Not Available</p>
                             {% endif %}
-                            <a href="{% url 'bookings:book' %}?schedule_id={{ schedule.id }}" class="cta-button book-now block text-center bg-var-button-bg text-white py-2 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover flex items-center justify-center">
+                            <a href="{% url 'bookings:book_ticket' %}?schedule_id={{ schedule.id }}" class="cta-button book-now block text-center bg-var-button-bg text-white py-2 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover flex items-center justify-center">
                                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
                                 </svg>
@@ -231,7 +231,7 @@
                 <div class="destination-img-container relative h-48">
                     <img src="https://images.unsplash.com/photo-1715171032354-b6aa7151ea1e?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MzB8fGZpamklMjByZXNvcnR8ZW58MHwxfDB8fHww&auto=format&fit=crop" alt="Nadi" class="destination-img w-full h-full object-cover" loading="lazy" onerror="this.src='{% static 'images/placeholder.jpg' %}'">
                     <div class="destination-overlay absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                        <a href="{% url 'bookings:book' %}?to_port=nadi" class="destination-btn bg-var-button-bg text-white py-2 px-4 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover flex items-center">
+                        <a href="{% url 'bookings:book_ticket' %}?to_port=nadi" class="destination-btn bg-var-button-bg text-white py-2 px-4 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover flex items-center">
                             <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
                             </svg>
@@ -247,7 +247,7 @@
                 <div class="destination-img-container relative h-48">
                     <img src="https://images.unsplash.com/photo-1700809737677-3a250cbf0954?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTV8fHN1dmElMjBmaWppfGVufDB8MXwwfHx8MA%3D%3D&auto=format&fit=crop" alt="Suva" class="destination-img w-full h-full object-cover" loading="lazy" onerror="this.src='{% static 'images/placeholder.jpg' %}'">
                     <div class="destination-overlay absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                        <a href="{% url 'bookings:book' %}?to_port=suva" class="destination-btn bg-var-button-bg text-white py-2 px-4 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover flex items-center">
+                        <a href="{% url 'bookings:book_ticket' %}?to_port=suva" class="destination-btn bg-var-button-bg text-white py-2 px-4 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover flex items-center">
                             <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
                             </svg>
@@ -263,7 +263,7 @@
                 <div class="destination-img-container relative h-48">
                     <img src="https://images.unsplash.com/photo-1707485318629-dfd15ab0945f?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTI0fHx5YXRjaHMlMjBmaWppfGVufDB8MXwwfHx8MA%3D%3Dauto=format&fit=crop" alt="Taveuni" class="destination-img w-full h-full object-cover" loading="lazy" onerror="this.src='{% static 'images/placeholder.jpg' %}'">
                     <div class="destination-overlay absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                        <a href="{% url 'bookings:book' %}?to_port=taveuni" class="destination-btn bg-var-button-bg text-white py-2 px-4 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover flex items-center">
+                        <a href="{% url 'bookings:book_ticket' %}?to_port=taveuni" class="destination-btn bg-var-button-bg text-white py-2 px-4 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover flex items-center">
                             <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
                             </svg>
@@ -279,7 +279,7 @@
                 <div class="destination-img-container relative h-48">
                     <img src="https://images.unsplash.com/photo-1585465548423-6058abfc75ec?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTIzfHx5YXRjaHMlMjBmaWppfGVufDB8MXwwfHx8MA%3D%3D&auto=format&fit=crop" alt="Savusavu" class="destination-img w-full h-full object-cover" loading="lazy" onerror="this.src='{% static 'images/placeholder.jpg' %}'">
                     <div class="destination-overlay absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                        <a href="{% url 'bookings:book' %}?to_port=savusavu" class="destination-btn bg-var-button-bg text-white py-2 px-4 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover flex items-center">
+                        <a href="{% url 'bookings:book_ticket' %}?to_port=savusavu" class="destination-btn bg-var-button-bg text-white py-2 px-4 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover flex items-center">
                             <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
                             </svg>
@@ -296,7 +296,7 @@
 
     <section class="fiji-map py-12 bg-gradient-to-b from-var-bg-color to-var-bg-secondary rounded-lg" data-aos="fade-up">
         <h2 class="text-3xl font-bold text-center text-var-primary mb-6 font-playfair">Explore Fiji</h2>
-        <div id="fiji-map" class="h-96 w-full rounded-lg shadow-lg"></div>
+        <div id="fiji-map" class="h-96 w-full rounded-lg shadow-lg relative"></div>
     </section>
 
     <section class="features py-12 bg-gradient-to-b from-var-bg-color to-var-bg-secondary rounded-lg" data-aos="fade-up">
@@ -590,26 +590,15 @@ body { font-family: 'Poppins', sans-serif; }
 .testimonial { display: none; transition: opacity 0.5s ease; }
 .testimonial:first-child { display: block; }
 
-@media (max-width: 1024px) {
-    .container { max-width: 90%; }
+#fiji-map {
+    height: 100%;
+    width: 100%;
+    background-color: var(--bg-secondary);
+    position: relative;
 }
 
-@media (max-width: 768px) {
-    .hero { height: 65vh; min-height: 400px; padding: 10px 0; }
-    .hero-content h1 { font-size: 2.4rem; }
-    .intro-text { font-size: 1.1rem; }
-    .booking-widget { padding: 1rem; margin: 1rem auto; max-width: 90%; }
-    .form-row { flex-direction: column; }
-    .form-group { min-width: 100%; }
-    .weather-details { flex-direction: column; gap: 0.5rem; }
-}
-
-.flatpickr-calendar { background: var(--input-bg); color: var(--text-color); }
-.flatpickr-day.selected { background: var(--button-bg); border-color: var(--button-bg); }
-.dark .flatpickr-calendar { background: var(--input-bg); color: var(--text-color); }
-.dark .flatpickr-day.selected { background: var(--button-bg); border-color: var(--button-bg); }
-
-#fiji-map { height: 100%; width: 100%; background-color: var(--bg-secondary); }
+#fiji-map .leaflet-container { background: var(--bg-secondary); }
+#fiji-map .absolute { z-index: 1000; }
 
 .destination-img-container::before {
     content: '';
@@ -631,24 +620,59 @@ body { font-family: 'Poppins', sans-serif; }
 
 .font-playfair { font-family: 'Playfair Display', serif; }
 .font-poppins { font-family: 'Poppins', sans-serif; }
+
+@media (max-width: 1024px) {
+    .container { max-width: 90%; }
+}
+
+@media (max-width: 768px) {
+    .hero { height: 65vh; min-height: 400px; padding: 10px 0; }
+    .hero-content h1 { font-size: 2.4rem; }
+    .intro-text { font-size: 1.1rem; }
+    .booking-widget { padding: 1rem; margin: 1rem auto; max-width: 90%; }
+    .form-row { flex-direction: column; }
+    .form-group { min-width: 100%; }
+    .weather-details { flex-direction: column; gap: 0.5rem; }
+}
+
+.flatpickr-calendar { background: var(--input-bg); color: var(--text-color); }
+.flatpickr-day.selected { background: var(--button-bg); border-color: var(--button-bg); }
+.dark .flatpickr-calendar { background: var(--input-bg); color: var(--text-color); }
+.dark .flatpickr-day.selected { background: var(--button-bg); border-color: var(--button-bg); }
 </style>
 {% endblock %}
 
 {% block extra_js %}
+<!-- Stylesheets -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
 <link rel="stylesheet" href="https://unpkg.com/aos@2.3.4/dist/aos.css">
+
+<!-- Scripts -->
 <script src="https://cdn.jsdelivr.net/npm/flatpickr" defer></script>
-<script src="https://momentjs.com/downloads/moment.min.js" defer></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js" defer></script>
 <script src="https://unpkg.com/aos@2.3.4/dist/aos.js" defer></script>
-<script src="{% static 'js/home.js' %}" defer></script>
 <script>
-    window.TILE_ERROR_URL = "{{ tile_error_url }}";
+    // Ensure Leaflet.curve loads after Leaflet
+    document.addEventListener("DOMContentLoaded", function() {
+        const scriptCurve = document.createElement("script");
+        scriptCurve.src = "https://cdn.jsdelivr.net/gh/elfalem/Leaflet.curve/leaflet.curve.js";
+        scriptCurve.defer = true;
+        document.body.appendChild(scriptCurve);
+    });
 </script>
+
+<!-- Your home.js -->
+<script src="{% static 'js/home.js' %}" defer></script>
+
+<script>
+    window.TILE_ERROR_URL = "{{ tile_error_url|default:'/static/images/tile-error.png' }}";
+</script>
+
+<!-- JSON data -->
 {{ form_data|json_script:"form-data" }}
 {{ weather_data|json_script:"weather-data" }}
 {% endblock %}

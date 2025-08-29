@@ -14,6 +14,8 @@ urlpatterns = [
     path('api/weather/', bookings_views.get_weather_conditions, name='get_weather_conditions'),
     path('weather/stream/', bookings_views.weather_stream, name='weather_stream'),
     path('validate-step/', bookings_views.validate_step, name='validate_step'),
+    path('bookings/create-checkout-session/', bookings_views.create_checkout_session, name='create_checkout_session'),
+    path('bookings/get-pricing/', bookings_views.get_pricing, name='get-pricing'),
 
 ]
 

@@ -1,421 +1,875 @@
-document.addEventListener('DOMContentLoaded', () => {
-    // Global passenger data storage
-    let passengerData = { adult: [], child: [], infant: [] };
-    let currentStep = parseInt(JSON.parse(document.getElementById('form-data')?.textContent || '{}').step || 1, 10);
-    const form = document.getElementById('booking-form');
+(function () {
+    const bookingForm = document.getElementById('booking-form');
+    const adultsInput = document.getElementById('adults');
+    const youthsInput = document.getElementById('youths');
+    const childrenInput = document.getElementById('children');
+    const infantsInput = document.getElementById('infants');
+    const scheduleInput = document.getElementById('schedule_id');
+    const passengerDetails = document.getElementById('passenger-details');
+    const adultFields = document.getElementById('adult-fields');
+    const youthFields = document.getElementById('youth-fields');
+    const childFields = document.getElementById('child-fields');
+    const infantFields = document.getElementById('infant-fields');
+    const cargoCheckbox = document.getElementById('add_cargo_checkbox');
+    const cargoFields = document.getElementById('cargo-fields');
+    const unaccompaniedMinorCheckbox = document.getElementById('is_unaccompanied_minor');
+    const unaccompaniedMinorFields = document.getElementById('unaccompanied-minor-fields');
+    const groupBookingCheckbox = document.getElementById('is_group_booking');
+    const emergencyCheckbox = document.getElementById('is_emergency');
+    const responsibilityDeclarationFields = document.getElementById('responsibility-declaration-fields');
     const nextButtons = document.querySelectorAll('.next-step');
     const prevButtons = document.querySelectorAll('.prev-step');
 
-    // Initialize UI
-    showStep(currentStep);
-    updateProgressBar(currentStep);
-    generatePassengerFields();
-    setupFilePreview();
-    updateSummary();
+    let currentStep = parseInt(bookingForm.querySelector('input[name="step"]').value) || 1;
+    let passengerData = { adult: [{ open: true }], youth: [], child: [], infant: [] };
+    let latestTotalPrice = '0.00'; // Store total_price from get_pricing
 
-    // Event listeners for step navigation
-    nextButtons.forEach(button => {
-        button.addEventListener('click', async () => {
-            console.log('Next button clicked for step:', currentStep);
-            button.disabled = true;
-            button.textContent = 'Validating...';
-            await savePassengerData();
-            const isValid = await validateStep(currentStep);
-            if (isValid) {
-                console.log('Proceeding to step:', button.dataset.next);
-                currentStep = parseInt(button.dataset.next, 10);
-                showStep(currentStep);
-                updateProgressBar(currentStep);
-                updateSummary();
-            } else {
-                console.log('Validation failed, staying on step:', currentStep);
+    const isDev = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+
+    const logger = {
+        log: (...args) => isDev && console.log(...args),
+        warn: (...args) => isDev && console.warn(...args),
+        error: console.error.bind(console)
+    };
+
+    const getCsrfToken = () => {
+        const name = 'csrftoken';
+        const decodedCookie = decodeURIComponent(document.cookie);
+        const cookieArray = decodedCookie.split(';');
+        for (let cookie of cookieArray) {
+            cookie = cookie.trim();
+            if (cookie.indexOf(name + '=') === 0) {
+                return cookie.substring(name.length + 1);
             }
-            button.disabled = false;
-            button.textContent = 'Next';
-        });
-    });
+        }
+        return '';
+    };
 
-    prevButtons.forEach(button => {
-        button.addEventListener('click', () => {
-            currentStep = parseInt(button.dataset.prev, 10);
-            showStep(currentStep);
-            updateProgressBar(currentStep);
-            updateSummary();
+    const updateStep = (step) => {
+        currentStep = step;
+        document.querySelectorAll('.form-step').forEach(s => {
+            s.classList.remove('active');
+            s.style.display = 'none';
         });
-    });
+        const targetStep = document.querySelector(`.form-step.step-${step}`);
+        if (targetStep) {
+            targetStep.classList.add('active');
+            targetStep.style.display = 'block';
+            logger.log(`Added active class to Step ${step}`, targetStep);
+        }
+        document.querySelector('input[name="step"]').value = step;
 
-    // Form submission
-    form.addEventListener('submit', async e => {
-        e.preventDefault();
-        const submitButton = document.getElementById('submit-button');
-        submitButton.disabled = true;
-        submitButton.textContent = 'Processing...';
-        await savePassengerData();
-        const formData = new FormData(form);
-        formData.append('user_authenticated', userAuthenticated);
-        Object.entries(passengerData).forEach(([type, passengers]) => {
-            passengers.forEach((p, i) => {
-                formData.append(`passenger_${type}_${i}_first_name`, p.firstName || '');
-                formData.append(`passenger_${type}_${i}_last_name`, p.lastName || '');
-                formData.append(`passenger_${type}_${i}_age`, p.age || '');
-                if (p.isGroupLeader) formData.append(`passenger_${type}_${i}_is_group_leader`, 'on');
-                if (p.isParent) formData.append(`passenger_${type}_${i}_is_parent`, 'on');
-                if (p.document) formData.append(`passenger_${type}_${i}_document`, p.document);
-            });
+        document.querySelectorAll('.step').forEach(s => {
+            s.classList.remove('active', 'completed');
+            const stepNum = parseInt(s.dataset.step);
+            if (stepNum < step) s.classList.add('completed');
+            if (stepNum === step) s.classList.add('active');
         });
+
+        const progressPercent = ((step - 1) / 3) * 100;
+        document.querySelector('.progress-bar-fill').style.width = `${progressPercent}%`;
+        document.querySelector('.progress-bar-fill').style.background = `var(--step-${step}-accent)`;
+    };
+
+    const debounce = (func, wait) => {
+        let timeout;
+        return (...args) => {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => func(...args), wait);
+        };
+    };
+
+    const saveFormData = debounce(() => {
+        const formData = {
+            step: currentStep,
+            schedule_id: scheduleInput?.value || '',
+            adults: adultsInput?.value || 1,
+            youths: youthsInput?.value || 0,
+            children: childrenInput?.value || 0,
+            infants: infantsInput?.value || 0,
+            passengerData,
+            guest_email: document.getElementById('guest_email')?.value || '',
+            add_cargo: cargoCheckbox?.checked || false,
+            cargo_type: document.getElementById('cargo_type')?.value || '',
+            weight_kg: document.getElementById('weight_kg')?.value || '',
+            dimensions_cm: document.getElementById('dimensions_cm')?.value || '',
+            is_unaccompanied_minor: unaccompaniedMinorCheckbox?.checked || false,
+            guardian_contact: document.getElementById('guardian_contact')?.value || '',
+            is_group_booking: groupBookingCheckbox?.checked || false,
+            is_emergency: emergencyCheckbox?.checked || false,
+            privacy_consent: document.getElementById('privacy-consent')?.checked || false
+        };
         try {
-            const response = await fetch(form.action, {
+            localStorage.setItem('bookingFormData', JSON.stringify(formData));
+            logger.log('Saving formData:', formData);
+        } catch (e) {
+            logger.warn('localStorage unavailable:', e);
+        }
+    }, 500);
+
+    const loadFormData = () => {
+        try {
+            const savedData = JSON.parse(localStorage.getItem('bookingFormData')) || {};
+            if (savedData.step) currentStep = parseInt(savedData.step);
+            if (!window.isAuthenticated && savedData.guest_email) {
+                const guestEmailInput = document.getElementById('guest_email');
+                if (guestEmailInput) guestEmailInput.value = savedData.guest_email;
+            }
+            if (savedData.schedule_id && scheduleInput) {
+                scheduleInput.value = savedData.schedule_id;
+                const option = scheduleInput.querySelector(`option[value="${savedData.schedule_id}"]`);
+                if (option) option.selected = true;
+            }
+            if (savedData.adults && adultsInput) adultsInput.value = savedData.adults;
+            if (savedData.youths && youthsInput) youthsInput.value = savedData.youths;
+            if (savedData.children && childrenInput) childrenInput.value = savedData.children;
+            if (savedData.infants && infantsInput) infantsInput.value = savedData.infants;
+            passengerData = savedData.passengerData || { adult: [{ open: true }], youth: [], child: [], infant: [] };
+            if (savedData.add_cargo && cargoCheckbox) {
+                cargoCheckbox.checked = savedData.add_cargo;
+                cargoFields.classList.toggle('hidden', !savedData.add_cargo);
+            }
+            if (savedData.cargo_type) document.getElementById('cargo_type').value = savedData.cargo_type;
+            if (savedData.weight_kg) document.getElementById('weight_kg').value = savedData.weight_kg;
+            if (savedData.dimensions_cm) document.getElementById('dimensions_cm').value = savedData.dimensions_cm;
+            if (savedData.is_unaccompanied_minor && unaccompaniedMinorCheckbox) {
+                unaccompaniedMinorCheckbox.checked = savedData.is_unaccompanied_minor;
+                unaccompaniedMinorFields.classList.toggle('hidden', !savedData.is_unaccompanied_minor);
+            }
+            if (savedData.guardian_contact) document.getElementById('guardian_contact').value = savedData.guardian_contact;
+            if (savedData.is_group_booking && groupBookingCheckbox) groupBookingCheckbox.checked = savedData.is_group_booking;
+            if (savedData.is_emergency && emergencyCheckbox) emergencyCheckbox.checked = savedData.is_emergency;
+            if (savedData.privacy_consent) document.getElementById('privacy-consent').checked = savedData.privacy_consent;
+
+            logger.log('Loaded passengerData:', passengerData);
+            updateStep(currentStep);
+            updatePassengerFields();
+            toggleRequiredFields();
+            updateSummary();
+        } catch (e) {
+            logger.warn('localStorage unavailable or corrupted:', e);
+        }
+    };
+
+    const clearFormData = () => {
+        try {
+            localStorage.removeItem('bookingFormData');
+            localStorage.removeItem('file-responsibility_declaration');
+            localStorage.removeItem('file-consent_form');
+            passengerData = { adult: [{ open: true }], youth: [], child: [], infant: [] };
+            bookingForm.reset();
+            updateStep(1);
+            updatePassengerFields();
+        } catch (e) {
+            logger.warn('localStorage unavailable:', e);
+        }
+    };
+
+    const updatePassengerFields = () => {
+        if (!passengerDetails || !adultFields || !youthFields || !childFields || !infantFields) {
+            logger.error('Required passenger containers missing');
+            return;
+        }
+
+        const counts = {
+            adult: parseInt(adultsInput?.value) || 1,
+            youth: parseInt(youthsInput?.value) || 0,
+            child: parseInt(childrenInput?.value) || 0,
+            infant: parseInt(infantsInput?.value) || 0
+        };
+
+        const containers = { adult: adultFields, youth: youthFields, child: childFields, infant: infantFields };
+
+        for (const [type, container] of Object.entries(containers)) {
+            passengerData[type] = passengerData[type] || [];
+
+            // Ensure we have the right number of passenger slots
+            for (let i = 0; i < counts[type]; i++) {
+                const existing = document.getElementById(`${type}_fieldset_${i}`);
+
+                // Reuse existing fieldset if it already exists
+                if (existing) {
+                    continue;
+                }
+
+                const data = passengerData[type][i] || { first_name: '', last_name: '', age: '', open: true };
+                passengerData[type][i] = data;
+
+                const fieldset = document.createElement('fieldset');
+                fieldset.className = 'passenger-fieldset';
+                fieldset.id = `${type}_fieldset_${i}`;
+
+                fieldset.innerHTML = `
+                    <button type="button" class="passenger-fieldset-header">
+                        <h4>${type.charAt(0).toUpperCase() + type.slice(1)} ${i + 1}</h4>
+                        <span class="toggle-icon">${data.open ? '−' : '+'}</span>
+                    </button>
+                    <div class="passenger-fieldset-content ${data.open ? 'open' : ''}">
+                        <div class="form-group">
+                            <label for="${type}_first_name_${i}" class="block text-sm font-semibold text-var-text-color font-poppins">First Name</label>
+                            <input type="text" id="${type}_first_name_${i}" name="${type}_first_name_${i}" value="${data.first_name || ''}" required
+                                class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-2-accent"
+                                aria-required="true">
+                            <p id="error-${type}_first_name_${i}" class="error-message hidden mt-1 text-sm text-var-alert-error-text font-poppins"></p>
+                        </div>
+                        <div class="form-group mt-2">
+                            <label for="${type}_last_name_${i}" class="block text-sm font-semibold text-var-text-color font-poppins">Last Name</label>
+                            <input type="text" id="${type}_last_name_${i}" name="${type}_last_name_${i}" value="${data.last_name || ''}" required
+                                class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-2-accent"
+                                aria-required="true">
+                            <p id="error-${type}_last_name_${i}" class="error-message hidden mt-1 text-sm text-var-alert-error-text font-poppins"></p>
+                        </div>
+                        <div class="form-group mt-2">
+                            <label for="${type}_age_${i}" class="block text-sm font-semibold text-var-text-color font-poppins">Age</label>
+                            <input type="number" id="${type}_age_${i}" name="${type}_age_${i}" value="${data.age || ''}" required
+                                class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-2-accent"
+                                min="0" aria-required="true">
+                            <p id="error-${type}_age_${i}" class="error-message hidden mt-1 text-sm text-var-alert-error-text font-poppins"></p>
+                        </div>
+                        ${type === 'adult' ? `
+                        <div class="form-group mt-2">
+                            <label class="flex items-center">
+                                <input type="checkbox" id="${type}_is_parent_guardian_${i}" name="${type}_is_parent_guardian_${i}" ${data.is_parent_guardian ? 'checked' : ''}
+                                    class="mr-2 h-5 w-5 text-var-step-2-accent focus:ring-var-step-2-accent border-var-border-color">
+                                <span class="text-sm font-semibold text-var-text-color font-poppins">Parent/Guardian</span>
+                            </label>
+                        </div>
+                        <div class="form-group mt-2">
+                            <label class="flex items-center">
+                                <input type="checkbox" id="${type}_is_group_leader_${i}" name="${type}_is_group_leader_${i}" ${data.is_group_leader ? 'checked' : ''}
+                                    class="mr-2 h-5 w-5 text-var-step-2-accent focus:ring-var-step-2-accent border-var-border-color">
+                                <span class="text-sm font-semibold text-var-text-color font-poppins">Group Leader</span>
+                            </label>
+                        </div>` : ''}
+                    </div>`;
+
+                container.appendChild(fieldset);
+            }
+
+            // If user reduced count (e.g. from 2 adults → 1), remove extra fieldsets
+            const existingFieldsets = container.querySelectorAll('.passenger-fieldset');
+            existingFieldsets.forEach((fs, idx) => {
+                if (idx >= counts[type]) {
+                    fs.remove();
+                    passengerData[type].splice(idx, 1);
+                }
+            });
+        }
+
+        toggleRequiredFields();
+        savePassengerData();
+    };
+
+    const savePassengerData = () => {
+        for (const type of ['adult', 'youth', 'child', 'infant']) {
+            const count = parseInt(document.getElementById(`${type}s`)?.value) || 0;
+            passengerData[type] = passengerData[type].slice(0, count);
+            for (let i = 0; i < count; i++) {
+                passengerData[type][i] = {
+                    first_name: document.getElementById(`${type}_first_name_${i}`)?.value || '',
+                    last_name: document.getElementById(`${type}_last_name_${i}`)?.value || '',
+                    age: document.getElementById(`${type}_age_${i}`)?.value || '',
+                    open: passengerData[type][i]?.open ?? true,
+                    is_parent_guardian: document.getElementById(`${type}_is_parent_guardian_${i}`)?.checked || false,
+                    is_group_leader: document.getElementById(`${type}_is_group_leader_${i}`)?.checked || false
+                };
+            }
+        }
+        saveFormData();
+    };
+
+    const toggleRequiredFields = () => {
+        const hasMinors = (parseInt(childrenInput?.value) || 0) + (parseInt(infantsInput?.value) || 0) + (parseInt(youthsInput?.value) || 0) > 0;
+        const hasParentGuardian = passengerData.adult.some(p => p.is_parent_guardian);
+        const isUnaccompaniedMinor = unaccompaniedMinorCheckbox?.checked || false;
+
+        responsibilityDeclarationFields.classList.toggle('hidden', !hasMinors || hasParentGuardian);
+        unaccompaniedMinorFields.classList.toggle('hidden', !isUnaccompaniedMinor);
+
+        const responsibilityInput = document.getElementById('responsibility_declaration');
+        if (responsibilityInput) {
+            responsibilityInput.required = hasMinors && !hasParentGuardian;
+        }
+        const consentInput = document.getElementById('consent_form');
+        if (consentInput) {
+            consentInput.required = isUnaccompaniedMinor;
+        }
+        const guardianContactInput = document.getElementById('guardian_contact');
+        if (guardianContactInput) {
+            guardianContactInput.required = isUnaccompaniedMinor;
+        }
+    };
+
+    const calculateTotalPrice = () => {
+        return 0; // Rely on backend /bookings/get_pricing/
+    };
+
+    const updateSummary = async () => {
+        // --- Gather input values ---
+        const scheduleId = scheduleInput?.value?.trim() || '';
+        const adults = Math.max(parseInt(adultsInput?.value) || 0, 0);
+        const youths = Math.max(parseInt(youthsInput?.value) || 0, 0);
+        const children = Math.max(parseInt(childrenInput?.value) || 0, 0);
+        const infants = Math.max(parseInt(infantsInput?.value) || 0, 0);
+
+        const addCargo = cargoCheckbox?.checked || false;
+        const cargoType = addCargo ? document.getElementById('cargo_type')?.value?.trim() || '' : '';
+        const weightKg = addCargo ? Math.max(parseFloat(document.getElementById('weight_kg')?.value) || 0, 0) : 0;
+        const dimensions = addCargo ? document.getElementById('dimensions_cm')?.value?.trim() || 'None' : 'None';
+
+        const isEmergency = emergencyCheckbox?.checked || false;
+        const unaccompaniedMinor = unaccompaniedMinorCheckbox?.checked || false;
+        const isGroupBooking = groupBookingCheckbox?.checked || false;
+
+        const extras = [];
+        if (unaccompaniedMinor) extras.push('Unaccompanied Minor');
+        if (isGroupBooking) extras.push('Group Booking');
+        if (isEmergency) extras.push('Emergency Travel');
+
+        // --- Log emergency status for debugging ---
+        logger.log(`Emergency checkbox status: is_emergency=${isEmergency}`);
+
+        // --- Validate required fields before sending ---
+        if (!scheduleId) {
+            console.warn("No schedule selected. Cannot fetch pricing.");
+            document.getElementById('summary-schedule').textContent = 'Not selected';
+            document.getElementById('summary-cost').textContent = '0.00';
+            latestTotalPrice = '0.00';
+            return;
+        }
+
+        if (addCargo && !cargoType) {
+            console.warn("Cargo type is required when adding cargo.");
+            document.getElementById('summary-cargo').textContent = 'Missing cargo type';
+            document.getElementById('summary-cost').textContent = '0.00';
+            latestTotalPrice = '0.00';
+            return;
+        }
+
+        // --- Update summary UI ---
+        document.getElementById('summary-schedule').textContent =
+            document.querySelector(`#schedule_id option[value="${scheduleId}"]`)?.textContent || 'Not selected';
+
+        document.getElementById('summary-passengers').textContent =
+            `${adults} Adults, ${youths} Youths, ${children} Children, ${infants} Infants`;
+
+        document.getElementById('summary-cargo').textContent = addCargo
+            ? `${cargoType} (${weightKg}kg, ${dimensions}cm)`
+            : 'None';
+
+        document.getElementById('summary-extras').textContent = extras.length
+            ? extras.join(', ')
+            : 'None';
+
+        // --- Prepare FormData for backend ---
+        const formData = new FormData(bookingForm);
+        formData.set('schedule_id', scheduleId);
+        formData.set('adults', adults.toString());
+        formData.set('youths', youths.toString());
+        formData.set('children', children.toString());
+        formData.set('infants', infants.toString());
+        formData.set('add_cargo', addCargo ? 'true' : 'false');
+        formData.set('cargo_type', cargoType);
+        formData.set('weight_kg', weightKg.toString());
+        formData.set('is_emergency', isEmergency ? 'true' : 'false');
+
+        console.log("Sending get_pricing data:", Object.fromEntries(formData.entries()));
+
+        // --- Send AJAX request ---
+        try {
+            const response = await fetch(window.urls.getPricing, {
                 method: 'POST',
                 body: formData,
-                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRFToken': getCsrfToken()
+                }
+            });
+            if (!response.ok) {
+                const text = await response.text();
+                console.error(`Server returned ${response.status}:`, text);
+                throw new Error(`Server returned ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            // --- Update pricing in summary and store total_price ---
+            document.getElementById('summary-cost').textContent =
+                data.total_price ? parseFloat(data.total_price).toFixed(2) : '0.00';
+            latestTotalPrice = data.total_price || '0.00'; // Store total_price
+
+        } catch (e) {
+            console.error('Error fetching price:', e);
+            document.getElementById('summary-cost').textContent = '0.00';
+            latestTotalPrice = '0.00'; // Fallback
+        }
+    };
+
+    const displayBackendErrors = (errors, button) => {
+        const existingErrors = button.parentNode.querySelector('#validation-errors-next') || button.parentNode.querySelector('#validation-errors-payment');
+        if (existingErrors) existingErrors.remove();
+
+        if (!Array.isArray(errors)) {
+            errors = [{ field: 'general', message: 'An unexpected error occurred. Please try again.' }];
+        }
+        const validationErrorsNext = document.createElement('div');
+        validationErrorsNext.id = 'validation-errors-next';
+        validationErrorsNext.className = 'alert error bg-red-50 p-4 rounded-lg shadow-sm animate__animated animate__fadeIn mt-4';
+        validationErrorsNext.innerHTML = '<p class="font-semibold text-var-text-color font-poppins">Please fix the following errors:</p><ul id="validation-error-list-next" class="list-disc pl-5"></ul>';
+        button.parentNode.appendChild(validationErrorsNext);
+
+        errors.forEach(error => {
+            const li = document.createElement('li');
+            li.textContent = error.message;
+            li.style.color = 'var(--alert-error-text)';
+            document.getElementById('validation-error-list-next').appendChild(li);
+            const errorElement = document.getElementById(`error-${error.field}`);
+            if (errorElement) {
+                errorElement.textContent = error.message;
+                errorElement.classList.remove('hidden');
+                const field = document.getElementById(error.field);
+                if (field) {
+                    field.classList.add('border', 'border-red-500');
+                    setTimeout(() => field.classList.remove('border', 'border-red-500'), 3000);
+                }
+            }
+        });
+    };
+
+    const validateStep = async (step, button) => {
+        document.querySelectorAll('.error-message').forEach(e => {
+            e.classList.add('hidden');
+            e.textContent = '';
+        });
+        document.querySelectorAll('#validation-errors-next').forEach(e => e.remove());
+        document.querySelectorAll('#validation-errors-payment').forEach(e => e.remove());
+
+        const formData = new FormData(bookingForm);
+        formData.append('step', step);
+        formData.append('user_authenticated', window.isAuthenticated ? 'true' : 'false');
+
+        if (step === 1) {
+            const scheduleId = scheduleInput?.value || '';
+            if (!scheduleId || isNaN(parseInt(scheduleId))) {
+                const errorElement = document.getElementById('error-schedule_id');
+                if (errorElement) {
+                    errorElement.textContent = 'Please select a valid schedule.';
+                    errorElement.classList.remove('hidden');
+                }
+                const validationErrorsNext = document.createElement('div');
+                validationErrorsNext.id = 'validation-errors-next';
+                validationErrorsNext.className = 'alert error bg-red-50 p-4 rounded-lg shadow-sm animate__animated animate__fadeIn mt-4';
+                validationErrorsNext.innerHTML = '<p class="font-semibold text-var-text-color font-poppins">Please fix the following errors:</p><ul id="validation-error-list-next" class="list-disc pl-5"><li style="color: var(--alert-error-text);">Please select a valid schedule.</li></ul>';
+                button.parentNode.appendChild(validationErrorsNext);
+                return false;
+            }
+            formData.append('schedule_id', scheduleId);
+            if (!window.isAuthenticated) {
+                const guestEmail = document.getElementById('guest_email')?.value || '';
+                if (!guestEmail) {
+                    const errorElement = document.getElementById('error-guest_email');
+                    if (errorElement) {
+                        errorElement.textContent = 'Email is required for guest users.';
+                        errorElement.classList.remove('hidden');
+                    }
+                    const validationErrorsNext = document.createElement('div');
+                    validationErrorsNext.id = 'validation-errors-next';
+                    validationErrorsNext.className = 'alert error bg-red-50 p-4 rounded-lg shadow-sm animate__animated animate__fadeIn mt-4';
+                    validationErrorsNext.innerHTML = '<p class="font-semibold text-var-text-color font-poppins">Please fix the following errors:</p><ul id="validation-error-list-next" class="list-disc pl-5"><li style="color: var(--alert-error-text);">Email is required for guest users.</li></ul>';
+                    button.parentNode.appendChild(validationErrorsNext);
+                    return false;
+                }
+                formData.append('guest_email', guestEmail);
+            }
+        } else if (step === 2) {
+            const counts = {
+                adult: parseInt(adultsInput?.value) || 0,
+                youth: parseInt(youthsInput?.value) || 0,
+                child: parseInt(childrenInput?.value) || 0,
+                infant: parseInt(infantsInput?.value) || 0
+            };
+            if (counts.adult + counts.youth + counts.child + counts.infant === 0) {
+                const errorElement = document.getElementById('passenger-details-error');
+                errorElement.textContent = 'At least one passenger is required.';
+                errorElement.classList.remove('hidden');
+                return false;
+            }
+            for (const type of ['adult', 'youth', 'child', 'infant']) {
+                for (let i = 0; i < counts[type]; i++) {
+                    formData.append(`${type}_first_name_${i}`, document.getElementById(`${type}_first_name_${i}`)?.value || '');
+                    formData.append(`${type}_last_name_${i}`, document.getElementById(`${type}_last_name_${i}`)?.value || '');
+                    formData.append(`${type}_age_${i}`, document.getElementById(`${type}_age_${i}`)?.value || '');
+                    if (type === 'adult') {
+                        formData.append(`${type}_is_parent_guardian_${i}`, document.getElementById(`${type}_is_parent_guardian_${i}`)?.checked ? 'on' : '');
+                        formData.append(`${type}_is_group_leader_${i}`, document.getElementById(`${type}_is_group_leader_${i}`)?.checked ? 'on' : '');
+                    }
+                }
+            }
+            if ((counts.child + counts.infant + counts.youth > 0) && !passengerData.adult.some(p => p.is_parent_guardian)) {
+                const savedFileId = localStorage.getItem('file-responsibility_declaration');
+                if (savedFileId) {
+                    formData.append('responsibility_declaration', savedFileId);
+                }
+            }
+        } else if (step === 3) {
+            if (cargoCheckbox?.checked) {
+                formData.append('add_cargo', 'on');
+                formData.append('cargo_type', document.getElementById('cargo_type')?.value || '');
+                formData.append('weight_kg', document.getElementById('weight_kg')?.value || '');
+                formData.append('dimensions_cm', document.getElementById('dimensions_cm')?.value || '');
+            }
+            if (unaccompaniedMinorCheckbox?.checked) {
+                formData.append('is_unaccompanied_minor', 'on');
+                formData.append('guardian_contact', document.getElementById('guardian_contact')?.value || '');
+                const savedFileId = localStorage.getItem('file-consent_form');
+                if (savedFileId) {
+                    formData.append('consent_form', savedFileId);
+                }
+            }
+            if (groupBookingCheckbox?.checked) formData.append('is_group_booking', 'on');
+            if (emergencyCheckbox?.checked) formData.append('is_emergency', 'on');
+        } else if (step === 4) {
+            const privacyConsent = document.getElementById('privacy-consent');
+            const errorElement = document.getElementById('error-privacy-consent');
+
+            if (!privacyConsent) {
+                console.error('Privacy consent checkbox not found in DOM');
+                return false;
+            }
+
+            // Hide previous error if any
+            if (errorElement) {
+                errorElement.classList.add('hidden');
+                errorElement.textContent = '';
+            }
+
+            // Validate
+            if (!privacyConsent.checked) {
+                if (errorElement) {
+                    errorElement.textContent = 'You must agree to the Privacy Policy and Terms of Service.';
+                    errorElement.classList.remove('hidden');
+                }
+                console.log('Privacy consent not checked');
+                return false;
+            }
+
+            formData.append('privacy_consent', 'true');
+            console.log('Privacy consent checked ✅');
+        }
+
+        logger.log('FormData for validation:', Object.fromEntries(formData.entries()));
+
+        const fetchWithRetry = async (url, options, retries = 3) => {
+            for (let i = 1; i <= retries; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+                    return response;
+                } catch (error) {
+                    logger.error(`Fetch attempt ${i} failed:`, error);
+                    if (i === retries) throw new Error('Network error: Unable to connect to the server. Please check your connection or try again later.');
+                }
+            }
+        };
+
+        try {
+            const response = await fetchWithRetry('/bookings/validate-step/', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRFToken': getCsrfToken()
+                }
             });
             const data = await response.json();
             if (data.success) {
-                window.location.href = data.redirect_url;
+                logger.log(`Backend validation passed for step: ${step}`);
+                return true;
             } else {
-                showError(data.error || 'An error occurred.', data.step || 1);
-                currentStep = data.step || 1;
-                showStep(currentStep);
-                updateProgressBar(currentStep);
+                logger.log('Backend validation failed:', JSON.stringify(data.errors, null, 2));
+                displayBackendErrors(data.errors, button);
+                return false;
             }
         } catch (error) {
-            console.error('Submission error:', error);
-            showError('Failed to submit form. Please try again.', currentStep);
+            logger.error('Validation error:', error);
+            const validationErrorsNext = document.createElement('div');
+            validationErrorsNext.id = 'validation-errors-next';
+            validationErrorsNext.className = 'alert error bg-red-50 p-4 rounded-lg shadow-sm animate__animated animate__fadeIn mt-4';
+            validationErrorsNext.innerHTML = `<p class="font-semibold text-var-text-color font-poppins">Please fix the following errors:</p><ul id="validation-error-list-next" class="list-disc pl-5"><li style="color: var(--alert-error-text);">${error.message}</li></ul>`;
+            button.parentNode.appendChild(validationErrorsNext);
+            return false;
         }
-        submitButton.disabled = false;
-        submitButton.textContent = 'Proceed to Payment';
-    });
+    };
 
-async function validateStep(step) {
-    const formData = new FormData(form);
-    formData.append('step', step);
-
-    formData.append('user_authenticated', userAuthenticated);
-
-    Object.entries(passengerData).forEach(([type, passengers]) => {
-        passengers.forEach((p, i) => {
-            formData.append(`passenger_${type}_${i}_first_name`, p.firstName || '');
-            formData.append(`passenger_${type}_${i}_last_name`, p.lastName || '');
-            formData.append(`passenger_${type}_${i}_age`, p.age || '');
-            if (p.isGroupLeader) formData.append(`passenger_${type}_${i}_is_group_leader`, 'on');
-            if (p.isParent) formData.append(`passenger_${type}_${i}_is_parent`, 'on');
-            if (p.document) formData.append(`passenger_${type}_${i}_document`, p.document);
-        });
-    });
-
-    try {
-        const response = await fetch('/bookings/validate-step/', {  // Adjust to '/bookings/validate-step/' if needed
-            method: 'POST',
-            body: formData,
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+    const handleFileUpload = async (input, previewContainer) => {
+        const file = input.files[0];
+        if (!file) return;
+        if (!['application/pdf', 'image/jpeg', 'image/png'].includes(file.type)) {
+            const errorElement = document.getElementById(`error-${input.id}`);
+            errorElement.textContent = 'Only PDF, JPG, or PNG files are allowed.';
+            errorElement.classList.remove('hidden');
+            return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            const errorElement = document.getElementById(`error-${input.id}`);
+            errorElement.textContent = 'File size must be less than 5MB.';
+            errorElement.classList.remove('hidden');
+            return;
+        }
+        const formData = new FormData();
+        formData.append('file', file);
+        try {
+            const response = await fetch('/bookings/validate_file/', {
+                method: 'POST',
+                body: formData,
+                headers: { 'X-CSRFToken': getCsrfToken() }
+            });
+            const data = await response.json();
+            if (data.success && data.file_id) {
+                localStorage.setItem(`file-${input.id}`, data.file_id);
+                previewContainer.classList.remove('hidden');
+                previewContainer.innerHTML = file.type === 'application/pdf'
+                    ? `<span class="pdf-icon">PDF: ${file.name}</span>`
+                    : `<img src="${URL.createObjectURL(file)}" alt="File preview" class="max-w-full max-h-24 object-contain rounded">`;
+            } else {
+                const errorElement = document.getElementById(`error-${input.id}`);
+                errorElement.textContent = data.error || 'File upload failed.';
+                errorElement.classList.remove('hidden');
             }
-        });
-        const data = await response.json();
-        if (data.success) {
-            console.log('Backend validation passed for step:', step);
-            return true;
-        } else {
-            console.log('Backend validation failed:', data.errors);
-            showValidationErrors(data.errors);
-            return false;
+        } catch (e) {
+            logger.error('File upload error:', e);
+            const errorElement = document.getElementById(`error-${input.id}`);
+            errorElement.textContent = 'File upload failed. Please try again.';
+            errorElement.classList.remove('hidden');
         }
-    } catch (error) {
-        console.error('Validation error:', error);
-        showValidationErrors(['Failed to validate. Please try again.']);
-        return false;
-    }
-}
+    };
 
-    // Show validation errors
-    function showValidationErrors(errors) {
-        const errorContainer = document.getElementById('validation-errors');
-        const errorList = document.getElementById('validation-error-list');
-        const nextButton = document.querySelector(`.next-step[data-next="${currentStep + 1}"]`) || document.getElementById('submit-button');
-
-        if (!errorContainer || !errorList || !nextButton) {
-            console.error('Missing DOM elements:', { errorContainer, errorList, nextButton });
-            return false;
+    async function proceedToPayment() {
+        if (typeof window.stripe === 'undefined') {
+            logger.error('Stripe is not defined');
+            displayBackendErrors([{ field: 'general', message: 'Payment processing is unavailable. Please try again later.' }], document.getElementById('proceed-to-payment'));
+            return;
         }
 
-        if (errors.length) {
-            errorContainer.classList.remove('hidden');
-            errorList.innerHTML = errors.map(e => `<li>${e}</li>`).join('');
-            nextButton.disabled = true;
-            return false;
+        const button = document.getElementById('proceed-to-payment');
+        button.querySelector('.spinner').classList.remove('hidden');
+        button.disabled = true;
+
+        // Prevent multiple submissions
+        if (button.dataset.isSubmitting === 'true') {
+            logger.warn('Submission already in progress, ignoring.');
+            button.querySelector('.spinner').classList.add('hidden');
+            button.disabled = false;
+            return;
+        }
+        button.dataset.isSubmitting = 'true';
+
+        // Prepare FormData
+        const formData = new FormData(bookingForm);
+        formData.append('privacy_consent', 'true');
+        formData.append('total_price', latestTotalPrice);
+        formData.append('is_emergency', emergencyCheckbox?.checked ? 'true' : 'false'); // Ensure is_emergency is included
+
+        // Validate total_price
+        if (!latestTotalPrice || parseFloat(latestTotalPrice) <= 0) {
+            logger.error('Invalid or missing total_price');
+            displayBackendErrors([{ field: 'general', 'message': 'Invalid total price. Please try again.' }], button);
+            button.querySelector('.spinner').classList.add('hidden');
+            button.disabled = false;
+            button.dataset.isSubmitting = 'false';
+            return;
         }
 
-        errorContainer.classList.add('hidden');
-        errorList.innerHTML = '';
-        nextButton.disabled = false;
-        nextButton.removeAttribute('disabled');
-        console.log('Validation passed, enabling Next button');
-        return true;
-    }
-
-    // Show error message
-    function showError(message, step) {
-        const errorContainer = document.getElementById('validation-errors');
-        const errorList = document.getElementById('validation-error-list');
-        errorContainer.classList.remove('hidden');
-        errorList.innerHTML = `<li>${message}</li>`;
-    }
-
-    // Save passenger data
-    async function savePassengerData() {
-        passengerData = { adult: [], child: [], infant: [] };
-        const adults = parseInt(document.getElementById('adults')?.value || 0, 10);
-        const children = parseInt(document.getElementById('children')?.value || 0, 10);
-        const infants = parseInt(document.getElementById('infants')?.value || 0, 10);
-
-        ['adult', 'child', 'infant'].forEach(type => {
-            const count = type === 'adult' ? adults : type === 'child' ? children : infants;
+        // Add passenger details
+        for (const type of ['adult', 'youth', 'child', 'infant']) {
+            const count = parseInt(document.getElementById(`${type}s`)?.value || 0);
             for (let i = 0; i < count; i++) {
-                const passenger = {};
-                const firstName = document.getElementById(`passenger_${type}_${i}_first_name`)?.value || '';
-                const lastName = document.getElementById(`passenger_${type}_${i}_last_name`)?.value || '';
-                const age = document.getElementById(`passenger_${type}_${i}_age`)?.value || '';
-                const isGroupLeader = document.getElementById(`passenger_${type}_${i}_is_group_leader`)?.checked;
-                const isParent = document.getElementById(`passenger_${type}_${i}_is_parent`)?.checked;
-                const documentInput = document.getElementById(`passenger_${type}_${i}_document`);
-                const file = documentInput?.files?.[0];
-
-                if (firstName) passenger.firstName = firstName;
-                if (lastName) passenger.lastName = lastName;
-                if (age) passenger.age = age;
-                if (isGroupLeader) passenger.isGroupLeader = true;
-                if (isParent) passenger.isParent = true;
-                if (file) passenger.document = file;
-
-                passengerData[type].push(passenger);
-            }
-        });
-
-        console.log('Saved passenger data:', passengerData);
-    }
-
-
-    // Generate passenger fields
-    function generatePassengerFields() {
-        const adults = parseInt(document.getElementById('adults')?.value || 0, 10);
-        const children = parseInt(document.getElementById('children')?.value || 0, 10);
-        const infants = parseInt(document.getElementById('infants')?.value || 0, 10);
-
-        ['adult', 'child', 'infant'].forEach(type => {
-            const container = document.getElementById(`${type}-fields`);
-            if (!container) return;
-            container.innerHTML = '';
-            const count = type === 'adult' ? adults : type === 'child' ? children : infants;
-            for (let i = 0; i < count; i++) {
-                container.appendChild(createFieldset(type, i));
-            }
-        });
-
-        document.getElementById('passenger-details').classList.toggle('hidden', !(adults + children + infants));
-        toggleResponsibilityDeclaration(adults, children, infants);
-        updateEmergencyWarning();
-    }
-
-    // Create passenger fieldset
-    function createFieldset(type, index) {
-        const fieldset = document.createElement('div');
-        fieldset.className = 'passenger-fieldset';
-        const header = document.createElement('div');
-        header.className = 'passenger-fieldset-header';
-        header.innerHTML = `
-            <h4>${type.charAt(0).toUpperCase() + type.slice(1)} ${index + 1}</h4>
-            <span class="toggle-icon">${fieldset.classList.contains('open') ? '−' : '+'}</span>
-        `;
-        const content = document.createElement('div');
-        content.className = `passenger-fieldset-content ${passengerData[type][index]?.open ? 'open' : ''}`;
-        content.innerHTML = `
-            <div class="relative">
-                <label for="passenger_${type}_${index}_first_name" class="block text-sm font-medium text-gray-900 dark:text-gray-300 font-roboto">First Name:</label>
-                <input type="text" id="passenger_${type}_${index}_first_name" name="passenger_${type}_${index}_first_name" value="${passengerData[type][index]?.firstName || ''}" class="mt-1 w-full p-3 border rounded-lg bg-input-bg dark:bg-gray-700 text-gray-900 dark:text-gray-200 border-border-color dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-button-bg dark:focus:ring-blue-400" required aria-describedby="error-passenger_${type}_${index}_first_name">
-                <p id="error-passenger_${type}_${index}_first_name" class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
-            </div>
-            <div class="relative">
-                <label for="passenger_${type}_${index}_last_name" class="block text-sm font-medium text-gray-900 dark:text-gray-300 font-roboto">Last Name:</label>
-                <input type="text" id="passenger_${type}_${index}_last_name" name="passenger_${type}_${index}_last_name" value="${passengerData[type][index]?.lastName || ''}" class="mt-1 w-full p-3 border rounded-lg bg-input-bg dark:bg-gray-700 text-gray-900 dark:text-gray-200 border-border-color dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-button-bg dark:focus:ring-blue-400" required aria-describedby="error-passenger_${type}_${index}_last_name">
-                <p id="error-passenger_${type}_${index}_last_name" class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
-            </div>
-            <div class="relative">
-                <label for="passenger_${type}_${index}_age" class="block text-sm font-medium text-gray-900 dark:text-gray-300 font-roboto">Age:</label>
-                <input type="number" id="passenger_${type}_${index}_age" name="passenger_${type}_${index}_age" min="${type === 'infant' ? 0 : type === 'child' ? 2 : 12}" max="${type === 'infant' ? 1 : type === 'child' ? 11 : 150}" value="${passengerData[type][index]?.age || ''}" class="mt-1 w-full p-3 border rounded-lg bg-input-bg dark:bg-gray-700 text-gray-900 dark:text-gray-200 border-border-color dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-button-bg dark:focus:ring-blue-400" required aria-describedby="error-passenger_${type}_${index}_age">
-                <p id="error-passenger_${type}_${index}_age" class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
-            </div>
-            ${type === 'adult' ? `
-                <div class="relative">
-                    <label class="flex items-center">
-                        <input type="checkbox" id="passenger_${type}_${index}_is_group_leader" name="passenger_${type}_${index}_is_group_leader" ${passengerData[type][index]?.isGroupLeader ? 'checked' : ''} class="mr-2 h-5 w-5 text-blue-600 dark:text-blue-400 focus:ring-button-bg dark:focus:ring-blue-400 border-border-color dark:border-gray-600">
-                        <span class="text-sm font-medium text-gray-900 dark:text-gray-300 font-roboto">Group Leader</span>
-                    </label>
-                </div>
-                <div class="relative">
-                    <label class="flex items-center">
-                        <input type="checkbox" id="passenger_${type}_${index}_is_parent" name="passenger_${type}_${index}_is_parent" ${passengerData[type][index]?.isParent ? 'checked' : ''} class="mr-2 h-5 w-5 text-blue-600 dark:text-blue-400 focus:ring-button-bg dark:focus:ring-blue-400 border-border-color dark:border-gray-600">
-                        <span class="text-sm font-medium text-gray-900 dark:text-gray-300 font-roboto">Parent/Guardian</span>
-                    </label>
-                </div>
-            ` : ''}
-            <div class="relative">
-                <label for="passenger_${type}_${index}_document" class="block text-sm font-medium text-gray-900 dark:text-gray-300 font-roboto">Document (Optional):</label>
-                <input type="file" id="passenger_${type}_${index}_document" name="passenger_${type}_${index}_document" accept=".pdf,.jpg,.jpeg,.png" class="mt-1 w-full p-3 border rounded-lg bg-input-bg dark:bg-gray-700 text-gray-900 dark:text-gray-200 border-border-color dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-button-bg dark:focus:ring-blue-400">
-                <div class="file-preview mt-2 hidden"></div>
-                ${type === 'adult' ? `<p class="mt-1 text-sm text-yellow-600 dark:text-yellow-400 font-roboto">No document will mark this as an emergency booking (+FJD 50).</p>` : ''}
-                <p id="error-passenger_${type}_${index}_document" class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
-            </div>
-        `;
-        fieldset.appendChild(header);
-        fieldset.appendChild(content);
-        header.addEventListener('click', () => {
-            content.classList.toggle('open');
-            header.querySelector('.toggle-icon').textContent = content.classList.contains('open') ? '−' : '+';
-        });
-        return fieldset;
-    }
-
-    // Toggle responsibility declaration
-    function toggleResponsibilityDeclaration(adults, children, infants) {
-        const hasMinors = children > 0 || infants > 0;
-        const declarationFields = document.getElementById('responsibility-declaration-fields');
-        if (!declarationFields) return;
-        const needsDeclaration = hasMinors && adults > 0 && !passengerData.adult.some(p => p.isParent);
-        declarationFields.classList.toggle('hidden', !needsDeclaration);
-        updateEmergencyWarning();
-    }
-
-    // Update emergency warning
-    function updateEmergencyWarning() {
-        const adults = parseInt(document.getElementById('adults')?.value || 0, 10);
-        const isEmergencyCheckbox = document.getElementById('is_emergency');
-        const needsEmergency = passengerData.adult.some(p => !p.document);
-        if (needsEmergency && isEmergencyCheckbox) {
-            isEmergencyCheckbox.checked = true;
-            isEmergencyCheckbox.disabled = true;
-            const warning = document.createElement('p');
-            warning.className = 'text-yellow-600 dark:text-yellow-400 text-sm mt-2 font-roboto';
-            warning.id = 'emergency-warning';
-            warning.textContent = 'Emergency booking (+FJD 50) required due to missing adult documents.';
-            const existingWarning = document.querySelector('#emergency-warning');
-            if (!existingWarning) {
-                isEmergencyCheckbox.parentElement.appendChild(warning);
-            }
-        } else if (isEmergencyCheckbox) {
-            isEmergencyCheckbox.disabled = false;
-            const existingWarning = document.querySelector('#emergency-warning');
-            if (existingWarning) existingWarning.remove();
-        }
-    }
-
-    // Show form step
-    function showStep(step) {
-        const steps = document.querySelectorAll('.form-step');
-        const indicators = document.querySelectorAll('.step');
-
-        steps.forEach(s => s.classList.add('hidden'));
-        indicators.forEach(s => s.classList.remove('active'));
-
-        if (steps[step - 1]) {
-            steps[step - 1].classList.remove('hidden');
-        }
-        if (indicators[step - 1]) {
-            indicators[step - 1].classList.add('active');
-        }
-    }
-
-    // Update progress bar
-    function updateProgressBar(step) {
-        const progressFill = document.querySelector('.progress-bar-fill');
-        if (progressFill) {
-            progressFill.style.width = `${step * 25}%`;
-        }
-    }
-
-    // Clear errors
-    function clearErrors() {
-        document.querySelectorAll('.error-message').forEach(e => {
-            e.textContent = '';
-            e.classList.add('hidden');
-        });
-        document.querySelectorAll('[aria-invalid="true"]').forEach(input => {
-            input.removeAttribute('aria-invalid');
-        });
-    }
-
-    // Setup file preview
-    function setupFilePreview() {
-        document.querySelectorAll('input[type="file"]').forEach(input => {
-            input.addEventListener('change', () => {
-                const file = input.files[0];
-                if (!file) return;
-                console.log(`File selected for ${input.id}: ${file.name}`);
-                const preview = input.nextElementSibling;
-                if (!preview || !preview.classList.contains('file-preview')) return;
-                preview.innerHTML = '';
-                preview.classList.remove('hidden');
-                if (file.type.startsWith('image/')) {
-                    const img = document.createElement('img');
-                    img.src = URL.createObjectURL(file);
-                    preview.appendChild(img);
-                } else if (file.type === 'application/pdf') {
-                    const div = document.createElement('div');
-                    div.className = 'pdf-icon';
-                    div.textContent = 'PDF';
-                    preview.appendChild(div);
+                formData.append(`${type}_first_name_${i}`, document.getElementById(`${type}_first_name_${i}`)?.value || '');
+                formData.append(`${type}_last_name_${i}`, document.getElementById(`${type}_last_name_${i}`)?.value || '');
+                formData.append(`${type}_age_${i}`, document.getElementById(`${type}_age_${i}`)?.value || '');
+                if (type === 'adult' || type === 'youth') {
+                    formData.append(`${type}_is_parent_guardian_${i}`, document.getElementById(`${type}_is_parent_guardian_${i}`)?.checked ? 'true' : 'false');
+                    formData.append(`${type}_is_group_leader_${i}`, document.getElementById(`${type}_is_group_leader_${i}`)?.checked ? 'true' : 'false');
                 }
-                updateEmergencyWarning();
+                const documentInput = document.getElementById(`${type}_document_${i}`);
+                if (documentInput?.files[0]) {
+                    formData.append(`${type}_document_${i}`, documentInput.files[0]);
+                }
+            }
+        }
+
+        // Add guest_email for unauthenticated users
+        if (!window.isAuthenticated) {
+            const guestEmail = document.getElementById('guest_email')?.value || '';
+            if (!guestEmail) {
+                displayBackendErrors([{ field: 'guest_email', 'message': 'Email is required for guest users.' }], button);
+                button.querySelector('.spinner').classList.add('hidden');
+                button.disabled = false;
+                button.dataset.isSubmitting = 'false';
+                return;
+            }
+            formData.append('guest_email', guestEmail);
+        }
+
+        // Add cargo details if applicable
+        if (formData.get('add_cargo') === 'true') {
+            formData.append('cargo_type', document.getElementById('cargo_type')?.value || '');
+            formData.append('weight_kg', document.getElementById('weight_kg')?.value || '0');
+            formData.append('dimensions_cm', document.getElementById('dimensions_cm')?.value || '');
+        }
+
+        // Add file IDs for responsibility_declaration and consent_form
+        ['responsibility_declaration', 'consent_form'].forEach(id => {
+            const savedFileId = localStorage.getItem(`file-${id}`);
+            if (savedFileId) {
+                formData.append(id, savedFileId);
+            }
+        });
+
+        // Log formData for debugging
+        console.log('FormData for booking:', Object.fromEntries(formData.entries()));
+
+        try {
+            // Step 1: Create booking
+            const bookingResponse = await fetch('/bookings/', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRFToken': getCsrfToken()
+                }
+            });
+
+            const bookingData = await bookingResponse.json();
+            if (!bookingResponse.ok || !bookingData.success) {
+                logger.error('Booking creation failed:', bookingData.errors);
+                displayBackendErrors(bookingData.errors || [{ field: 'general', 'message': 'Failed to create booking.' }], button);
+                button.querySelector('.spinner').classList.add('hidden');
+                button.disabled = false;
+                button.dataset.isSubmitting = 'false';
+                return;
+            }
+
+            console.log('Booking created:', bookingData.booking_id);
+
+            // Step 2: Create checkout session
+            console.log('FormData for checkout:', Object.fromEntries(formData.entries()));
+            const checkoutResponse = await fetch('/bookings/create-checkout-session/', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRFToken': getCsrfToken()
+                }
+            });
+
+            const checkoutData = await checkoutResponse.json();
+            if (checkoutData.sessionId) {
+                // Store sessionId in localStorage for debugging
+                localStorage.setItem('last_stripe_session_id', checkoutData.sessionId);
+                logger.log('Redirecting to Stripe with sessionId:', checkoutData.sessionId);
+                await window.stripe.redirectToCheckout({ sessionId: checkoutData.sessionId });
+            } else {
+                logger.error('Checkout session creation failed:', checkoutData.errors);
+                displayBackendErrors(checkoutData.errors || [{ field: 'general', 'message': 'Failed to create payment session.' }], button);
+            }
+        } catch (e) {
+            logger.error('Payment error:', e);
+            displayBackendErrors([{ field: 'general', 'message': 'Payment initiation failed. Please try again.' }], button);
+        } finally {
+            button.querySelector('.spinner').classList.add('hidden');
+            button.disabled = false;
+            button.dataset.isSubmitting = 'false';
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        loadFormData();
+        updatePassengerFields();
+        toggleRequiredFields();
+        updateSummary();
+
+        bookingForm.addEventListener('input', saveFormData);
+        [adultsInput, youthsInput, childrenInput, infantsInput].forEach(input => {
+            if (input) {
+                input.addEventListener('change', () => {
+                    updatePassengerFields();
+                    toggleRequiredFields();
+                    saveFormData();
+                    updateSummary();
+                });
+            }
+        });
+
+        nextButtons.forEach(button => {
+            button.addEventListener('click', async () => {
+                button.querySelector('.spinner').classList.remove('hidden');
+                button.disabled = true;
+                const nextStep = parseInt(button.dataset.next);
+                const valid = await validateStep(nextStep - 1, button);
+                if (valid) {
+                    updateStep(nextStep);
+                    saveFormData();
+                    updateSummary();
+                }
+                button.querySelector('.spinner').classList.add('hidden');
+                button.disabled = false;
             });
         });
-    }
 
-    // Update summary
-    function updateSummary() {
-        const adults = parseInt(document.getElementById('adults')?.value || 0, 10);
-        const children = parseInt(document.getElementById('children')?.value || 0, 10);
-        const infants = parseInt(document.getElementById('infants')?.value || 0, 10);
-        const scheduleId = document.getElementById('schedule_id')?.value;
-        const isUnaccompaniedMinor = document.getElementById('is_unaccompanied_minor')?.checked;
-        const addCargo = document.getElementById('add_cargo_checkbox')?.checked;
-        const isGroupBooking = document.getElementById('is_group_booking')?.checked;
-        const isEmergency = document.getElementById('is_emergency')?.checked;
-
-        const scheduleOption = document.querySelector(`#schedule_id option[value="${scheduleId}"]`);
-        document.getElementById('summary-schedule').textContent = scheduleOption?.text || 'Not selected';
-        document.getElementById('summary-passengers').textContent = `${adults} Adult${adults !== 1 ? 's' : ''}, ${children} Child${children !== 1 ? 'ren' : ''}, ${infants} Infant${infants !== 1 ? 's' : ''}`;
-        document.getElementById('summary-cargo').textContent = addCargo ? (document.getElementById('cargo_type')?.value || 'None') : 'None';
-        document.getElementById('summary-extras').textContent = [
-            isUnaccompaniedMinor ? 'Unaccompanied Minor' : '',
-            isGroupBooking ? 'Group Booking' : '',
-            isEmergency ? 'Emergency Travel' : ''
-        ].filter(Boolean).join(', ') || 'None';
-
-        let total = 0;
-        if (scheduleOption) {
-            const fareMatch = scheduleOption.text.match(/FJD (\d+\.\d{2})/);
-            total += parseFloat(fareMatch ? fareMatch[1] : 0) * (adults + children + infants);
-        }
-        if (isEmergency) total += 50;
-        document.getElementById('summary-total').textContent = total.toFixed(2);
-    }
-
-    // Input change listeners
-    ['adults', 'children', 'infants', 'schedule_id', 'guest_email', 'is_unaccompanied_minor', 'add_cargo_checkbox', 'is_group_booking', 'is_emergency'].forEach(id => {
-        const input = document.getElementById(id);
-        if (input) {
-            input.addEventListener('change', async () => {
-                console.log(`Input ${id} changed to:`, input.value);
-                updateSummary();
-                await validateStep(currentStep);
+        prevButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const prevStep = parseInt(button.dataset.prev);
+                updateStep(prevStep);
+                saveFormData();
             });
-        }
-    });
+        });
 
-    document.getElementById('passenger-details')?.addEventListener('change', async () => {
-        await savePassengerData();
-        updateEmergencyWarning();
-        updateSummary();
-        await validateStep(currentStep);
+        cargoCheckbox?.addEventListener('change', () => {
+            cargoFields.classList.toggle('hidden', !cargoCheckbox.checked);
+            saveFormData();
+            updateSummary();
+        });
+
+        unaccompaniedMinorCheckbox?.addEventListener('change', () => {
+            unaccompaniedMinorFields.classList.toggle('hidden', !unaccompaniedMinorCheckbox.checked);
+            toggleRequiredFields();
+            saveFormData();
+            updateSummary();
+        });
+
+        [groupBookingCheckbox, emergencyCheckbox].forEach(checkbox => {
+            checkbox?.addEventListener('change', () => {
+                saveFormData();
+                updateSummary();
+            });
+        });
+
+        passengerDetails?.addEventListener('click', (e) => {
+            if (e.target.classList.contains('passenger-fieldset-header')) {
+                const index = Array.from(e.target.parentNode.parentNode.children).indexOf(e.target.parentNode);
+                const type = e.target.closest('.passenger-fieldset').parentNode.id.replace('-fields', '');
+                const content = e.target.nextElementSibling;
+                const isOpen = content.classList.toggle('open');
+                e.target.querySelector('.toggle-icon').textContent = isOpen ? '−' : '+';
+                passengerData[type][index].open = isOpen;
+                savePassengerData();
+            }
+        });
+
+        document.getElementById('proceed-to-payment')?.addEventListener('click', async () => {
+            const valid = await validateStep(4, document.getElementById('proceed-to-payment'));
+            if (valid) {
+                await proceedToPayment();
+            }
+        });
+
+        [document.getElementById('responsibility_declaration'), document.getElementById('consent_form')].forEach(input => {
+            if (input) {
+                input.addEventListener('change', () => handleFileUpload(input, input.nextElementSibling));
+            }
+        });
+
+        AOS.init();
     });
-});
+})();

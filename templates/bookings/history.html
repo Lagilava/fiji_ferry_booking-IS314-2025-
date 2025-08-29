@@ -9,7 +9,7 @@
     <h1 class="text-3xl font-bold text-center mb-4" style="font-family: 'Playfair Display', serif; color: var(--text-color);">Your Booking History</h1>
     <h2 class="text-xl text-center mb-8" style="color: var(--text-color);">View and Manage Your Island Adventures</h2>
     <div class="flex justify-center mb-8">
-        <a href="{% url 'bookings:book' %}" class="bg-[var(--button-bg)] bg-blue-500 text-white font-semibold px-6 py-3 rounded-lg hover:bg-[var(--button-hover)] hover:bg-blue-600 transition-colors duration-300" aria-label="Book another ferry ticket">Book Another Ferry</a>
+        <a href="{% url 'bookings:book_ticket' %}" class="bg-[var(--button-bg)] bg-blue-500 text-white font-semibold px-6 py-3 rounded-lg hover:bg-[var(--button-hover)] hover:bg-blue-600 transition-colors duration-300" aria-label="Book another ferry ticket">Book Another Ferry</a>
     </div>
 
     <div class="max-w-5xl mx-auto">
@@ -52,7 +52,7 @@
     </div>
 
     <div class="flex justify-center mt-8 gap-4">
-        <a href="{% url 'bookings:book' %}" class="bg-[var(--button-bg)] bg-blue-500 text-white font-semibold px-6 py-3 rounded-lg hover:bg-[var(--button-hover)] hover:bg-blue-600 transition-colors duration-300" aria-label="Book another ticket">Book Another Ticket</a>
+        <a href="{% url 'bookings:book_ticket' %}" class="bg-[var(--button-bg)] bg-blue-500 text-white font-semibold px-6 py-3 rounded-lg hover:bg-[var(--button-hover)] hover:bg-blue-600 transition-colors duration-300" aria-label="Book another ticket">Book Another Ticket</a>
         <a href="{% url 'home' %}" class="bg-gray-600 text-white font-semibold px-6 py-3 rounded-lg hover:bg-gray-700 transition-colors duration-300" aria-label="Back to home">Back to Home</a>
     </div>
 </section>

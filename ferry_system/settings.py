@@ -2,6 +2,7 @@ from pathlib import Path
 from decouple import config
 import os
 from dotenv import load_dotenv
+from celery.schedules import crontab
 
 # Build paths inside the project
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -19,7 +20,18 @@ CSRF_TRUSTED_ORIGINS = [
     'https://*.ngrok-free.app',
     'http://localhost:8000',
     'http://127.0.0.1:8000',
+    'https://uc-creating-de-april.trycloudflare.com',
 ]
+
+# Base URL for success/cancel redirects
+SITE_URL = 'https://fbb9dcd24612.ngrok-free.app'
+
+CELERY_BEAT_SCHEDULE = {
+    'update-schedules-every-minute': {
+        'task': 'bookings.tasks.update_schedules_status',
+        'schedule': crontab(minute='*'),  # every minute
+    },
+}
 
 # Application definition
 INSTALLED_APPS = [
@@ -31,6 +43,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'accounts',
     'bookings',
+    'django_celery_beat',
 ]
 
 MIDDLEWARE = [

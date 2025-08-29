@@ -5,18 +5,91 @@
 
 {% block content %}
 <section class="container mx-auto px-4 sm:px-6 lg:px-8 py-12" data-aos="fade-up">
-    <h2 class="text-3xl font-bold text-center mb-8" style="font-family: 'Playfair Display', serif; color: var(--text-color);">Privacy Policy</h2>
-    <div class="max-w-3xl mx-auto bg-[var(--card-bg)] p-8 rounded-lg shadow-lg">
-        <p class="text-[var(--text-color)] mb-4">Your privacy is important to us. This Privacy Policy outlines how Fiji Ferry Booking collects, uses, and protects your personal information.</p>
-        <h3 class="text-xl font-semibold mb-2 text-[var(--text-color)]">Information We Collect</h3>
-        <p class="text-[var(--text-color)] mb-4">We collect information such as your name, email, contact details, and payment information to process bookings and comply with legal requirements.</p>
-        <h3 class="text-xl font-semibold mb-2 text-[var(--text-color)]">How We Use Your Information</h3>
-        <p class="text-[var(--text-color)] mb-4">Your information is used to manage your ferry bookings, process payments, and send confirmation emails. We may also use it to notify you of schedule changes or important updates.</p>
-        <h3 class="text-xl font-semibold mb-2 text-[var(--text-color)]">Data Security</h3>
-        <p class="text-[var(--text-color)] mb-4">We use secure protocols (e.g., HTTPS) and encryption to protect your data. Payment details are processed securely via Stripe.</p>
-        <h3 class="text-xl font-semibold mb-2 text-[var(--text-color)]">Contact Us</h3>
-        <p class="text-[var(--text-color)] mb-4">If you have questions about this Privacy Policy, please contact us at <a href="mailto:support@ferrysystem.com" class="text-[var(--link-color)] hover:text-[var(--link-hover)]">support@ferrysystem.com</a>.</p>
+    <h2 class="text-3xl font-bold text-center mb-8" style="font-family: 'Playfair Display', serif; color: var(--text-color);">
+        Privacy Policy
+    </h2>
+
+    <div class="max-w-3xl mx-auto bg-[var(--card-bg)] p-8 rounded-lg shadow-lg space-y-6">
+
+        <!-- Introduction -->
+        <div>
+            <p class="text-[var(--text-color)]">
+                At <strong>Fiji Ferry Booking</strong>, your privacy is important. This Privacy Policy explains how we collect, use, and protect your personal information when you use our services.
+            </p>
+        </div>
+
+        <!-- 1. Information We Collect -->
+        <div>
+            <h3 class="text-xl font-semibold mb-2 text-[var(--text-color)]">1. Information We Collect</h3>
+            <p class="text-[var(--text-color)] mb-2">We may collect the following information:</p>
+            <ul class="list-disc list-inside text-[var(--text-color)] space-y-1">
+                <li>Personal details (name, email, phone number)</li>
+                <li>Booking details (selected schedule, passengers, services, cargo)</li>
+                <li>Payment information (processed securely via Stripe)</li>
+                <li>Device and usage information (IP address, browser, activity on site)</li>
+            </ul>
+        </div>
+
+        <!-- 2. How We Use Your Information -->
+        <div>
+            <h3 class="text-xl font-semibold mb-2 text-[var(--text-color)]">2. How We Use Your Information</h3>
+            <ul class="list-disc list-inside text-[var(--text-color)] space-y-1">
+                <li>To process ferry bookings and payments</li>
+                <li>To send confirmations, receipts, and schedule updates</li>
+                <li>To communicate important service announcements</li>
+                <li>To improve our services and website experience</li>
+            </ul>
+        </div>
+
+        <!-- 3. Sharing and Disclosure -->
+        <div>
+            <h3 class="text-xl font-semibold mb-2 text-[var(--text-color)]">3. Sharing and Disclosure</h3>
+            <p class="text-[var(--text-color)] mb-2">
+                We do not sell or rent your personal information. Your information may be shared only with:
+            </p>
+            <ul class="list-disc list-inside text-[var(--text-color)] space-y-1">
+                <li>Service providers who help us operate the booking platform</li>
+                <li>Legal authorities if required by law</li>
+            </ul>
+        </div>
+
+        <!-- 4. Data Security -->
+        <div>
+            <h3 class="text-xl font-semibold mb-2 text-[var(--text-color)]">4. Data Security</h3>
+            <p class="text-[var(--text-color)]">
+                We use industry-standard security measures, including HTTPS and encryption, to protect your data. Payment information is processed securely via Stripe. However, no online service can guarantee 100% security.
+            </p>
+        </div>
+
+        <!-- 5. Your Rights -->
+        <div>
+            <h3 class="text-xl font-semibold mb-2 text-[var(--text-color)]">5. Your Rights</h3>
+            <p class="text-[var(--text-color)] mb-2">You have the right to:</p>
+            <ul class="list-disc list-inside text-[var(--text-color)] space-y-1">
+                <li>Access the personal information we hold about you</li>
+                <li>Request correction or deletion of your information</li>
+                <li>Withdraw consent where applicable</li>
+            </ul>
+        </div>
+
+        <!-- 6. Contact Us -->
+        <div>
+            <h3 class="text-xl font-semibold mb-2 text-[var(--text-color)]">6. Contact Us</h3>
+            <p class="text-[var(--text-color)]">
+                If you have questions about this Privacy Policy or how your data is handled, please contact us at
+                <a href="mailto:support@ferrysystem.com" class="text-[var(--link-color)] hover:text-[var(--link-hover)]">support@ferrysystem.com</a>.
+            </p>
+        </div>
+
+        <!-- 7. Policy Updates -->
+        <div>
+            <h3 class="text-xl font-semibold mb-2 text-[var(--text-color)]">7. Policy Updates</h3>
+            <p class="text-[var(--text-color)]">
+                We may update this Privacy Policy from time to time. Updates will be posted on this page with the revision date.
+            </p>
+        </div>
     </div>
+
     <div class="text-center mt-6">
         <a href="{% url 'home' %}" class="text-[var(--link-color)] hover:text-[var(--link-hover)] font-semibold" aria-label="Back to home">← Back to Home</a>
     </div>

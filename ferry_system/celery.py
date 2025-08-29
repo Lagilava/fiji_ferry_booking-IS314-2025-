@@ -1,7 +1,10 @@
 import os
 from celery import Celery
+from dotenv import load_dotenv
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'your_project_name.settings')
-app = Celery('your_project_name')
+load_dotenv()  # Make sure Celery sees the .env
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', os.environ.get('DJANGO_SETTINGS_MODULE'))
+
+app = Celery('ferry_system')
 app.config_from_object('django.conf:settings', namespace='CELERY')
 app.autodiscover_tasks()

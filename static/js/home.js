@@ -1,413 +1,493 @@
-document.addEventListener('DOMContentLoaded', () => {
-    let passengerData = { adult: [], child: [], infant: [] };
-    let currentStep = parseInt(JSON.parse(document.getElementById('form-data')?.textContent || '{}').step || 1, 10);
-    const form = document.getElementById('booking-form');
-    const nextButtons = document.querySelectorAll('.next-step');
-    const prevButtons = document.querySelectorAll('.prev-step');
+document.addEventListener('DOMContentLoaded', function () {
+    // ---- Preload Images for Slideshow ----
+    function preloadImages(slides) {
+        slides.forEach(slide => {
+            const imgLight = new Image();
+            imgLight.src = slide.dataset.srcLight;
+            const imgDark = new Image();
+            imgDark.src = slide.dataset.srcDark;
+        });
+    }
 
-    showStep(currentStep);
-    updateProgressBar(currentStep);
-    generatePassengerFields();
-    setupFilePreview();
-    updateSummary();
-
-    // Event listeners for step navigation
-    nextButtons.forEach(button => {
-        button.addEventListener('click', async () => {
-            console.log('Next button clicked for step:', currentStep);
-            button.disabled = true;
-            button.textContent = 'Validating...';
-            await savePassengerData();
-            const isValid = await validateStep(currentStep);
-            if (isValid) {
-                console.log('Proceeding to step:', button.dataset.next);
-                currentStep = parseInt(button.dataset.next, 10);
-                showStep(currentStep);
-                updateProgressBar(currentStep);
-                updateSummary();
-            } else {
-                console.log('Validation failed, staying on step:', currentStep);
+    // ---- Date Picker ----
+    const formData = JSON.parse(document.getElementById('form-data')?.textContent || '{}');
+    if (typeof flatpickr !== 'undefined') {
+        flatpickr('#departure-date', {
+            minDate: 'today',
+            dateFormat: 'Y-m-d',
+            defaultDate: formData.date || null,
+            onReady: function () {
+                this.input.classList.add('bg-var-input-bg', 'text-var-text-color');
             }
-            button.disabled = false;
-            button.textContent = 'Next';
         });
-    });
+    }
 
-    prevButtons.forEach(button => {
-        button.addEventListener('click', () => {
-            currentStep = parseInt(button.dataset.prev, 10);
-            showStep(currentStep);
-            updateProgressBar(currentStep);
-            updateSummary();
-        });
-    });
-
-    // Form submission
-    form.addEventListener('submit', async e => {
-        e.preventDefault();
-        const submitButton = document.getElementById('submit-button');
-        submitButton.disabled = true;
-        submitButton.textContent = 'Processing...';
-        await savePassengerData();
-        const formData = new FormData(form);
-        Object.entries(passengerData).forEach(([type, passengers]) => {
-            passengers.forEach((p, i) => {
-                formData.append(`passenger_${type}_${i}_first_name`, p.firstName || '');
-                formData.append(`passenger_${type}_${i}_last_name`, p.lastName || '');
-                formData.append(`passenger_${type}_${i}_age`, p.age || '');
-                if (p.isGroupLeader) formData.append(`passenger_${type}_${i}_is_group_leader`, 'on');
-                if (p.isParent) formData.append(`passenger_${type}_${i}_is_parent`, 'on');
-                if (p.document) formData.append(`passenger_${type}_${i}_document`, p.document);
-            });
-        });
+    // ---- AOS Animations ----
+    if (typeof AOS !== 'undefined') {
         try {
-            const response = await fetch(form.action, {
-                method: 'POST',
-                body: formData,
-                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            AOS.init({
+                duration: 500,
+                easing: 'ease-in-out',
+                once: true,
+                disable: 'mobile'
             });
-            const data = await response.json();
-            if (data.success) {
-                window.location.href = data.redirect_url;
-            } else {
-                showError(data.error || 'An error occurred.', data.step || 1);
-                currentStep = data.step || 1;
-                showStep(currentStep);
-                updateProgressBar(currentStep);
-            }
         } catch (error) {
-            console.error('Submission error:', error);
-            showError('Failed to submit form. Please try again.', currentStep);
+            console.warn('AOS init failed:', error);
         }
-        submitButton.disabled = false;
-        submitButton.textContent = 'Proceed to Payment';
-    });
+    }
 
-    // Validate step by sending data to backend
-    async function validateStep(step) {
-        const formData = new FormData(form);
-        formData.append('step', step);
-        Object.entries(passengerData).forEach(([type, passengers]) => {
-            passengers.forEach((p, i) => {
-                formData.append(`passenger_${type}_${i}_first_name`, p.firstName || '');
-                formData.append(`passenger_${type}_${i}_last_name`, p.lastName || '');
-                formData.append(`passenger_${type}_${i}_age`, p.age || '');
-                if (p.isGroupLeader) formData.append(`passenger_${type}_${i}_is_group_leader`, 'on');
-                if (p.isParent) formData.append(`passenger_${type}_${i}_is_parent`, 'on');
-                if (p.document) formData.append(`passenger_${type}_${i}_document`, p.document);
+    // ---- Hero Slideshow ----
+    const slides = document.querySelectorAll('.hero-slide');
+    const dots = document.querySelectorAll('.hero-nav-dots .dot');
+    let currentIndex = 0, slideInterval;
+
+    function showSlide(index) {
+        slides.forEach((slide, i) => {
+            slide.style.opacity = i === index ? '1' : '0';
+            slide.setAttribute('aria-hidden', i !== index);
+            if (dots[i]) {
+                dots[i].classList.toggle('active', i === index);
+                dots[i].setAttribute('aria-selected', i === index);
+            }
+        });
+        currentIndex = index;
+    }
+
+    function nextSlide() {
+        showSlide((currentIndex + 1) % slides.length);
+    }
+
+    if (slides.length) {
+        preloadImages(slides);
+        function updateSlideImages() {
+            const isDarkMode = document.documentElement.classList.contains('dark');
+            slides.forEach(slide => {
+                const url = isDarkMode ? slide.dataset.srcDark : slide.dataset.srcLight;
+                slide.style.backgroundImage = `url('${url}')`; // Trusted URLs only
+            });
+        }
+        updateSlideImages();
+        const observer = new MutationObserver(updateSlideImages);
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+        dots.forEach((dot, i) => {
+            dot.setAttribute('role', 'button');
+            dot.addEventListener('click', () => {
+                clearInterval(slideInterval);
+                showSlide(i);
+                slideInterval = setInterval(nextSlide, 8000);
             });
         });
-
-        try {
-            const response = await fetch('/validate-step/', {
-                method: 'POST',
-                body: formData,
-                headers: { 'X-Requested-With': 'XMLHttpRequest' }
-            });
-            const data = await response.json();
-            if (data.success) {
-                console.log('Backend validation passed for step:', step);
-                return true;
-            } else {
-                console.log('Backend validation failed:', data.errors);
-                showValidationErrors(data.errors);
-                return false;
-            }
-        } catch (error) {
-            console.error('Validation error:', error);
-            showValidationErrors(['Failed to validate. Please try again.']);
-            return false;
-        }
-    }
-
-    // Show validation errors
-    function showValidationErrors(errors) {
-        const errorContainer = document.getElementById('validation-errors');
-        const errorList = document.getElementById('validation-error-list');
-        const nextButton = document.querySelector(`.next-step[data-next="${currentStep + 1}"]`) || document.getElementById('submit-button');
-
-        if (!errorContainer || !errorList || !nextButton) {
-            console.error('Missing DOM elements:', { errorContainer, errorList, nextButton });
-            return false;
-        }
-
-        if (errors.length) {
-            errorContainer.classList.remove('hidden');
-            errorList.innerHTML = errors.map(e => `<li>${e}</li>`).join('');
-            nextButton.disabled = true;
-            return false;
-        }
-
-        errorContainer.classList.add('hidden');
-        errorList.innerHTML = '';
-        nextButton.disabled = false;
-        nextButton.removeAttribute('disabled');
-        console.log('Validation passed, enabling Next button');
-        return true;
-    }
-
-    // Show error message
-    function showError(message, step) {
-        const errorContainer = document.getElementById('validation-errors');
-        const errorList = document.getElementById('validation-error-list');
-        errorContainer.classList.remove('hidden');
-        errorList.innerHTML = `<li>${message}</li>`;
-    }
-
-    // Save passenger data
-    async function savePassengerData() {
-        passengerData = { adult: [], child: [], infant: [] };
-        const adults = parseInt(document.getElementById('adults')?.value || 0, 10);
-        const children = parseInt(document.getElementById('children')?.value || 0, 10);
-        const infants = parseInt(document.getElementById('infants')?.value || 0, 10);
-
-        ['adult', 'child', 'infant'].forEach(type => {
-            const count = type === 'adult' ? adults : type === 'child' ? children : infants;
-            for (let i = 0; i < count; i++) {
-                const passenger = {};
-                const firstName = document.getElementById(`passenger_${type}_${i}_first_name`)?.value;
-                const lastName = document.getElementById(`passenger_${type}_${i}_last_name`)?.value;
-                const age = document.getElementById(`passenger_${type}_${i}_age`)?.value;
-                const isGroupLeader = document.getElementById(`passenger_${type}_${i}_is_group_leader`)?.checked;
-                const isParent = document.getElementById(`passenger_${type}_${i}_is_parent`)?.checked;
-                const documentInput = document.getElementById(`passenger_${type}_${i}_document`);
-                const document = documentInput?.files?.[0];
-
-                if (firstName) passenger.firstName = firstName;
-                if (lastName) passenger.lastName = lastName;
-                if (age) passenger.age = age;
-                if (isGroupLeader) passenger.isGroupLeader = true;
-                if (isParent) passenger.isParent = true;
-                if (document) passenger.document = document;
-
-                console.log(`Updated ${type} ${i + 1}:`, passenger);
-                passengerData[type].push(passenger);
-            }
+        slides.forEach(slide => {
+            slide.addEventListener('mouseenter', () => clearInterval(slideInterval));
+            slide.addEventListener('mouseleave', () => slideInterval = setInterval(nextSlide, 8000));
+            slide.addEventListener('focusin', () => clearInterval(slideInterval));
+            slide.addEventListener('focusout', () => slideInterval = setInterval(nextSlide, 8000));
         });
-
-        console.log('Saved passenger data:', passengerData);
+        showSlide(currentIndex);
+        slideInterval = setInterval(nextSlide, 8000);
     }
 
-    // Generate passenger fields
-    function generatePassengerFields() {
-        const adults = parseInt(document.getElementById('adults')?.value || 0, 10);
-        const children = parseInt(document.getElementById('children')?.value || 0, 10);
-        const infants = parseInt(document.getElementById('infants')?.value || 0, 10);
-
-        ['adult', 'child', 'infant'].forEach(type => {
-            const container = document.getElementById(`${type}-fields`);
-            if (!container) return;
-            container.innerHTML = '';
-            const count = type === 'adult' ? adults : type === 'child' ? children : infants;
-            for (let i = 0; i < count; i++) {
-                container.appendChild(createFieldset(type, i));
-            }
-        });
-
-        document.getElementById('passenger-details').classList.toggle('hidden', !(adults + children + infants));
-        toggleResponsibilityDeclaration(adults, children, infants);
-        updateEmergencyWarning();
-    }
-
-    // Create passenger fieldset
-    function createFieldset(type, index) {
-        const fieldset = document.createElement('div');
-        fieldset.className = 'passenger-fieldset';
-        const header = document.createElement('div');
-        header.className = 'passenger-fieldset-header';
-        header.innerHTML = `
-            <h4>${type.charAt(0).toUpperCase() + type.slice(1)} ${index + 1}</h4>
-            <span class="toggle-icon">${fieldset.classList.contains('open') ? '−' : '+'}</span>
-        `;
-        const content = document.createElement('div');
-        content.className = `passenger-fieldset-content ${passengerData[type][index]?.open ? 'open' : ''}`;
-        content.innerHTML = `
-            <div class="relative">
-                <label for="passenger_${type}_${index}_first_name" class="block text-sm font-medium text-gray-900 dark:text-gray-300 font-roboto">First Name:</label>
-                <input type="text" id="passenger_${type}_${index}_first_name" name="passenger_${type}_${index}_first_name" value="${passengerData[type][index]?.firstName || ''}" class="mt-1 w-full p-3 border rounded-lg bg-input-bg dark:bg-gray-700 text-gray-900 dark:text-gray-200 border-border-color dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-button-bg dark:focus:ring-blue-400" required aria-describedby="error-passenger_${type}_${index}_first_name">
-                <p id="error-passenger_${type}_${index}_first_name" class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
-            </div>
-            <div class="relative">
-                <label for="passenger_${type}_${index}_last_name" class="block text-sm font-medium text-gray-900 dark:text-gray-300 font-roboto">Last Name:</label>
-                <input type="text" id="passenger_${type}_${index}_last_name" name="passenger_${type}_${index}_last_name" value="${passengerData[type][index]?.lastName || ''}" class="mt-1 w-full p-3 border rounded-lg bg-input-bg dark:bg-gray-700 text-gray-900 dark:text-gray-200 border-border-color dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-button-bg dark:focus:ring-blue-400" required aria-describedby="error-passenger_${type}_${index}_last_name">
-                <p id="error-passenger_${type}_${index}_last_name" class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
-            </div>
-            <div class="relative">
-                <label for="passenger_${type}_${index}_age" class="block text-sm font-medium text-gray-900 dark:text-gray-300 font-roboto">Age:</label>
-                <input type="number" id="passenger_${type}_${index}_age" name="passenger_${type}_${index}_age" min="${type === 'infant' ? 0 : type === 'child' ? 2 : 12}" max="${type === 'infant' ? 1 : type === 'child' ? 11 : 150}" value="${passengerData[type][index]?.age || ''}" class="mt-1 w-full p-3 border rounded-lg bg-input-bg dark:bg-gray-700 text-gray-900 dark:text-gray-200 border-border-color dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-button-bg dark:focus:ring-blue-400" required aria-describedby="error-passenger_${type}_${index}_age">
-                <p id="error-passenger_${type}_${index}_age" class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
-            </div>
-            ${type === 'adult' ? `
-                <div class="relative">
-                    <label class="flex items-center">
-                        <input type="checkbox" id="passenger_${type}_${index}_is_group_leader" name="passenger_${type}_${index}_is_group_leader" ${passengerData[type][index]?.isGroupLeader ? 'checked' : ''} class="mr-2 h-5 w-5 text-blue-600 dark:text-blue-400 focus:ring-button-bg dark:focus:ring-blue-400 border-border-color dark:border-gray-600">
-                        <span class="text-sm font-medium text-gray-900 dark:text-gray-300 font-roboto">Group Leader</span>
-                    </label>
-                </div>
-                <div class="relative">
-                    <label class="flex items-center">
-                        <input type="checkbox" id="passenger_${type}_${index}_is_parent" name="passenger_${type}_${index}_is_parent" ${passengerData[type][index]?.isParent ? 'checked' : ''} class="mr-2 h-5 w-5 text-blue-600 dark:text-blue-400 focus:ring-button-bg dark:focus:ring-blue-400 border-border-color dark:border-gray-600">
-                        <span class="text-sm font-medium text-gray-900 dark:text-gray-300 font-roboto">Parent/Guardian</span>
-                    </label>
-                </div>
-            ` : ''}
-            <div class="relative">
-                <label for="passenger_${type}_${index}_document" class="block text-sm font-medium text-gray-900 dark:text-gray-300 font-roboto">Document (Optional):</label>
-                <input type="file" id="passenger_${type}_${index}_document" name="passenger_${type}_${index}_document" accept=".pdf,.jpg,.jpeg,.png" class="mt-1 w-full p-3 border rounded-lg bg-input-bg dark:bg-gray-700 text-gray-900 dark:text-gray-200 border-border-color dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-button-bg dark:focus:ring-blue-400">
-                <div class="file-preview mt-2 hidden"></div>
-                ${type === 'adult' ? `<p class="mt-1 text-sm text-yellow-600 dark:text-yellow-400 font-roboto">No document will mark this as an emergency booking (+FJD 50).</p>` : ''}
-                <p id="error-passenger_${type}_${index}_document" class="error-message text-red-600 dark:text-red-400 text-sm hidden mt-1"></p>
-            </div>
-        `;
-        fieldset.appendChild(header);
-        fieldset.appendChild(content);
-        header.addEventListener('click', () => {
-            content.classList.toggle('open');
-            header.querySelector('.toggle-icon').textContent = content.classList.contains('open') ? '−' : '+';
-        });
-        return fieldset;
-    }
-
-    // Toggle responsibility declaration
-    function toggleResponsibilityDeclaration(adults, children, infants) {
-        const hasMinors = children > 0 || infants > 0;
-        const declarationFields = document.getElementById('responsibility-declaration-fields');
-        if (!declarationFields) return;
-        const needsDeclaration = hasMinors && adults > 0 && !passengerData.adult.some(p => p.isParent);
-        declarationFields.classList.toggle('hidden', !needsDeclaration);
-        updateEmergencyWarning();
-    }
-
-    // Update emergency warning
-    function updateEmergencyWarning() {
-        const adults = parseInt(document.getElementById('adults')?.value || 0, 10);
-        const isEmergencyCheckbox = document.getElementById('is_emergency');
-        const needsEmergency = passengerData.adult.some(p => !p.document);
-        if (needsEmergency && isEmergencyCheckbox) {
-            isEmergencyCheckbox.checked = true;
-            isEmergencyCheckbox.disabled = true;
-            const warning = document.createElement('p');
-            warning.className = 'text-yellow-600 dark:text-yellow-400 text-sm mt-2 font-roboto';
-            warning.id = 'emergency-warning';
-            warning.textContent = 'Emergency booking (+FJD 50) required due to missing adult documents.';
-            const existingWarning = document.querySelector('#emergency-warning');
-            if (!existingWarning) {
-                isEmergencyCheckbox.parentElement.appendChild(warning);
-            }
-        } else if (isEmergencyCheckbox) {
-            isEmergencyCheckbox.disabled = false;
-            const existingWarning = document.querySelector('#emergency-warning');
-            if (existingWarning) existingWarning.remove();
-        }
-    }
-
-    // Show form step
-    function showStep(step) {
-        const steps = document.querySelectorAll('.form-step');
-        const indicators = document.querySelectorAll('.step');
-
-        steps.forEach(s => s.classList.add('hidden'));
-        indicators.forEach(s => s.classList.remove('active'));
-
-        if (steps[step - 1]) {
-            steps[step - 1].classList.remove('hidden');
-        }
-        if (indicators[step - 1]) {
-            indicators[step - 1].classList.add('active');
-        }
-    }
-
-    // Update progress bar
-    function updateProgressBar(step) {
-        const progressFill = document.querySelector('.progress-bar-fill');
-        if (progressFill) {
-            progressFill.style.width = `${step * 25}%`;
-        }
-    }
-
-    // Clear errors
-    function clearErrors() {
-        document.querySelectorAll('.error-message').forEach(e => {
-            e.textContent = '';
-            e.classList.add('hidden');
-        });
-        document.querySelectorAll('[aria-invalid="true"]').forEach(input => {
-            input.removeAttribute('aria-invalid');
-        });
-    }
-
-    // Setup file preview
-    function setupFilePreview() {
-        document.querySelectorAll('input[type="file"]').forEach(input => {
-            input.addEventListener('change', () => {
-                const file = input.files[0];
-                if (!file) return;
-                console.log(`File selected for ${input.id}: ${file.name}`);
-                const preview = input.nextElementSibling;
-                if (!preview || !preview.classList.contains('file-preview')) return;
-                preview.innerHTML = '';
-                preview.classList.remove('hidden');
-                if (file.type.startsWith('image/')) {
-                    const img = document.createElement('img');
-                    img.src = URL.createObjectURL(file);
-                    preview.appendChild(img);
-                } else if (file.type === 'application/pdf') {
-                    const div = document.createElement('div');
-                    div.className = 'pdf-icon';
-                    div.textContent = 'PDF';
-                    preview.appendChild(div);
+    // ---- Schedule Sorting ----
+    const sortSelect = document.getElementById('sort-by');
+    if (sortSelect) {
+        sortSelect.addEventListener('change', function () {
+            const sortBy = this.value;
+            const scheduleList = document.querySelector('.schedule-list');
+            const cards = Array.from(scheduleList?.querySelectorAll('.schedule-card') || []);
+            if (!cards.length) return;
+            cards.sort((a, b) => {
+                if (sortBy === 'price') {
+                    return parseFloat(a.querySelector('.fare')?.textContent.replace('FJD ', '') || Infinity) -
+                           parseFloat(b.querySelector('.fare')?.textContent.replace('FJD ', '') || Infinity);
+                } else if (sortBy === 'duration') {
+                    return parseDuration(a.querySelector('.duration')?.textContent) -
+                           parseDuration(b.querySelector('.duration')?.textContent);
+                } else {
+                    return new Date(a.querySelector('.departure-time')?.dataset.iso || 0) -
+                           new Date(b.querySelector('.departure-time')?.dataset.iso || 0);
                 }
-                updateEmergencyWarning();
+            });
+            scheduleList.innerHTML = '';
+            cards.forEach(card => scheduleList.appendChild(card));
+        });
+    }
+
+    function parseDuration(text) {
+        if (!text) return Infinity;
+        const match = text.match(/(\d+)h\s*(\d+)?m?/);
+        return match ? parseInt(match[1]) * 60 + (parseInt(match[2]) || 0) : Infinity;
+    }
+
+    // ---- Weather ----
+    const conditionMap = {
+        sunny: '☀️', clear: '☀️',
+        cloud: '☁️', overcast: '☁️', 'partly cloudy': '☁️',
+        rain: '🌧️', shower: '🌧️',
+        thunder: '⛈️', thunderstorm: '⛈️',
+        drizzle: '🌦️',
+        mist: '🌫️', fog: '🌫️', haze: '🌫️',
+        snow: '❄️',
+        default: '🌤️'
+    };
+
+    function getWeatherIcon(desc) {
+        if (!desc) return conditionMap.default;
+        const key = Object.keys(conditionMap).find(k => desc.toLowerCase().includes(k));
+        return conditionMap[key] || conditionMap.default;
+    }
+
+    let latestUpdateTime = null;
+    const lastWeatherData = new Map();
+
+    function updateWeatherDisplay(weatherData) {
+        if (!Array.isArray(weatherData)) {
+            console.error('Weather data is not an array:', weatherData);
+            document.querySelectorAll('.schedule-card').forEach(card => {
+                updateWeatherCard(card, null);
+            });
+            return;
+        }
+
+        weatherData.forEach(weather => {
+            if (weather.route_id && weather.condition && !weather.is_expired && !weather.error) {
+                lastWeatherData.set(weather.route_id, {
+                    condition: weather.condition,
+                    temperature: weather.temperature,
+                    wind_speed: weather.wind_speed,
+                    precipitation_probability: weather.precipitation_probability,
+                    updated_at: weather.updated_at,
+                    expires_at: weather.expires_at
+                });
+            }
+            if (weather.updated_at) {
+                const weatherTime = new Date(weather.updated_at);
+                if (!latestUpdateTime || weatherTime > latestUpdateTime) {
+                    latestUpdateTime = weatherTime;
+                }
+            }
+        });
+
+        lastWeatherData.forEach((weather, routeId) => {
+            document.querySelectorAll(`.schedule-card[data-route-id="${routeId}"]`).forEach(card => {
+                updateWeatherCard(card, weather);
             });
         });
     }
 
-    // Update summary
-    function updateSummary() {
-        const adults = parseInt(document.getElementById('adults')?.value || 0, 10);
-        const children = parseInt(document.getElementById('children')?.value || 0, 10);
-        const infants = parseInt(document.getElementById('infants')?.value || 0, 10);
-        const scheduleId = document.getElementById('schedule_id')?.value;
-        const isUnaccompaniedMinor = document.getElementById('is_unaccompanied_minor')?.checked;
-        const addCargo = document.getElementById('add_cargo_checkbox')?.checked;
-        const isGroupBooking = document.getElementById('is_group_booking')?.checked;
-        const isEmergency = document.getElementById('is_emergency')?.checked;
-
-        const scheduleOption = document.querySelector(`#schedule_id option[value="${scheduleId}"]`);
-        document.getElementById('summary-schedule').textContent = scheduleOption?.text || 'Not selected';
-        document.getElementById('summary-passengers').textContent = `${adults} Adult${adults !== 1 ? 's' : ''}, ${children} Child${children !== 1 ? 'ren' : ''}, ${infants} Infant${infants !== 1 ? 's' : ''}`;
-        document.getElementById('summary-cargo').textContent = addCargo ? (document.getElementById('cargo_type')?.value || 'None') : 'None';
-        document.getElementById('summary-extras').textContent = [
-            isUnaccompaniedMinor ? 'Unaccompanied Minor' : '',
-            isGroupBooking ? 'Group Booking' : '',
-            isEmergency ? 'Emergency Travel' : ''
-        ].filter(Boolean).join(', ') || 'None';
-
-        let total = 0;
-        if (scheduleOption) {
-            const fareMatch = scheduleOption.text.match(/FJD (\d+\.\d{2})/);
-            total += parseFloat(fareMatch ? fareMatch[1] : 0) * (adults + children + infants);
+    function updateWeatherCard(card, weather) {
+        const els = {
+            condition: card.querySelector('.weather-condition'),
+            icon: card.querySelector('.weather-icon'),
+            temp: card.querySelector('.weather-temp .temp-value'),
+            wind: card.querySelector('.weather-wind .wind-value'),
+            precip: card.querySelector('.weather-precip .precip-value'),
+            windContainer: card.querySelector('.weather-wind')
+        };
+        if (!Object.values(els).every(el => el)) {
+            console.warn('Missing weather elements in card');
+            return;
         }
-        if (isEmergency) total += 50;
-        document.getElementById('summary-total').textContent = total.toFixed(2);
-    }
-
-    // Input change listeners
-    ['adults', 'children', 'infants', 'schedule_id', 'guest_email', 'is_unaccompanied_minor', 'add_cargo_checkbox', 'is_group_booking', 'is_emergency'].forEach(id => {
-        const input = document.getElementById(id);
-        if (input) {
-            input.addEventListener('change', async () => {
-                console.log(`Input ${id} changed to:`, input.value);
-                updateSummary();
-                await validateStep(currentStep);
+        if (!weather || !weather.condition || (weather.expires_at && new Date(weather.expires_at) < new Date())) {
+            els.condition.textContent = 'Weather data unavailable';
+            els.condition.classList.remove('warning');
+            els.condition.setAttribute('role', 'status');
+            els.icon.textContent = conditionMap.default;
+            els.temp.textContent = 'N/A';
+            els.wind.textContent = 'N/A';
+            els.precip.textContent = 'N/A';
+            els.windContainer.classList.remove('warning');
+        } else {
+            const mappedCondition = getWeatherIcon(weather.condition);
+            els.condition.textContent = weather.condition;
+            els.condition.classList.toggle('warning', weather.wind_speed > 30);
+            els.condition.setAttribute('role', weather.wind_speed > 30 ? 'alert' : 'status');
+            els.icon.textContent = mappedCondition;
+            els.temp.textContent = `${weather.temperature}°C`;
+            els.wind.textContent = `${weather.wind_speed} kph`;
+            els.precip.textContent = weather.precipitation_probability != null ? `${weather.precipitation_probability}%` : 'N/A';
+            els.windContainer.classList.toggle('warning', weather.wind_speed > 30);
+            Object.values(els).forEach(el => {
+                el.style.opacity = '0';
+                requestAnimationFrame(() => {
+                    el.style.transition = 'opacity 0.5s ease';
+                    el.style.opacity = '1';
+                });
             });
         }
-    });
+    }
 
-    document.getElementById('passenger-details')?.addEventListener('change', async () => {
-        await savePassengerData();
-        updateEmergencyWarning();
-        updateSummary();
-        await validateStep(currentStep);
-    });
+    const initialWeatherData = JSON.parse(document.getElementById('weather-data')?.textContent || '[]');
+    if (Array.isArray(initialWeatherData) && initialWeatherData.length) {
+        initialWeatherData.forEach(weather => {
+            weather.is_expired = !weather.condition || (weather.expires_at && new Date(weather.expires_at) < new Date());
+        });
+        updateWeatherDisplay(initialWeatherData);
+    } else {
+        document.querySelectorAll('.schedule-card').forEach(card => {
+            updateWeatherCard(card, null);
+        });
+    }
+
+    function fetchWeatherUpdates() {
+        const url = latestUpdateTime && !isNaN(latestUpdateTime)
+            ? `/api/weather/?since=${latestUpdateTime.toISOString()}`
+            : '/api/weather/';
+        fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(response => {
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                return response.json();
+            })
+            .then(data => {
+                if (data.error) {
+                    updateWeatherDisplay([]);
+                } else if (Array.isArray(data.weather) && data.weather.length) {
+                    updateWeatherDisplay(data.weather);
+                } else {
+                    updateWeatherDisplay([]);
+                }
+            })
+            .catch(error => {
+                console.error('Weather polling error:', error);
+                updateWeatherDisplay([]);
+            });
+    }
+
+    setTimeout(() => {
+        fetchWeatherUpdates();
+        setInterval(fetchWeatherUpdates, 60000); // Increased to 60s
+    }, 3000);
+
+    // ---- Schedule Polling ----
+    function pollScheduleUpdates() {
+        fetch('/api/schedules/', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(r => {
+                if (!r.ok) throw new Error(r.statusText);
+                return r.json();
+            })
+            .then(data => {
+                const nextDepartureElement = document.getElementById('next-departure-time');
+                const now = new Date();
+                const schedules = data.schedules
+                    .filter(s => s.status === 'scheduled' && new Date(s.departure_time) > now)
+                    .sort((a, b) => new Date(a.departure_time) - new Date(b.departure_time));
+
+                if (schedules.length) {
+                    const nextDeparture = schedules[0];
+                    nextDepartureElement.textContent =
+                        `${new Intl.DateTimeFormat('en-FJ', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: 'numeric', timeZone: 'Pacific/Fiji' }).format(new Date(nextDeparture.departure_time))} - ` +
+                        `${nextDeparture.route.departure_port} to ${nextDeparture.route.destination_port}`;
+                    nextDepartureElement.dataset.iso = nextDeparture.departure_time;
+                    nextDepartureElement.dataset.scheduleId = nextDeparture.id;
+                    document.querySelectorAll('.schedule-card').forEach(card =>
+                        card.classList.toggle('next-departure', card.dataset.scheduleId == nextDeparture.id));
+                } else {
+                    nextDepartureElement.textContent = 'No upcoming departures';
+                    nextDepartureElement.dataset.iso = '';
+                    nextDepartureElement.dataset.scheduleId = '';
+                    document.querySelectorAll('.schedule-card').forEach(card => card.classList.remove('next-departure'));
+                }
+
+                data.schedules.forEach(schedule => {
+                    const card = document.querySelector(`.schedule-card[data-schedule-id="${schedule.id}"]`);
+                    if (!card) return;
+                    card.querySelector('.status-badge').textContent = schedule.status.charAt(0).toUpperCase() + schedule.status.slice(1);
+                    const fareEl = card.querySelector('.fare');
+                    fareEl.textContent = schedule.status === 'scheduled' ? `FJD ${schedule.route.base_fare}` : 'Booking Unavailable';
+                    const seatCount = card.querySelector('.seat-count');
+                    seatCount.textContent = schedule.available_seats;
+                    seatCount.classList.toggle('low', schedule.available_seats < 5);
+                    const departureTime = card.querySelector('.departure-time');
+                    departureTime.dataset.iso = schedule.departure_time;
+                    departureTime.textContent = new Intl.DateTimeFormat('en-FJ', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: 'numeric', timeZone: 'Pacific/Fiji' }).format(new Date(schedule.departure_time));
+                });
+            })
+            .catch(e => {
+                console.error('Schedule polling error:', e);
+                document.getElementById('next-departure-time').textContent = 'Error loading departures';
+            });
+    }
+    setTimeout(() => {
+        pollScheduleUpdates();
+        setInterval(pollScheduleUpdates, 30000);
+    }, 2000);
+
+    // ---- Testimonials ----
+    const testimonials = document.querySelectorAll('.testimonial');
+    if (testimonials.length) {
+        let idx = 0;
+        function showTestimonial(i) {
+            testimonials.forEach((t, j) => {
+                t.style.opacity = j === i ? '1' : '0';
+                t.style.display = j === i ? 'block' : 'none';
+                t.style.transition = 'opacity 0.5s ease';
+            });
+        }
+        setInterval(() => { idx = (idx + 1) % testimonials.length; showTestimonial(idx); }, 5000);
+        showTestimonial(idx);
+    }
+
+    // ---- Map Functions ----
+    const mapEl = document.getElementById('fiji-map');
+
+    if (mapEl && typeof L !== 'undefined') {
+        try {
+            const isMobile = window.matchMedia('(max-width: 768px)').matches;
+
+            const map = L.map('fiji-map', {
+                zoomControl: !isMobile,
+                preferCanvas: true,
+                maxBounds: [[-21.0, 176.0], [-16.0, 181.0]],
+                maxBoundsViscosity: 1.0
+            }).setView([-17.7, 178.0], 7);
+
+            // Determine map tiles based on theme
+            const html = document.documentElement;
+            const isDark = html.classList.contains('dark-mode');
+            const lightTiles = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+            const darkTiles =  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+
+
+            const tileLayer = L.tileLayer(isDark ? darkTiles : lightTiles, {
+                attribution: '&copy; OpenStreetMap &copy; CARTO',
+                maxZoom: 10,
+                minZoom: 6,
+                tileSize: 256,
+                subdomains: 'abcd',
+                errorTileUrl: window.TILE_ERROR_URL || '/static/images/tile-error.png'
+            }).addTo(map);
+
+            const clusterGroup = typeof L.MarkerClusterGroup !== 'undefined'
+                ? L.markerClusterGroup({
+                    disableClusteringAtZoom: 8,
+                    spiderfyOnMaxZoom: false,
+                    showCoverageOnHover: false
+                })
+                : L.layerGroup();
+
+            // Helper functions (curved line & gradient)
+            function getCurvedLineCoords(start, end, curvature = 0.2) {
+                const latOffset = (end[0] - start[0]) * curvature;
+                const lngOffset = (end[1] - start[1]) * curvature;
+                const midLat = (start[0] + end[0]) / 2 + latOffset;
+                const midLng = (start[1] + end[1]) / 2 + lngOffset;
+                return [start, [midLat, midLng], end];
+            }
+
+            function getGradientColors(startColor, endColor, steps) {
+                const start = parseInt(startColor.slice(1), 16);
+                const end = parseInt(endColor.slice(1), 16);
+                const startR = (start >> 16) & 0xff, startG = (start >> 8) & 0xff, startB = start & 0xff;
+                const endR = (end >> 16) & 0xff, endG = (end >> 8) & 0xff, endB = end & 0xff;
+                const colors = [];
+                for (let i = 0; i <= steps; i++) {
+                    const t = i / steps;
+                    const r = Math.round(startR + t * (endR - startR));
+                    const g = Math.round(startG + t * (endG - startG));
+                    const b = Math.round(startB + t * (endB - startB));
+                    colors.push(`#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`);
+                }
+                return colors;
+            }
+
+            function colorForTier(tier) {
+                switch (tier) {
+                    case 'major': return ['#ff7f50', '#ff4500'];
+                    case 'regional': return ['#1e90ff', '#104e8b'];
+                    default: return ['#32cd32', '#228b22'];
+                }
+            }
+
+            // Fetch and draw routes
+            fetch('/bookings/api/routes/', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(response => response.ok ? response.json() : Promise.reject(`HTTP ${response.status}`))
+                .then(data => {
+                    const routes = data.routes || [];
+                    const markers = {};
+                    const layers = {};
+
+                    routes.forEach(route => {
+                        if (!route.schedule_id) return; // only scheduled routes
+
+                        const dep = route.departure_port;
+                        const dest = route.destination_port;
+                        const tier = route.service_tier || 'local';
+
+                        if (!layers[tier]) layers[tier] = L.layerGroup().addTo(map);
+
+                        // Markers
+                        if (!markers[dep.name]) markers[dep.name] = L.marker([dep.lat, dep.lng])
+                            .addTo(clusterGroup)
+                            .bindPopup(`<b>${sanitizeHTML(dep.name)}</b>`);
+                        if (!markers[dest.name]) markers[dest.name] = L.marker([dest.lat, dest.lng])
+                            .addTo(clusterGroup)
+                            .bindPopup(`<b>${sanitizeHTML(dest.name)}</b>`);
+
+                        const routeCoords = route.waypoints.length ? route.waypoints : getCurvedLineCoords([dep.lat, dep.lng], [dest.lat, dest.lng]);
+                        const gradientColors = getGradientColors(colorForTier(tier)[0], colorForTier(tier)[1], routeCoords.length - 1);
+
+                        for (let i = 0; i < routeCoords.length - 1; i++) {
+                            L.polyline([routeCoords[i], routeCoords[i + 1]], {
+                                color: gradientColors[i],
+                                weight: 2,
+                                opacity: 0.8
+                            }).addTo(layers[tier]);
+                        }
+
+                        const midIndex = Math.floor(routeCoords.length / 2);
+                        const popupContent = `
+                            <b>${sanitizeHTML(dep.name)} → ${sanitizeHTML(dest.name)}</b><br>
+                            Distance: ${sanitizeHTML(route.distance_km)} km<br>
+                            Duration: ${sanitizeHTML(formatDuration(route.estimated_duration))}<br>
+                            Fare: FJD ${sanitizeHTML(route.base_fare)}<br>
+                            <a href="{% url 'bookings:book_ticket' %}?schedule_id={{ route.schedule_id }}">Book Now</a>
+                        `;
+                        L.polyline(routeCoords).on('click', () => {
+                            L.popup().setLatLng(routeCoords[midIndex]).setContent(popupContent).openOn(map);
+                        });
+                    });
+
+                    map.addLayer(clusterGroup);
+                    const markerGroup = L.featureGroup(Object.values(markers));
+                    map.fitBounds(markerGroup.getBounds().pad(0.2));
+
+                    L.control.layers(null, layers, { collapsed: false }).addTo(map);
+                })
+                .catch(err => {
+                    console.error('Error fetching routes:', err);
+                    mapEl.innerHTML = '<p>Failed to load map routes.</p>';
+                });
+
+            // Listen for theme changes to update map tiles dynamically
+            const observer = new MutationObserver(() => {
+                const dark = html.classList.contains('dark-mode');
+                const newUrl = dark ? darkTiles : lightTiles;
+                tileLayer.setUrl(newUrl);
+            });
+            observer.observe(html, { attributes: true, attributeFilter: ['class'] });
+
+            setTimeout(() => map.invalidateSize(), 100);
+
+        } catch (err) {
+            console.error('Map initialization failed:', err);
+            mapEl.innerHTML = '<p>Map failed to load. Please try again later.</p>';
+        }
+    } else {
+        console.warn('Map element or Leaflet not found');
+        if (mapEl) mapEl.innerHTML = '<p>Map failed to load. Please try again later.</p>';
+    }
+
+
+
+    // ---- Utility Functions ----
+    function sanitizeHTML(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    function formatDuration(seconds) {
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        return `${hours}h ${minutes}m`;
+    }
 });
