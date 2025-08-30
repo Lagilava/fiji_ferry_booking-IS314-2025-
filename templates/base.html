@@ -24,57 +24,83 @@
     <!-- Custom CSS -->
     <style>
     :root {
-        --bg-color: #e6f3ff;
-        --text-color: #111827;
-        --link-color: #2563eb;
-        --link-hover: #1e40af;
-        --dropdown-bg: #ffffff;
-        --dropdown-hover: #dbeafe;
-        --border-color: #bfdbfe;
-        --button-bg: #3b82f6;
-        --button-hover: #2563eb;
-        --card-bg: #f9fafb;
-        --input-bg: #ffffff;
-        --input-text: #111827;
-        --alert-success-bg: #d1fae5;
-        --alert-success-text: #065f46;
-        --alert-error-bg: #fee2e2;
-        --alert-error-text: #991b1b;
-        --alert-info-bg: #dbeafe;
-        --alert-info-text: #1e3a8a;
-        --footer-bg: #1d86e3;
-        --footer-text: #263238;
-        --primary: #06b6d4; /* Fiji turquoise */
-        --highlight-bg: #f59e0b; /* Amber for Sign Up */
-        --highlight-hover: #d97706;
-        --wave-color: rgba(255, 255, 255, 0.3);
+        --bg-color: #F8FAF6; /* Pale coconut white */
+        --bg-secondary: #F7F9F2; /* Ivory with green hint */
+        --card-bg: #F7F9F2; /* Same as secondary */
+        --text-color: #1A3C34; /* Deep rainforest green */
+        --link-color: #2AB7CA; /* Reef turquoise */
+        --link-hover: #1A8291; /* Darker turquoise */
+        --dropdown-bg: #F7F9F2; /* Ivory */
+        --dropdown-hover: #D6F0F2; /* Light seafoam blue */
+        --border-color: #C3E2E1; /* Pale seafoam */
+        --button-bg: #F25F5C; /* Coral red */
+        --button-hover: #D94F4C; /* Darker coral */
+        --highlight-bg: #F4A261; /* Sunset coral */
+        --highlight-hover: #E68A50; /* Deeper sunset coral */
+        --input-bg: #E6F0EF; /* Light seafoam */
+        --input-text: #1A3C34; /* Matches text color */
+        --alert-success-bg: #C6F0D3; /* Lush green */
+        --alert-success-text: #1A3C34; /* Rainforest green */
+        --alert-error-bg: #FFD8D8; /* Soft coral-red */
+        --alert-error-text: #A02222; /* Dark coral */
+        --alert-info-bg: #D6EAF2; /* Seafoam blue */
+        --alert-info-text: #1A8291; /* Dark turquoise */
+        --footer-bg: #1A8291; /* Deep turquoise */
+        --footer-text: #F7F9F2; /* Ivory */
+        --primary: #2AB7CA; /* Reef turquoise */
+        --wave-color: rgba(42, 183, 202, 0.4); /* Translucent turquoise */
+        --step-1-bg: #D6F0F2; /* Light seafoam blue */
+        --step-1-accent: #2AB7CA; /* Reef turquoise */
+        --step-1-accent-hover: #1A8291; /* Dark turquoise */
+        --step-2-bg: #E0F2E1; /* Pale palm green */
+        --step-2-accent: #3D8B40; /* Lush green */
+        --step-2-accent-hover: #2A6230; /* Darker green */
+        --step-3-bg: #D8EAF2; /* Aqua mist */
+        --step-3-accent: #008F8C; /* Deep teal */
+        --step-3-accent-hover: #006A6B; /* Darker teal */
+        --step-4-bg: #FFF2E6; /* Sunset glow */
+        --step-4-accent: #F4A261; /* Sunset coral */
+        --step-4-accent-hover: #E68A50; /* Deeper coral */
     }
 
     html.dark-mode {
-        --bg-color: #123344;
-        --text-color: #f1f5f9;
-        --link-color: #60a5fa;
-        --link-hover: #93c5fd;
-        --dropdown-bg: #1e293b;
-        --dropdown-hover: #334155;
-        --border-color: #475569;
-        --button-bg: #2563eb;
-        --button-hover: #1e40af;
-        --card-bg: #212134;
-        --input-bg: #2d3748;
-        --input-text: #e2e8f0;
-        --alert-success-bg: #065f46;
-        --alert-success-text: #d1fae5;
-        --alert-error-bg: #900d0d;
-        --alert-error-text: #fee2e2;
-        --alert-info-bg: #1e293b;
-        --alert-info-text: #f1f5f9;
-        --footer-bg: #1e293b;
-        --footer-text: #ffffff;
-        --primary: #075985; /* Darker turquoise for dark mode */
-        --highlight-bg: #b45309;
-        --highlight-hover: #92400e;
-        --wave-color: rgba(109, 157, 236, 0.53);
+        --bg-color: #0D2F3F; /* Deep ocean blue */
+        --bg-secondary: #1E4A5C; /* Dark teal */
+        --card-bg: #1E4A5C; /* Dark teal */
+        --text-color: #E6ECEF; /* Soft cloud gray */
+        --link-color: #4FC1D0; /* Lighter turquoise */
+        --link-hover: #2AB7CA; /* Primary turquoise */
+        --dropdown-bg: #1E4A5C; /* Dark teal */
+        --dropdown-hover: #2A5A6B; /* Darker sea teal */
+        --border-color: #4A7887; /* Muted teal */
+        --button-bg: #F25F5C; /* Coral red */
+        --button-hover: #D94F4C; /* Darker coral */
+        --highlight-bg: #E68A50; /* Muted sunset coral */
+        --highlight-hover: #C77545; /* Deeper coral */
+        --input-bg: #2A5A6B; /* Dark sea teal */
+        --input-text: #E6ECEF; /* Matches text color */
+        --alert-success-bg: #2A6230; /* Dark green */
+        --alert-success-text: #C6F0D3; /* Light green */
+        --alert-error-bg: #A02222; /* Dark coral */
+        --alert-error-text: #FFD8D8; /* Light coral */
+        --alert-info-bg: #1A8291; /* Dark turquoise */
+        --alert-info-text: #D6EAF2; /* Seafoam blue */
+        --footer-bg: #0D2F3F; /* Deep ocean */
+        --footer-text: #E6ECEF; /* Cloud gray */
+        --primary: #2AB7CA; /* Reef turquoise */
+        --wave-color: rgba(79, 193, 208, 0.5); /* Brighter turquoise wave */
+        --step-1-bg: #D6F0F2; /* Light seafoam blue */
+        --step-1-accent: #2AB7CA; /* Reef turquoise */
+        --step-1-accent-hover: #1A8291; /* Dark turquoise */
+        --step-2-bg: #E0F2E1; /* Pale palm green */
+        --step-2-accent: #3D8B40; /* Lush green */
+        --step-2-accent-hover: #2A6230; /* Darker green */
+        --step-3-bg: #D8EAF2; /* Aqua mist */
+        --step-3-accent: #008F8C; /* Deep teal */
+        --step-3-accent-hover: #006A6B; /* Darker teal */
+        --step-4-bg: #FFF2E6; /* Sunset glow */
+        --step-4-accent: #F4A261; /* Sunset coral */
+        --step-4-accent-hover: #E68A50; /* Deeper coral */
     }
 
     * {
@@ -394,7 +420,7 @@
         left: 0;
         width: 100%;
         height: 100%;
-        background: linear-gradient(to right, rgba(59, 130, 246, 0.1), rgba(6, 182, 212, 0.1));
+        background: linear-gradient(to right, rgba(42, 183, 202, 0.1), rgba(79, 193, 208, 0.1));
         animation: waveAnimation 8s infinite linear;
         z-index: -1;
     }
@@ -490,7 +516,7 @@
     input:focus, select:focus {
         outline: none;
         border-color: var(--button-bg);
-        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+        box-shadow: 0 0 0 3px rgba(242, 95, 92, 0.2);
     }
 
     select option {
@@ -553,7 +579,7 @@
         <div class="footer-content">
             <div class="footer-contact">
                 <h3>Contact Us</h3>
-                <p>Email: <a href="https://www.youtube.com/watch?v=mOYZaiDZ7BM&ab_channel=RednexVideos">info@fijiferrybooking.com</a></p>
+                <p>Email: <a href="mailto:info@fijiferrybooking.com">info@fijiferrybooking.com</a></p>
                 <p>Phone: <a href="tel:+6797388496">+679 7388496</a></p>
             </div>
             <div class="footer-contact">
@@ -577,7 +603,7 @@
     <!-- Font Awesome for social icons -->
     <script src="https://kit.fontawesome.com/4775611cda.js" crossorigin="anonymous"></script>
     <script src="{% static 'js/script.js' %}"></script>
-    <script src="{% static 'js/book.js' %}"></script>
+<!--    <script src="{% static 'js/book.js' %}"></script>-->
     {% block extra_js %}{% endblock %}
 </body>
 </html>

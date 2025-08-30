@@ -11,20 +11,31 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(os.path.join(BASE_DIR, '.env'))
 
 # Security settings
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 SECRET_KEY = config('SECRET_KEY', default='django-insecure-change-me-in-production')
 DEBUG = config('DEBUG', default=True, cast=bool)
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost'] + [".ngrok-free.app"]
+ALLOWED_HOSTS = [
+    '127.0.0.1',
+    'localhost',
+    '.ngrok-free.app',
+    '.tunnelmole.net',
+    'dq2rwn-ip-45-117-242-240.tunnelmole.net',  # From error logs
+    'jlcnng-ip-45-117-242-240.tunnelmole.net',  # From .env
+]
+
 CSRF_TRUSTED_ORIGINS = [
+    'http://localhost:8000',
+    'http://127.0.0.1:8000',
     'https://localhost',
     'https://127.0.0.1',
     'https://*.ngrok-free.app',
-    'http://localhost:8000',
-    'http://127.0.0.1:8000',
-    'https://uc-creating-de-april.trycloudflare.com',
+    'https://*.tunnelmole.net',
+    'https://dq2rwn-ip-45-117-242-240.tunnelmole.net',
+    'https://jlcnng-ip-45-117-242-240.tunnelmole.net',
 ]
 
 # Base URL for success/cancel redirects
-SITE_URL = 'https://fbb9dcd24612.ngrok-free.app'
+SITE_URL = config('SITE_URL', default='http://localhost:8000')
 
 CELERY_BEAT_SCHEDULE = {
     'update-schedules-every-minute': {
@@ -108,6 +119,7 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [BASE_DIR / 'static']
+STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.ManifestStaticFilesStorage'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
@@ -140,13 +152,20 @@ SECURE_HSTS_SECONDS = 0 if DEBUG else 31536000
 SECURE_HSTS_INCLUDE_SUBDOMAINS = False if DEBUG else True
 SECURE_HSTS_PRELOAD = False if DEBUG else True
 
-#  configuration
+# Stripe configuration
 STRIPE_PUBLIC_KEY = config('STRIPE_PUBLIC_KEY', default='')
 STRIPE_SECRET_KEY = config('STRIPE_SECRET_KEY', default='')
 STRIPE_PUBLISHABLE_KEY = config('STRIPE_PUBLISHABLE_KEY', default='')
 STRIPE_WEBHOOK_SECRET = config('STRIPE_WEBHOOK_SECRET', default='')
 WEATHER_API_KEY = '083b420b5fbc4b248a810906252508'
 OPENWEATHERMAP_API_KEY = '2ed7bcece5c9d7a7498be98276d933a9'
+
+# CORS configuration
+CORS_ALLOWED_ORIGINS = [
+    'http://localhost:8000',
+    'https://dq2rwn-ip-45-117-242-240.tunnelmole.net',
+    'https://jlcnng-ip-45-117-242-240.tunnelmole.net',
+]
 
 # Logging
 LOGGING = {
@@ -156,12 +175,7 @@ LOGGING = {
     'root': {'handlers': ['console'], 'level': 'INFO'},
     'loggers': {'bookings': {'level': 'INFO', 'handlers': ['console']}},
 }
+
 APPEND_SLASH = False
-
-# Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
-
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 2000
-
-CORS_ALLOW_ALL_ORIGINS = True  # or set proper origin

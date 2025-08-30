@@ -112,7 +112,7 @@
                 <div class="welcome-actions flex justify-center gap-4">
                     <a href="{% url 'accounts:login' %}" class="cta-button welcome-button bg-var-button-bg text-white py-2 px-6 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-hover flex items-center">
                         <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 01-3-3h7a3 3 0 013 3v1"/>
                         </svg>
                         Login
                     </a>
@@ -185,9 +185,9 @@
                         </div>
                         <div class="schedule-actions mt-4 flex flex-col gap-2">
                             <span class="status-badge
-                                {% if schedule.status == 'scheduled' %}status-scheduled bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200{% endif %}
-                                {% if schedule.status == 'cancelled' %}status-cancelled bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200{% endif %}
-                                {% if schedule.status == 'delayed' %}status-delayed bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200{% endif %}
+                                {% if schedule.status == 'scheduled' %}status-scheduled{% endif %}
+                                {% if schedule.status == 'cancelled' %}status-cancelled{% endif %}
+                                {% if schedule.status == 'delayed' %}status-delayed{% endif %}
                             ">
                                 {{ schedule.status|capfirst }}
                             </span>
@@ -363,37 +363,45 @@
 {% block extra_css %}
 <style>
 :root {
-    --bg-color: #F5F6F5;
-    --bg-secondary: #FFFFFF;
-    --card-bg: #FFFFFF;
-    --input-bg: #E8ECEF;
-    --text-color: #263238;
-    --primary: #1E88E5;
-    --button-bg: #1E88E5;
-    --button-hover: #1565C0;
-    --highlight-bg: #FF6F61;
-    --highlight-hover: #E55A4F;
-    --slide-1-bg: url('https://images.pexels.com/photos/29350896/pexels-photo-29350896.jpeg?auto=format&fit=crop');
-    --slide-2-bg: url('https://images.pexels.com/photos/9656584/pexels-photo-9656584.jpeg?auto=format&fit=crop');
-    --slide-3-bg: url('https://images.pexels.com/photos/26088018/pexels-photo-26088018.jpeg?auto=format&fit=crop');
-    --slide-4-bg: url('https://images.pexels.com/photos/29350894/pexels-photo-29350894.jpeg?auto=format&fit=crop');
+    --bg-color: #F8FAF6; /* Pale coconut white */
+    --bg-secondary: #F7F9F2; /* Ivory with green hint */
+    --card-bg: #F7F9F2; /* Same as secondary */
+    --input-bg: #E6F0EF; /* Light seafoam */
+    --text-color: #1A3C34; /* Deep rainforest green */
+    --primary: #2AB7CA; /* Reef turquoise */
+    --button-bg: #F25F5C; /* Coral red */
+    --button-hover: #D94F4C; /* Darker coral */
+    --highlight-bg: #F4A261; /* Sunset coral */
+    --highlight-hover: #E68A50; /* Deeper sunset coral */
+    --slide-1-bg: url('https://images.pexels.com/photos/531035/pexels-photo-531035.jpeg?auto=format&fit=crop');
+    --slide-2-bg: url('https://images.pexels.com/photos/4262989/pexels-photo-4262989.jpeg?auto=format&fit=crop');
+    --slide-3-bg: url('https://images.pexels.com/photos/1752461/pexels-photo-1752461.jpeg?auto=format&fit=crop');
+    --slide-4-bg: url('https://images.pexels.com/photos/11820070/pexels-photo-11820070.jpeg?auto=format&fit=crop');
+    --alert-success-bg: #D4EDDA; /* Success background */
+    --alert-success-text: #155724; /* Success text */
+    --alert-error-bg: #F8D7DA; /* Error background */
+    --alert-error-text: #721C24; /* Error text */
 }
 
-.dark {
-    --bg-color: #1A2526;
-    --bg-secondary: #12191A;
-    --card-bg: #263238;
-    --input-bg: #37474F;
-    --text-color: #CFD8DC;
-    --primary: #42A5F5;
-    --button-bg: #0D47A1;
-    --button-hover: #1565C0;
-    --highlight-bg: #26A69A;
-    --highlight-hover: #00897B;
+html.dark-mode {
+    --bg-color: #0D2F3F; /* Deep ocean blue */
+    --bg-secondary: #1E4A5C; /* Dark teal */
+    --card-bg: #1E4A5C; /* Dark teal */
+    --input-bg: #2A5A6B; /* Dark sea teal */
+    --text-color: #E6ECEF; /* Soft cloud gray */
+    --primary: #2AB7CA; /* Reef turquoise */
+    --button-bg: #F25F5C; /* Coral red */
+    --button-hover: #D94F4C; /* Darker coral */
+    --highlight-bg: #E68A50; /* Muted sunset coral */
+    --highlight-hover: #C77545; /* Deeper coral */
     --slide-1-bg: url('https://images.pexels.com/photos/1287145/pexels-photo-1287145.jpeg?auto=format&fit=crop');
     --slide-2-bg: url('https://images.pexels.com/photos/847393/pexels-photo-847393.jpeg?auto=format&fit=crop');
     --slide-3-bg: url('https://images.pexels.com/photos/1612462/pexels-photo-1612462.jpeg?auto=format&fit=crop');
     --slide-4-bg: url('https://images.pexels.com/photos/2356045/pexels-photo-2356045.jpeg?auto=format&fit=crop');
+    --alert-success-bg: #155724; /* Darker success background */
+    --alert-success-text: #D4EDDA; /* Lighter success text */
+    --alert-error-bg: #721C24; /* Darker error background */
+    --alert-error-text: #F8D7DA; /* Lighter error text */
 }
 
 body { font-family: 'Poppins', sans-serif; }
@@ -511,11 +519,11 @@ body { font-family: 'Poppins', sans-serif; }
 
 .schedule-card.next-departure {
     border: 2px solid var(--button-bg);
-    background: rgba(30, 136, 229, 0.05);
+    background: rgba(242, 95, 92, 0.05); /* Coral red with opacity */
 }
 
-.dark .schedule-card.next-departure {
-    background: rgba(13, 71, 161, 0.1);
+html.dark-mode .schedule-card.next-departure {
+    background: rgba(242, 95, 92, 0.1); /* Slightly stronger in dark mode */
 }
 
 .weather-info {
@@ -535,8 +543,9 @@ body { font-family: 'Poppins', sans-serif; }
     transition: opacity 0.5s ease;
 }
 
-.weather-condition.warning {
-    color: #D32F2F;
+.weather-condition.warning,
+.weather-wind.warning {
+    color: var(--alert-error-text); /* Coral-based warning */
     animation: pulse 2s infinite;
 }
 
@@ -576,11 +585,6 @@ body { font-family: 'Poppins', sans-serif; }
     opacity: 1;
 }
 
-.weather-wind.warning {
-    color: #D32F2F;
-    animation: pulse 2s infinite;
-}
-
 @keyframes pulse {
     0% { opacity: 1; }
     50% { opacity: 0.7; }
@@ -611,12 +615,12 @@ body { font-family: 'Poppins', sans-serif; }
     z-index: -1;
 }
 
-.status-scheduled { background-color: #C8E6C9; color: #2E7D32; }
-.dark .status-scheduled { background-color: #1B5E20; color: #81C784; }
-.status-cancelled { background-color: #FFCDD2; color: #C62828; }
-.dark .status-cancelled { background-color: #B71C1C; color: #EF5350; }
-.status-delayed { background-color: #FFE0B2; color: #EF6C00; }
-.dark .status-delayed { background-color: #EF6C00; color: #FFCA28; }
+.status-scheduled { background-color: var(--alert-success-bg); color: var(--alert-success-text); }
+html.dark-mode .status-scheduled { background-color: var(--alert-success-bg); color: var(--alert-success-text); }
+.status-cancelled { background-color: var(--alert-error-bg); color: var(--alert-error-text); }
+html.dark-mode .status-cancelled { background-color: var(--alert-error-bg); color: var(--alert-error-text); }
+.status-delayed { background-color: #FFF2E6; color: var(--highlight-bg); } /* Sunset glow and coral */
+html.dark-mode .status-delayed { background-color: #1E4A5C; color: var(--highlight-bg); } /* Dark teal and coral */
 
 .font-playfair { font-family: 'Playfair Display', serif; }
 .font-poppins { font-family: 'Poppins', sans-serif; }
@@ -637,42 +641,54 @@ body { font-family: 'Poppins', sans-serif; }
 
 .flatpickr-calendar { background: var(--input-bg); color: var(--text-color); }
 .flatpickr-day.selected { background: var(--button-bg); border-color: var(--button-bg); }
-.dark .flatpickr-calendar { background: var(--input-bg); color: var(--text-color); }
-.dark .flatpickr-day.selected { background: var(--button-bg); border-color: var(--button-bg); }
+html.dark-mode .flatpickr-calendar { background: var(--input-bg); color: var(--text-color); }
+html.dark-mode .flatpickr-day.selected { background: var(--button-bg); border-color: var(--button-bg); }
 </style>
 {% endblock %}
 
 {% block extra_js %}
-<!-- Stylesheets -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
 <link rel="stylesheet" href="https://unpkg.com/aos@2.3.4/dist/aos.css">
-
-<!-- Scripts -->
-<script src="https://cdn.jsdelivr.net/npm/flatpickr" defer></script>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
-<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js" defer></script>
-<script src="https://unpkg.com/aos@2.3.4/dist/aos.js" defer></script>
 <script>
-    // Ensure Leaflet.curve loads after Leaflet
+    // Force HTTPS for Tunnelmole or use request.scheme for local development
+    const SITE_URL = window.location.protocol === 'https:' ? 'https://{{ request.get_host }}' : '{{ request.scheme }}://{{ request.get_host }}';
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.4.1/purify.min.js" defer></script>
+<script>
     document.addEventListener("DOMContentLoaded", function() {
-        const scriptCurve = document.createElement("script");
-        scriptCurve.src = "https://cdn.jsdelivr.net/gh/elfalem/Leaflet.curve/leaflet.curve.js";
-        scriptCurve.defer = true;
-        document.body.appendChild(scriptCurve);
+        const leaflet = document.createElement("script");
+        leaflet.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+        leaflet.defer = true;
+        leaflet.onload = () => {
+            const cluster = document.createElement("script");
+            cluster.src = "https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js";
+            cluster.defer = true;
+            cluster.onload = () => {
+                const scriptCurve = document.createElement("script");
+                scriptCurve.src = "https://cdn.jsdelivr.net/gh/elfalem/Leaflet.curve/leaflet.curve.js";
+                scriptCurve.defer = true;
+                document.body.appendChild(scriptCurve);
+            };
+            document.body.appendChild(cluster);
+        };
+        document.body.appendChild(leaflet);
+        const aos = document.createElement("script");
+        aos.src = "https://unpkg.com/aos@2.3.4/dist/aos.js";
+        aos.defer = true;
+        document.body.appendChild(aos);
+        const flatpickr = document.createElement("script");
+        flatpickr.src = "https://cdn.jsdelivr.net/npm/flatpickr";
+        flatpickr.defer = true;
+        document.body.appendChild(flatpickr);
     });
 </script>
-
-<!-- Your home.js -->
-<script src="{% static 'js/home.js' %}" defer></script>
-
+<script src="{% static 'js/home.js' %}"></script>
 <script>
     window.TILE_ERROR_URL = "{{ tile_error_url|default:'/static/images/tile-error.png' }}";
 </script>
-
-<!-- JSON data -->
 {{ form_data|json_script:"form-data" }}
 {{ weather_data|json_script:"weather-data" }}
 {% endblock %}

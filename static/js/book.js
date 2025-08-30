@@ -1,875 +1,1299 @@
-(function () {
-    const bookingForm = document.getElementById('booking-form');
-    const adultsInput = document.getElementById('adults');
-    const youthsInput = document.getElementById('youths');
-    const childrenInput = document.getElementById('children');
-    const infantsInput = document.getElementById('infants');
-    const scheduleInput = document.getElementById('schedule_id');
-    const passengerDetails = document.getElementById('passenger-details');
-    const adultFields = document.getElementById('adult-fields');
-    const youthFields = document.getElementById('youth-fields');
-    const childFields = document.getElementById('child-fields');
-    const infantFields = document.getElementById('infant-fields');
-    const cargoCheckbox = document.getElementById('add_cargo_checkbox');
-    const cargoFields = document.getElementById('cargo-fields');
-    const unaccompaniedMinorCheckbox = document.getElementById('is_unaccompanied_minor');
-    const unaccompaniedMinorFields = document.getElementById('unaccompanied-minor-fields');
-    const groupBookingCheckbox = document.getElementById('is_group_booking');
-    const emergencyCheckbox = document.getElementById('is_emergency');
-    const responsibilityDeclarationFields = document.getElementById('responsibility-declaration-fields');
-    const nextButtons = document.querySelectorAll('.next-step');
-    const prevButtons = document.querySelectorAll('.prev-step');
+/**
+ * book.js - Handles the multi-step booking form for Fiji Ferry Booking
+ * Dependencies: Stripe.js, AOS.js
+ * Uses window.urls for API endpoints and window.isAuthenticated for user status
+ */
 
-    let currentStep = parseInt(bookingForm.querySelector('input[name="step"]').value) || 1;
-    let passengerData = { adult: [{ open: true }], youth: [], child: [], infant: [] };
-    let latestTotalPrice = '0.00'; // Store total_price from get_pricing
+let currentStep = 1;
+let eventListenersAdded = false;
+let scheduleCache = null;
+let pricingCache = null;
+let latestTotalPrice = '0.00';
 
-    const isDev = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+// DOM elements
+const bookingForm = document.getElementById('booking-form');
+const scheduleInput = document.getElementById('schedule_id');
+const guestEmailInput = document.getElementById('guest_email');
+const adultsInput = document.getElementById('adults');
+const childrenInput = document.getElementById('children');
+const infantsInput = document.getElementById('infants');
+const summarySection = document.getElementById('summary-section');
+const summarySchedule = document.getElementById('summary-schedule');
+const summaryDuration = document.getElementById('summary-duration');
+const summaryPassengers = document.getElementById('summary-passengers');
+const summaryPassengerBreakdown = document.getElementById('summary-passenger-breakdown');
+const summaryAddOns = document.getElementById('summary-add-ons');
+const summaryVehicle = document.getElementById('summary-vehicle');
+const summaryCargo = document.getElementById('summary-cargo');
+const summaryCost = document.getElementById('summary-cost');
+const weatherWarning = document.getElementById('weather-warning');
+const addVehicleCheckbox = document.getElementById('add_vehicle');
+const vehicleFields = document.getElementById('vehicle-fields');
+const addCargoCheckbox = document.getElementById('add_cargo');
+const cargoFields = document.getElementById('cargo-fields');
+const privacyConsent = document.getElementById('privacy-consent');
+const proceedToPayment = document.getElementById('proceed-to-payment');
+const nextButtons = document.querySelectorAll('.next-step');
+const prevButtons = document.querySelectorAll('.prev-step');
+const steps = document.querySelectorAll('.step');
+const progressBarFill = document.querySelector('.progress-bar-fill');
+const resetScheduleButton = document.getElementById('reset-schedule');
+const scheduleErrorReset = document.getElementById('schedule-error-reset');
 
-    const logger = {
-        log: (...args) => isDev && console.log(...args),
-        warn: (...args) => isDev && console.warn(...args),
-        error: console.error.bind(console)
-    };
+// Logger for debugging
+const logger = {
+    log: (...args) => console.log('[Booking]', ...args),
+    warn: (...args) => console.warn('[Booking]', ...args),
+    error: (...args) => console.error('[Booking]', ...args)
+};
 
-    const getCsrfToken = () => {
-        const name = 'csrftoken';
-        const decodedCookie = decodeURIComponent(document.cookie);
-        const cookieArray = decodedCookie.split(';');
-        for (let cookie of cookieArray) {
-            cookie = cookie.trim();
-            if (cookie.indexOf(name + '=') === 0) {
-                return cookie.substring(name.length + 1);
-            }
-        }
-        return '';
-    };
-
-    const updateStep = (step) => {
-        currentStep = step;
-        document.querySelectorAll('.form-step').forEach(s => {
-            s.classList.remove('active');
-            s.style.display = 'none';
-        });
-        const targetStep = document.querySelector(`.form-step.step-${step}`);
-        if (targetStep) {
-            targetStep.classList.add('active');
-            targetStep.style.display = 'block';
-            logger.log(`Added active class to Step ${step}`, targetStep);
-        }
-        document.querySelector('input[name="step"]').value = step;
-
-        document.querySelectorAll('.step').forEach(s => {
-            s.classList.remove('active', 'completed');
-            const stepNum = parseInt(s.dataset.step);
-            if (stepNum < step) s.classList.add('completed');
-            if (stepNum === step) s.classList.add('active');
-        });
-
-        const progressPercent = ((step - 1) / 3) * 100;
-        document.querySelector('.progress-bar-fill').style.width = `${progressPercent}%`;
-        document.querySelector('.progress-bar-fill').style.background = `var(--step-${step}-accent)`;
-    };
-
-    const debounce = (func, wait) => {
-        let timeout;
-        return (...args) => {
+// Debounce utility
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
             clearTimeout(timeout);
-            timeout = setTimeout(() => func(...args), wait);
+            func(...args);
         };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
     };
+}
 
-    const saveFormData = debounce(() => {
-        const formData = {
-            step: currentStep,
-            schedule_id: scheduleInput?.value || '',
-            adults: adultsInput?.value || 1,
-            youths: youthsInput?.value || 0,
-            children: childrenInput?.value || 0,
-            infants: infantsInput?.value || 0,
-            passengerData,
-            guest_email: document.getElementById('guest_email')?.value || '',
-            add_cargo: cargoCheckbox?.checked || false,
-            cargo_type: document.getElementById('cargo_type')?.value || '',
-            weight_kg: document.getElementById('weight_kg')?.value || '',
-            dimensions_cm: document.getElementById('dimensions_cm')?.value || '',
-            is_unaccompanied_minor: unaccompaniedMinorCheckbox?.checked || false,
-            guardian_contact: document.getElementById('guardian_contact')?.value || '',
-            is_group_booking: groupBookingCheckbox?.checked || false,
-            is_emergency: emergencyCheckbox?.checked || false,
-            privacy_consent: document.getElementById('privacy-consent')?.checked || false
-        };
-        try {
-            localStorage.setItem('bookingFormData', JSON.stringify(formData));
-            logger.log('Saving formData:', formData);
-        } catch (e) {
-            logger.warn('localStorage unavailable:', e);
+// Get CSRF token
+function getCsrfToken() {
+    const tokenElement = document.querySelector('input[name=csrfmiddlewaretoken]');
+    const token = tokenElement ? tokenElement.value : '';
+    if (!token) logger.warn('CSRF token not found');
+    return token;
+}
+
+// Toggle button loading state
+function toggleButtonLoading(button, isLoading) {
+    if (!button) return;
+    const spinner = button.querySelector('.spinner');
+    if (spinner) {
+        spinner.classList.toggle('hidden', !isLoading);
+    }
+    button.setAttribute('aria-busy', isLoading);
+}
+
+// Update progress bar
+function updateProgressBar(step) {
+    if (!progressBarFill || !steps.length) {
+        logger.warn('Progress bar or steps not found');
+        return;
+    }
+    const percentage = ((step - 1) / 3) * 100;
+    progressBarFill.style.width = `${percentage}%`;
+    steps.forEach(s => {
+        const stepNum = parseInt(s.dataset.step);
+        const stepNumber = s.querySelector('.step-number');
+        if (!stepNumber) return;
+        s.classList.remove('active', 'completed');
+        stepNumber.classList.remove('bg-var-step-1-accent', 'text-white', 'bg-gray-300', 'text-gray-600');
+        if (stepNum < step) {
+            s.classList.add('completed');
+            stepNumber.classList.add('bg-var-step-1-accent', 'text-white');
+        } else if (stepNum === step) {
+            s.classList.add('active');
+            stepNumber.classList.add('bg-var-step-1-accent', 'text-white');
+        } else {
+            stepNumber.classList.add('bg-gray-300', 'text-gray-600');
         }
-    }, 500);
+    });
+}
 
-    const loadFormData = () => {
-        try {
-            const savedData = JSON.parse(localStorage.getItem('bookingFormData')) || {};
-            if (savedData.step) currentStep = parseInt(savedData.step);
-            if (!window.isAuthenticated && savedData.guest_email) {
-                const guestEmailInput = document.getElementById('guest_email');
-                if (guestEmailInput) guestEmailInput.value = savedData.guest_email;
-            }
-            if (savedData.schedule_id && scheduleInput) {
-                scheduleInput.value = savedData.schedule_id;
-                const option = scheduleInput.querySelector(`option[value="${savedData.schedule_id}"]`);
-                if (option) option.selected = true;
-            }
-            if (savedData.adults && adultsInput) adultsInput.value = savedData.adults;
-            if (savedData.youths && youthsInput) youthsInput.value = savedData.youths;
-            if (savedData.children && childrenInput) childrenInput.value = savedData.children;
-            if (savedData.infants && infantsInput) infantsInput.value = savedData.infants;
-            passengerData = savedData.passengerData || { adult: [{ open: true }], youth: [], child: [], infant: [] };
-            if (savedData.add_cargo && cargoCheckbox) {
-                cargoCheckbox.checked = savedData.add_cargo;
-                cargoFields.classList.toggle('hidden', !savedData.add_cargo);
-            }
-            if (savedData.cargo_type) document.getElementById('cargo_type').value = savedData.cargo_type;
-            if (savedData.weight_kg) document.getElementById('weight_kg').value = savedData.weight_kg;
-            if (savedData.dimensions_cm) document.getElementById('dimensions_cm').value = savedData.dimensions_cm;
-            if (savedData.is_unaccompanied_minor && unaccompaniedMinorCheckbox) {
-                unaccompaniedMinorCheckbox.checked = savedData.is_unaccompanied_minor;
-                unaccompaniedMinorFields.classList.toggle('hidden', !savedData.is_unaccompanied_minor);
-            }
-            if (savedData.guardian_contact) document.getElementById('guardian_contact').value = savedData.guardian_contact;
-            if (savedData.is_group_booking && groupBookingCheckbox) groupBookingCheckbox.checked = savedData.is_group_booking;
-            if (savedData.is_emergency && emergencyCheckbox) emergencyCheckbox.checked = savedData.is_emergency;
-            if (savedData.privacy_consent) document.getElementById('privacy-consent').checked = savedData.privacy_consent;
-
-            logger.log('Loaded passengerData:', passengerData);
-            updateStep(currentStep);
-            updatePassengerFields();
-            toggleRequiredFields();
-            updateSummary();
-        } catch (e) {
-            logger.warn('localStorage unavailable or corrupted:', e);
+// Update form steps
+function updateStep(step) {
+    currentStep = step;
+    const formSteps = document.querySelectorAll('.form-step');
+    formSteps.forEach(s => {
+        const isActive = parseInt(s.dataset.step) === step;
+        s.classList.toggle('active', isActive);
+        s.style.opacity = isActive ? '1' : '0';
+        s.style.transform = isActive ? 'translateY(0)' : 'translateY(20px)';
+        if (!isActive) {
+            setTimeout(() => {
+                s.classList.remove('active');
+            }, 300);
         }
+    });
+    updateProgressBar(step);
+    saveFormData();
+    if (step === 4) {
+        debouncedUpdateSummary();
+    }
+}
+
+// Save form data
+function saveFormData() {
+    if (!bookingForm) return;
+    const data = {
+        step: currentStep,
+        schedule_id: scheduleInput?.value?.trim() || '',
+        guest_email: window.isAuthenticated ? '' : (guestEmailInput?.value?.trim() || ''),
+        adults: adultsInput?.value || '0',
+        children: childrenInput?.value || '0',
+        infants: infantsInput?.value || '0',
+        add_vehicle: addVehicleCheckbox?.checked || false,
+        add_cargo: addCargoCheckbox?.checked || false,
+        add_ons: [
+            { add_on_type: 'premium_seating', quantity: document.getElementById('premium_seating_quantity')?.value || '0' },
+            { add_on_type: 'priority_boarding', quantity: document.getElementById('priority_boarding_quantity')?.value || '0' },
+            { add_on_type: 'cabin', quantity: document.getElementById('cabin_quantity')?.value || '0' },
+            { add_on_type: 'meal_breakfast', quantity: document.getElementById('meal_breakfast_quantity')?.value || '0' },
+            { add_on_type: 'meal_lunch', quantity: document.getElementById('meal_lunch_quantity')?.value || '0' },
+            { add_on_type: 'meal_dinner', quantity: document.getElementById('meal_dinner_quantity')?.value || '0' },
+            { add_on_type: 'meal_snack', quantity: document.getElementById('meal_snack_quantity')?.value || '0' }
+        ],
+        passengers: []
     };
-
-    const clearFormData = () => {
-        try {
-            localStorage.removeItem('bookingFormData');
-            localStorage.removeItem('file-responsibility_declaration');
-            localStorage.removeItem('file-consent_form');
-            passengerData = { adult: [{ open: true }], youth: [], child: [], infant: [] };
-            bookingForm.reset();
-            updateStep(1);
-            updatePassengerFields();
-        } catch (e) {
-            logger.warn('localStorage unavailable:', e);
+    ['adult', 'child', 'infant'].forEach(type => {
+        const count = parseInt(document.getElementById(`${type}s`)?.value || 0);
+        for (let i = 0; i < count; i++) {
+            const passenger = {
+                type,
+                first_name: document.querySelector(`[name="${type}_first_name_${i}"]`)?.value || '',
+                last_name: document.querySelector(`[name="${type}_last_name_${i}"]`)?.value || '',
+                age: type !== 'infant' ? (document.querySelector(`[name="${type}_age_${i}"]`)?.value || '') : '',
+                dob: type === 'infant' ? (document.querySelector(`[name="${type}_dob_${i}"]`)?.value || '') : '',
+                phone: type === 'adult' ? (document.querySelector(`[name="${type}_phone_${i}"]`)?.value || '') : '',
+                linked_adult_index: type !== 'adult' ? (document.querySelector(`[name="${type}_linked_adult_${i}"]`)?.value || '') : ''
+            };
+            data.passengers.push(passenger);
         }
-    };
+    });
+    try {
+        sessionStorage.setItem('bookingFormData', JSON.stringify(data));
+        logger.log('Form data saved to sessionStorage:', data);
+    } catch (e) {
+        logger.warn('sessionStorage unavailable:', e);
+    }
+}
 
-    const updatePassengerFields = () => {
-        if (!passengerDetails || !adultFields || !youthFields || !childFields || !infantFields) {
-            logger.error('Required passenger containers missing');
-            return;
+// Clear form data
+function clearFormData() {
+    try {
+        sessionStorage.removeItem('bookingFormData');
+        logger.log('Form data cleared from sessionStorage');
+    } catch (e) {
+        logger.warn('sessionStorage unavailable:', e);
+    }
+    if (bookingForm) {
+        bookingForm.reset();
+        document.querySelectorAll('.error-message').forEach(el => {
+            el.textContent = '';
+            el.classList.add('hidden');
+        });
+        document.querySelectorAll('.file-preview').forEach(el => el.innerHTML = '');
+        if (vehicleFields) vehicleFields.classList.add('hidden');
+        if (cargoFields) cargoFields.classList.add('hidden');
+        if (scheduleErrorReset) scheduleErrorReset.style.display = 'none';
+        document.getElementById('adult-fields').innerHTML = '';
+        document.getElementById('child-fields').innerHTML = '';
+        document.getElementById('infant-fields').innerHTML = '';
+        if (adultsInput) adultsInput.value = '1';
+        if (childrenInput) childrenInput.value = '0';
+        if (infantsInput) infantsInput.value = '0';
+        updatePassengerFields();
+        toggleVehicleFields();
+        toggleCargoFields();
+    }
+}
+
+// Load form data
+async function loadFormData() {
+    try {
+        const savedData = JSON.parse(sessionStorage.getItem('bookingFormData')) || {};
+        if (savedData.step) {
+            currentStep = parseInt(savedData.step);
         }
-
-        const counts = {
-            adult: parseInt(adultsInput?.value) || 1,
-            youth: parseInt(youthsInput?.value) || 0,
-            child: parseInt(childrenInput?.value) || 0,
-            infant: parseInt(infantsInput?.value) || 0
-        };
-
-        const containers = { adult: adultFields, youth: youthFields, child: childFields, infant: infantFields };
-
-        for (const [type, container] of Object.entries(containers)) {
-            passengerData[type] = passengerData[type] || [];
-
-            // Ensure we have the right number of passenger slots
-            for (let i = 0; i < counts[type]; i++) {
-                const existing = document.getElementById(`${type}_fieldset_${i}`);
-
-                // Reuse existing fieldset if it already exists
-                if (existing) {
-                    continue;
+        if (savedData.schedule_id && scheduleInput) {
+            scheduleInput.value = savedData.schedule_id;
+            const option = scheduleInput.querySelector(`option[value="${savedData.schedule_id}"]`);
+            if (option) {
+                option.selected = true;
+                try {
+                    const response = await fetch(window.urls.getScheduleUpdates, {
+                        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                    });
+                    if (!response.ok) throw new Error('Schedule fetch failed');
+                    scheduleCache = await response.json();
+                    const schedule = scheduleCache.schedules.find(s => String(s.id) === String(savedData.schedule_id));
+                    if (!schedule || schedule.status !== 'scheduled' || new Date(schedule.departure_time) <= new Date()) {
+                        logger.warn(`Schedule ID ${savedData.schedule_id} not available`);
+                        savedData.schedule_id = '';
+                        scheduleInput.value = '';
+                        currentStep = 1;
+                        displayBackendErrors(
+                            [{ field: 'schedule_id', message: 'Selected schedule is no longer available. Please choose a new schedule.' }],
+                            document.querySelector('.next-step[data-next="2"]')
+                        );
+                    }
+                } catch (e) {
+                    logger.error('Error verifying schedule_id:', e);
+                    savedData.schedule_id = '';
+                    scheduleInput.value = '';
+                    currentStep = 1;
+                    displayBackendErrors(
+                        [{ field: 'schedule_id', message: 'Unable to verify schedule availability. Please choose a new schedule.' }],
+                        document.querySelector('.next-step[data-next="2"]')
+                    );
                 }
-
-                const data = passengerData[type][i] || { first_name: '', last_name: '', age: '', open: true };
-                passengerData[type][i] = data;
-
-                const fieldset = document.createElement('fieldset');
-                fieldset.className = 'passenger-fieldset';
-                fieldset.id = `${type}_fieldset_${i}`;
-
-                fieldset.innerHTML = `
-                    <button type="button" class="passenger-fieldset-header">
-                        <h4>${type.charAt(0).toUpperCase() + type.slice(1)} ${i + 1}</h4>
-                        <span class="toggle-icon">${data.open ? '−' : '+'}</span>
-                    </button>
-                    <div class="passenger-fieldset-content ${data.open ? 'open' : ''}">
-                        <div class="form-group">
-                            <label for="${type}_first_name_${i}" class="block text-sm font-semibold text-var-text-color font-poppins">First Name</label>
-                            <input type="text" id="${type}_first_name_${i}" name="${type}_first_name_${i}" value="${data.first_name || ''}" required
-                                class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-2-accent"
-                                aria-required="true">
-                            <p id="error-${type}_first_name_${i}" class="error-message hidden mt-1 text-sm text-var-alert-error-text font-poppins"></p>
-                        </div>
-                        <div class="form-group mt-2">
-                            <label for="${type}_last_name_${i}" class="block text-sm font-semibold text-var-text-color font-poppins">Last Name</label>
-                            <input type="text" id="${type}_last_name_${i}" name="${type}_last_name_${i}" value="${data.last_name || ''}" required
-                                class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-2-accent"
-                                aria-required="true">
-                            <p id="error-${type}_last_name_${i}" class="error-message hidden mt-1 text-sm text-var-alert-error-text font-poppins"></p>
-                        </div>
-                        <div class="form-group mt-2">
-                            <label for="${type}_age_${i}" class="block text-sm font-semibold text-var-text-color font-poppins">Age</label>
-                            <input type="number" id="${type}_age_${i}" name="${type}_age_${i}" value="${data.age || ''}" required
-                                class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-2-accent"
-                                min="0" aria-required="true">
-                            <p id="error-${type}_age_${i}" class="error-message hidden mt-1 text-sm text-var-alert-error-text font-poppins"></p>
-                        </div>
-                        ${type === 'adult' ? `
-                        <div class="form-group mt-2">
-                            <label class="flex items-center">
-                                <input type="checkbox" id="${type}_is_parent_guardian_${i}" name="${type}_is_parent_guardian_${i}" ${data.is_parent_guardian ? 'checked' : ''}
-                                    class="mr-2 h-5 w-5 text-var-step-2-accent focus:ring-var-step-2-accent border-var-border-color">
-                                <span class="text-sm font-semibold text-var-text-color font-poppins">Parent/Guardian</span>
-                            </label>
-                        </div>
-                        <div class="form-group mt-2">
-                            <label class="flex items-center">
-                                <input type="checkbox" id="${type}_is_group_leader_${i}" name="${type}_is_group_leader_${i}" ${data.is_group_leader ? 'checked' : ''}
-                                    class="mr-2 h-5 w-5 text-var-step-2-accent focus:ring-var-step-2-accent border-var-border-color">
-                                <span class="text-sm font-semibold text-var-text-color font-poppins">Group Leader</span>
-                            </label>
-                        </div>` : ''}
-                    </div>`;
-
-                container.appendChild(fieldset);
-            }
-
-            // If user reduced count (e.g. from 2 adults → 1), remove extra fieldsets
-            const existingFieldsets = container.querySelectorAll('.passenger-fieldset');
-            existingFieldsets.forEach((fs, idx) => {
-                if (idx >= counts[type]) {
-                    fs.remove();
-                    passengerData[type].splice(idx, 1);
-                }
-            });
-        }
-
-        toggleRequiredFields();
-        savePassengerData();
-    };
-
-    const savePassengerData = () => {
-        for (const type of ['adult', 'youth', 'child', 'infant']) {
-            const count = parseInt(document.getElementById(`${type}s`)?.value) || 0;
-            passengerData[type] = passengerData[type].slice(0, count);
-            for (let i = 0; i < count; i++) {
-                passengerData[type][i] = {
-                    first_name: document.getElementById(`${type}_first_name_${i}`)?.value || '',
-                    last_name: document.getElementById(`${type}_last_name_${i}`)?.value || '',
-                    age: document.getElementById(`${type}_age_${i}`)?.value || '',
-                    open: passengerData[type][i]?.open ?? true,
-                    is_parent_guardian: document.getElementById(`${type}_is_parent_guardian_${i}`)?.checked || false,
-                    is_group_leader: document.getElementById(`${type}_is_group_leader_${i}`)?.checked || false
-                };
+            } else {
+                logger.warn(`Schedule ID ${savedData.schedule_id} not found in options`);
+                savedData.schedule_id = '';
+                scheduleInput.value = '';
+                currentStep = 1;
+                displayBackendErrors(
+                    [{ field: 'schedule_id', message: 'Selected schedule is no longer available. Please choose a new schedule.' }],
+                    document.querySelector('.next-step[data-next="2"]')
+                );
             }
         }
-        saveFormData();
-    };
-
-    const toggleRequiredFields = () => {
-        const hasMinors = (parseInt(childrenInput?.value) || 0) + (parseInt(infantsInput?.value) || 0) + (parseInt(youthsInput?.value) || 0) > 0;
-        const hasParentGuardian = passengerData.adult.some(p => p.is_parent_guardian);
-        const isUnaccompaniedMinor = unaccompaniedMinorCheckbox?.checked || false;
-
-        responsibilityDeclarationFields.classList.toggle('hidden', !hasMinors || hasParentGuardian);
-        unaccompaniedMinorFields.classList.toggle('hidden', !isUnaccompaniedMinor);
-
-        const responsibilityInput = document.getElementById('responsibility_declaration');
-        if (responsibilityInput) {
-            responsibilityInput.required = hasMinors && !hasParentGuardian;
+        if (currentStep > 1 && (!savedData.schedule_id || isNaN(parseInt(savedData.schedule_id)))) {
+            currentStep = 1;
+            displayBackendErrors(
+                [{ field: 'schedule_id', message: 'Please select a valid schedule to continue.' }],
+                document.querySelector('.next-step[data-next="2"]')
+            );
         }
-        const consentInput = document.getElementById('consent_form');
-        if (consentInput) {
-            consentInput.required = isUnaccompaniedMinor;
-        }
-        const guardianContactInput = document.getElementById('guardian_contact');
-        if (guardianContactInput) {
-            guardianContactInput.required = isUnaccompaniedMinor;
-        }
-    };
-
-    const calculateTotalPrice = () => {
-        return 0; // Rely on backend /bookings/get_pricing/
-    };
-
-    const updateSummary = async () => {
-        // --- Gather input values ---
-        const scheduleId = scheduleInput?.value?.trim() || '';
-        const adults = Math.max(parseInt(adultsInput?.value) || 0, 0);
-        const youths = Math.max(parseInt(youthsInput?.value) || 0, 0);
-        const children = Math.max(parseInt(childrenInput?.value) || 0, 0);
-        const infants = Math.max(parseInt(infantsInput?.value) || 0, 0);
-
-        const addCargo = cargoCheckbox?.checked || false;
-        const cargoType = addCargo ? document.getElementById('cargo_type')?.value?.trim() || '' : '';
-        const weightKg = addCargo ? Math.max(parseFloat(document.getElementById('weight_kg')?.value) || 0, 0) : 0;
-        const dimensions = addCargo ? document.getElementById('dimensions_cm')?.value?.trim() || 'None' : 'None';
-
-        const isEmergency = emergencyCheckbox?.checked || false;
-        const unaccompaniedMinor = unaccompaniedMinorCheckbox?.checked || false;
-        const isGroupBooking = groupBookingCheckbox?.checked || false;
-
-        const extras = [];
-        if (unaccompaniedMinor) extras.push('Unaccompanied Minor');
-        if (isGroupBooking) extras.push('Group Booking');
-        if (isEmergency) extras.push('Emergency Travel');
-
-        // --- Log emergency status for debugging ---
-        logger.log(`Emergency checkbox status: is_emergency=${isEmergency}`);
-
-        // --- Validate required fields before sending ---
-        if (!scheduleId) {
-            console.warn("No schedule selected. Cannot fetch pricing.");
-            document.getElementById('summary-schedule').textContent = 'Not selected';
-            document.getElementById('summary-cost').textContent = '0.00';
-            latestTotalPrice = '0.00';
-            return;
-        }
-
-        if (addCargo && !cargoType) {
-            console.warn("Cargo type is required when adding cargo.");
-            document.getElementById('summary-cargo').textContent = 'Missing cargo type';
-            document.getElementById('summary-cost').textContent = '0.00';
-            latestTotalPrice = '0.00';
-            return;
-        }
-
-        // --- Update summary UI ---
-        document.getElementById('summary-schedule').textContent =
-            document.querySelector(`#schedule_id option[value="${scheduleId}"]`)?.textContent || 'Not selected';
-
-        document.getElementById('summary-passengers').textContent =
-            `${adults} Adults, ${youths} Youths, ${children} Children, ${infants} Infants`;
-
-        document.getElementById('summary-cargo').textContent = addCargo
-            ? `${cargoType} (${weightKg}kg, ${dimensions}cm)`
-            : 'None';
-
-        document.getElementById('summary-extras').textContent = extras.length
-            ? extras.join(', ')
-            : 'None';
-
-        // --- Prepare FormData for backend ---
-        const formData = new FormData(bookingForm);
-        formData.set('schedule_id', scheduleId);
-        formData.set('adults', adults.toString());
-        formData.set('youths', youths.toString());
-        formData.set('children', children.toString());
-        formData.set('infants', infants.toString());
-        formData.set('add_cargo', addCargo ? 'true' : 'false');
-        formData.set('cargo_type', cargoType);
-        formData.set('weight_kg', weightKg.toString());
-        formData.set('is_emergency', isEmergency ? 'true' : 'false');
-
-        console.log("Sending get_pricing data:", Object.fromEntries(formData.entries()));
-
-        // --- Send AJAX request ---
-        try {
-            const response = await fetch(window.urls.getPricing, {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'X-CSRFToken': getCsrfToken()
+        if (guestEmailInput && savedData.guest_email) guestEmailInput.value = savedData.guest_email;
+        if (adultsInput) adultsInput.value = savedData.adults || '1';
+        if (childrenInput) childrenInput.value = savedData.children || '0';
+        if (infantsInput) infantsInput.value = savedData.infants || '0';
+        if (addVehicleCheckbox) addVehicleCheckbox.checked = savedData.add_vehicle || false;
+        if (addCargoCheckbox) addCargoCheckbox.checked = savedData.add_cargo || false;
+        savedData.add_ons?.forEach(addOn => {
+            const input = document.getElementById(`${addOn.add_on_type}_quantity`);
+            if (input && addOn.quantity) input.value = addOn.quantity;
+        });
+        if (savedData.passengers) {
+            savedData.passengers.forEach((passenger, index) => {
+                const count = parseInt(document.getElementById(`${passenger.type}s`)?.value || 0);
+                if (passenger.type === 'adult' && index < count) {
+                    const firstName = document.querySelector(`[name="adult_first_name_${index}"]`);
+                    const lastName = document.querySelector(`[name="adult_last_name_${index}"]`);
+                    const age = document.querySelector(`[name="adult_age_${index}"]`);
+                    const phone = document.querySelector(`[name="adult_phone_${index}"]`);
+                    if (firstName) firstName.value = passenger.first_name;
+                    if (lastName) lastName.value = passenger.last_name;
+                    if (age) age.value = passenger.age;
+                    if (phone) phone.value = passenger.phone;
+                } else if (passenger.type === 'child' && index < count) {
+                    const firstName = document.querySelector(`[name="child_first_name_${index}"]`);
+                    const lastName = document.querySelector(`[name="child_last_name_${index}"]`);
+                    const age = document.querySelector(`[name="child_age_${index}"]`);
+                    const linkedAdult = document.querySelector(`[name="child_linked_adult_${index}"]`);
+                    if (firstName) firstName.value = passenger.first_name;
+                    if (lastName) lastName.value = passenger.last_name;
+                    if (age) age.value = passenger.age;
+                    if (linkedAdult) linkedAdult.value = passenger.linked_adult_index;
+                } else if (passenger.type === 'infant' && index < count) {
+                    const firstName = document.querySelector(`[name="infant_first_name_${index}"]`);
+                    const lastName = document.querySelector(`[name="infant_last_name_${index}"]`);
+                    const dob = document.querySelector(`[name="infant_dob_${index}"]`);
+                    const linkedAdult = document.querySelector(`[name="infant_linked_adult_${index}"]`);
+                    if (firstName) firstName.value = passenger.first_name;
+                    if (lastName) lastName.value = passenger.last_name;
+                    if (dob) dob.value = passenger.dob;
+                    if (linkedAdult) linkedAdult.value = passenger.linked_adult_index;
                 }
             });
-            if (!response.ok) {
-                const text = await response.text();
-                console.error(`Server returned ${response.status}:`, text);
-                throw new Error(`Server returned ${response.status}`);
-            }
-
-            const data = await response.json();
-
-            // --- Update pricing in summary and store total_price ---
-            document.getElementById('summary-cost').textContent =
-                data.total_price ? parseFloat(data.total_price).toFixed(2) : '0.00';
-            latestTotalPrice = data.total_price || '0.00'; // Store total_price
-
-        } catch (e) {
-            console.error('Error fetching price:', e);
-            document.getElementById('summary-cost').textContent = '0.00';
-            latestTotalPrice = '0.00'; // Fallback
         }
-    };
+        updateStep(currentStep);
+        updatePassengerFields();
+        toggleVehicleFields();
+        toggleCargoFields();
+        debouncedUpdateSummary();
+    } catch (e) {
+        logger.warn('sessionStorage unavailable or corrupted:', e);
+        updateStep(1);
+    }
+}
 
-    const displayBackendErrors = (errors, button) => {
-        const existingErrors = button.parentNode.querySelector('#validation-errors-next') || button.parentNode.querySelector('#validation-errors-payment');
-        if (existingErrors) existingErrors.remove();
-
-        if (!Array.isArray(errors)) {
-            errors = [{ field: 'general', message: 'An unexpected error occurred. Please try again.' }];
-        }
-        const validationErrorsNext = document.createElement('div');
-        validationErrorsNext.id = 'validation-errors-next';
-        validationErrorsNext.className = 'alert error bg-red-50 p-4 rounded-lg shadow-sm animate__animated animate__fadeIn mt-4';
-        validationErrorsNext.innerHTML = '<p class="font-semibold text-var-text-color font-poppins">Please fix the following errors:</p><ul id="validation-error-list-next" class="list-disc pl-5"></ul>';
-        button.parentNode.appendChild(validationErrorsNext);
-
-        errors.forEach(error => {
-            const li = document.createElement('li');
-            li.textContent = error.message;
-            li.style.color = 'var(--alert-error-text)';
-            document.getElementById('validation-error-list-next').appendChild(li);
+// Display backend errors
+function displayBackendErrors(errors, button) {
+    if (!button) return;
+    logger.log('Displaying backend errors:', errors);
+    const errorContainerId = button.id === 'proceed-to-payment' ? 'validation-errors-payment' : 'validation-errors-next';
+    document.querySelectorAll(`#${errorContainerId}`).forEach(e => e.remove());
+    const errorContainer = document.createElement('div');
+    errorContainer.id = errorContainerId;
+    errorContainer.className = 'alert error bg-var-alert-error-bg p-4 rounded-lg shadow-sm mt-4';
+    const ul = document.createElement('ul');
+    ul.className = 'list-disc pl-5 text-xs md:text-sm text-var-alert-error-text font-poppins';
+    let generalErrorElement = document.getElementById('error-general');
+    if (!generalErrorElement) {
+        generalErrorElement = document.createElement('p');
+        generalErrorElement.id = 'error-general';
+        generalErrorElement.className = 'error-message hidden mt-1 text-xs md:text-sm text-var-alert-error-text font-poppins';
+        generalErrorElement.setAttribute('aria-live', 'polite');
+        button.parentElement.appendChild(generalErrorElement);
+    }
+    errors.forEach(error => {
+        const li = document.createElement('li');
+        li.textContent = error.message;
+        ul.appendChild(li);
+        if (error.field === 'general') {
+            generalErrorElement.textContent = error.message;
+            generalErrorElement.classList.remove('hidden');
+        } else {
             const errorElement = document.getElementById(`error-${error.field}`);
             if (errorElement) {
                 errorElement.textContent = error.message;
                 errorElement.classList.remove('hidden');
-                const field = document.getElementById(error.field);
-                if (field) {
-                    field.classList.add('border', 'border-red-500');
-                    setTimeout(() => field.classList.remove('border', 'border-red-500'), 3000);
-                }
-            }
-        });
-    };
-
-    const validateStep = async (step, button) => {
-        document.querySelectorAll('.error-message').forEach(e => {
-            e.classList.add('hidden');
-            e.textContent = '';
-        });
-        document.querySelectorAll('#validation-errors-next').forEach(e => e.remove());
-        document.querySelectorAll('#validation-errors-payment').forEach(e => e.remove());
-
-        const formData = new FormData(bookingForm);
-        formData.append('step', step);
-        formData.append('user_authenticated', window.isAuthenticated ? 'true' : 'false');
-
-        if (step === 1) {
-            const scheduleId = scheduleInput?.value || '';
-            if (!scheduleId || isNaN(parseInt(scheduleId))) {
-                const errorElement = document.getElementById('error-schedule_id');
-                if (errorElement) {
-                    errorElement.textContent = 'Please select a valid schedule.';
-                    errorElement.classList.remove('hidden');
-                }
-                const validationErrorsNext = document.createElement('div');
-                validationErrorsNext.id = 'validation-errors-next';
-                validationErrorsNext.className = 'alert error bg-red-50 p-4 rounded-lg shadow-sm animate__animated animate__fadeIn mt-4';
-                validationErrorsNext.innerHTML = '<p class="font-semibold text-var-text-color font-poppins">Please fix the following errors:</p><ul id="validation-error-list-next" class="list-disc pl-5"><li style="color: var(--alert-error-text);">Please select a valid schedule.</li></ul>';
-                button.parentNode.appendChild(validationErrorsNext);
-                return false;
-            }
-            formData.append('schedule_id', scheduleId);
-            if (!window.isAuthenticated) {
-                const guestEmail = document.getElementById('guest_email')?.value || '';
-                if (!guestEmail) {
-                    const errorElement = document.getElementById('error-guest_email');
-                    if (errorElement) {
-                        errorElement.textContent = 'Email is required for guest users.';
-                        errorElement.classList.remove('hidden');
-                    }
-                    const validationErrorsNext = document.createElement('div');
-                    validationErrorsNext.id = 'validation-errors-next';
-                    validationErrorsNext.className = 'alert error bg-red-50 p-4 rounded-lg shadow-sm animate__animated animate__fadeIn mt-4';
-                    validationErrorsNext.innerHTML = '<p class="font-semibold text-var-text-color font-poppins">Please fix the following errors:</p><ul id="validation-error-list-next" class="list-disc pl-5"><li style="color: var(--alert-error-text);">Email is required for guest users.</li></ul>';
-                    button.parentNode.appendChild(validationErrorsNext);
-                    return false;
-                }
-                formData.append('guest_email', guestEmail);
-            }
-        } else if (step === 2) {
-            const counts = {
-                adult: parseInt(adultsInput?.value) || 0,
-                youth: parseInt(youthsInput?.value) || 0,
-                child: parseInt(childrenInput?.value) || 0,
-                infant: parseInt(infantsInput?.value) || 0
-            };
-            if (counts.adult + counts.youth + counts.child + counts.infant === 0) {
-                const errorElement = document.getElementById('passenger-details-error');
-                errorElement.textContent = 'At least one passenger is required.';
-                errorElement.classList.remove('hidden');
-                return false;
-            }
-            for (const type of ['adult', 'youth', 'child', 'infant']) {
-                for (let i = 0; i < counts[type]; i++) {
-                    formData.append(`${type}_first_name_${i}`, document.getElementById(`${type}_first_name_${i}`)?.value || '');
-                    formData.append(`${type}_last_name_${i}`, document.getElementById(`${type}_last_name_${i}`)?.value || '');
-                    formData.append(`${type}_age_${i}`, document.getElementById(`${type}_age_${i}`)?.value || '');
-                    if (type === 'adult') {
-                        formData.append(`${type}_is_parent_guardian_${i}`, document.getElementById(`${type}_is_parent_guardian_${i}`)?.checked ? 'on' : '');
-                        formData.append(`${type}_is_group_leader_${i}`, document.getElementById(`${type}_is_group_leader_${i}`)?.checked ? 'on' : '');
-                    }
-                }
-            }
-            if ((counts.child + counts.infant + counts.youth > 0) && !passengerData.adult.some(p => p.is_parent_guardian)) {
-                const savedFileId = localStorage.getItem('file-responsibility_declaration');
-                if (savedFileId) {
-                    formData.append('responsibility_declaration', savedFileId);
-                }
-            }
-        } else if (step === 3) {
-            if (cargoCheckbox?.checked) {
-                formData.append('add_cargo', 'on');
-                formData.append('cargo_type', document.getElementById('cargo_type')?.value || '');
-                formData.append('weight_kg', document.getElementById('weight_kg')?.value || '');
-                formData.append('dimensions_cm', document.getElementById('dimensions_cm')?.value || '');
-            }
-            if (unaccompaniedMinorCheckbox?.checked) {
-                formData.append('is_unaccompanied_minor', 'on');
-                formData.append('guardian_contact', document.getElementById('guardian_contact')?.value || '');
-                const savedFileId = localStorage.getItem('file-consent_form');
-                if (savedFileId) {
-                    formData.append('consent_form', savedFileId);
-                }
-            }
-            if (groupBookingCheckbox?.checked) formData.append('is_group_booking', 'on');
-            if (emergencyCheckbox?.checked) formData.append('is_emergency', 'on');
-        } else if (step === 4) {
-            const privacyConsent = document.getElementById('privacy-consent');
-            const errorElement = document.getElementById('error-privacy-consent');
-
-            if (!privacyConsent) {
-                console.error('Privacy consent checkbox not found in DOM');
-                return false;
-            }
-
-            // Hide previous error if any
-            if (errorElement) {
-                errorElement.classList.add('hidden');
-                errorElement.textContent = '';
-            }
-
-            // Validate
-            if (!privacyConsent.checked) {
-                if (errorElement) {
-                    errorElement.textContent = 'You must agree to the Privacy Policy and Terms of Service.';
-                    errorElement.classList.remove('hidden');
-                }
-                console.log('Privacy consent not checked');
-                return false;
-            }
-
-            formData.append('privacy_consent', 'true');
-            console.log('Privacy consent checked ✅');
-        }
-
-        logger.log('FormData for validation:', Object.fromEntries(formData.entries()));
-
-        const fetchWithRetry = async (url, options, retries = 3) => {
-            for (let i = 1; i <= retries; i++) {
-                try {
-                    const response = await fetch(url, options);
-                    if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
-                    return response;
-                } catch (error) {
-                    logger.error(`Fetch attempt ${i} failed:`, error);
-                    if (i === retries) throw new Error('Network error: Unable to connect to the server. Please check your connection or try again later.');
-                }
-            }
-        };
-
-        try {
-            const response = await fetchWithRetry('/bookings/validate-step/', {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'X-CSRFToken': getCsrfToken()
-                }
-            });
-            const data = await response.json();
-            if (data.success) {
-                logger.log(`Backend validation passed for step: ${step}`);
-                return true;
             } else {
-                logger.log('Backend validation failed:', JSON.stringify(data.errors, null, 2));
-                displayBackendErrors(data.errors, button);
-                return false;
+                logger.warn(`Error element not found for field: ${error.field}`);
+                const passengerError = document.getElementById('passenger-details-error');
+                if (passengerError && (error.field.includes('id_document') || error.field.includes('first_name') || error.field.includes('last_name') || error.field.includes('age') || error.field.includes('linked_adult') || error.field.includes('dob'))) {
+                    passengerError.textContent = error.message;
+                    passengerError.classList.remove('hidden');
+                } else {
+                    generalErrorElement.textContent = error.message;
+                    generalErrorElement.classList.remove('hidden');
+                }
             }
-        } catch (error) {
-            logger.error('Validation error:', error);
-            const validationErrorsNext = document.createElement('div');
-            validationErrorsNext.id = 'validation-errors-next';
-            validationErrorsNext.className = 'alert error bg-red-50 p-4 rounded-lg shadow-sm animate__animated animate__fadeIn mt-4';
-            validationErrorsNext.innerHTML = `<p class="font-semibold text-var-text-color font-poppins">Please fix the following errors:</p><ul id="validation-error-list-next" class="list-disc pl-5"><li style="color: var(--alert-error-text);">${error.message}</li></ul>`;
-            button.parentNode.appendChild(validationErrorsNext);
-            return false;
         }
-    };
+        if (error.field === 'schedule_id' && error.message.includes('no longer available')) {
+            if (scheduleErrorReset) scheduleErrorReset.style.display = 'block';
+        }
+    });
+    errorContainer.appendChild(ul);
+    button.insertAdjacentElement('afterend', errorContainer);
+}
 
-    const handleFileUpload = async (input, previewContainer) => {
-        const file = input.files[0];
-        if (!file) return;
-        if (!['application/pdf', 'image/jpeg', 'image/png'].includes(file.type)) {
-            const errorElement = document.getElementById(`error-${input.id}`);
-            errorElement.textContent = 'Only PDF, JPG, or PNG files are allowed.';
+// Update passenger fields
+function updatePassengerFields() {
+    const adults = parseInt(adultsInput?.value || 0);
+    const children = parseInt(childrenInput?.value || 0);
+    const infants = parseInt(infantsInput?.value || 0);
+    const adultFields = document.getElementById('adult-fields');
+    const childFields = document.getElementById('child-fields');
+    const infantFields = document.getElementById('infant-fields');
+    if (!adultFields || !childFields || !infantFields) {
+        logger.warn('Passenger fields containers not found');
+        return;
+    }
+    function createPassengerField(type, index) {
+        const isAdultOrChild = type === 'adult' || type === 'child';
+        const isInfant = type === 'infant';
+        const div = document.createElement('div');
+        div.className = 'passenger-card';
+        div.setAttribute('role', 'group');
+        div.setAttribute('aria-labelledby', `${type}-header-${index}`);
+        const adultsCount = parseInt(adultsInput?.value || 0);
+        let linkedAdultOptions = '';
+        if (type !== 'adult' && adultsCount > 0) {
+            linkedAdultOptions = `
+                <div class="form-group mt-2">
+                    <label class="block text-sm font-semibold text-var-text-color font-poppins" for="${type}_linked_adult_${index}">Linked Adult *</label>
+                    <select id="${type}_linked_adult_${index}" name="${type}_linked_adult_${index}" class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-2-accent transition-all duration-300" required aria-required="true" aria-describedby="error-${type}_linked_adult_${index}">
+                        <option value="" disabled selected>Select an adult</option>`;
+            for (let i = 0; i < adultsCount; i++) {
+                const adultName = document.querySelector(`[name="adult_first_name_${i}"]`)?.value || `Adult ${i + 1}`;
+                linkedAdultOptions += `<option value="${i}">${adultName}</option>`;
+            }
+            linkedAdultOptions += `
+                    </select>
+                    <p id="error-${type}_linked_adult_${index}" class="error-message hidden mt-1 text-xs md:text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                </div>`;
+        }
+        div.innerHTML = `
+            <button type="button" id="${type}-header-${index}" class="passenger-card-header font-semibold text-var-text-color font-poppins" aria-expanded="${isAdultOrChild}" aria-controls="${type}-details-${index}">
+                ${type.charAt(0).toUpperCase() + type.slice(1)} ${index + 1}
+                <span class="toggle-icon">${isAdultOrChild ? '−' : '+'}</span>
+            </button>
+            <div id="${type}-details-${index}" class="passenger-details mt-2" style="display: ${isAdultOrChild ? 'block' : 'none'};">
+                <div class="form-group">
+                    <label class="block text-sm font-semibold text-var-text-color font-poppins" for="${type}_first_name_${index}">First Name *</label>
+                    <input type="text" id="${type}_first_name_${index}" name="${type}_first_name_${index}" class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-2-accent transition-all duration-300" required aria-required="true" aria-describedby="error-${type}_first_name_${index}">
+                    <p id="error-${type}_first_name_${index}" class="error-message hidden mt-1 text-xs md:text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                </div>
+                <div class="form-group mt-2">
+                    <label class="block text-sm font-semibold text-var-text-color font-poppins" for="${type}_last_name_${index}">Last Name *</label>
+                    <input type="text" id="${type}_last_name_${index}" name="${type}_last_name_${index}" class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-2-accent transition-all duration-300" required aria-required="true" aria-describedby="error-${type}_last_name_${index}">
+                    <p id="error-${type}_last_name_${index}" class="error-message hidden mt-1 text-xs md:text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                </div>
+                ${isAdultOrChild ? `
+                <div class="form-group mt-2">
+                    <label class="block text-sm font-semibold text-var-text-color font-poppins" for="${type}_age_${index}">Age *</label>
+                    <input type="number" id="${type}_age_${index}" name="${type}_age_${index}" min="${type === 'adult' ? '18' : '2'}" max="${type === 'adult' ? '120' : '17'}" class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-2-accent transition-all duration-300" required aria-required="true" aria-describedby="error-${type}_age_${index}">
+                    <p id="error-${type}_age_${index}" class="error-message hidden mt-1 text-xs md:text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                </div>
+                <div class="form-group mt-2">
+                    <label class="block text-sm font-semibold text-var-text-color font-poppins" for="${type}_id_document_${index}">ID Document (PDF, JPG, JPEG, PNG; max 2.5MB) *</label>
+                    <input type="file" id="${type}_id_document_${index}" name="${type}_id_document_${index}" accept="image/jpeg,image/png,application/pdf" class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-2-accent transition-all duration-300" required aria-required="true" aria-describedby="error-${type}_id_document_${index}">
+                    <p id="error-${type}_id_document_${index}" class="error-message hidden mt-1 text-xs md:text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                    <div class="file-preview mt-2"></div>
+                </div>
+                ${type === 'child' ? linkedAdultOptions : ''}` : `
+                <div class="form-group mt-2">
+                    <label class="block text-sm font-semibold text-var-text-color font-poppins" for="${type}_dob_${index}">Date of Birth *</label>
+                    <input type="date" id="${type}_dob_${index}" name="${type}_dob_${index}" class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-2-accent transition-all duration-300" required aria-required="true" aria-describedby="error-${type}_dob_${index}">
+                    <p id="error-${type}_dob_${index}" class="error-message hidden mt-1 text-xs md:text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                </div>
+                ${linkedAdultOptions}`}
+                ${type === 'adult' ? `
+                <div class="form-group mt-2">
+                    <label class="block text-sm font-semibold text-var-text-color font-poppins" for="${type}_phone_${index}">Phone Number *</label>
+                    <input type="tel" id="${type}_phone_${index}" name="${type}_phone_${index}" class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-2-accent transition-all duration-300" required aria-required="true" aria-describedby="error-${type}_phone_${index}">
+                    <p id="error-${type}_phone_${index}" class="error-message hidden mt-1 text-xs md:text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                </div>` : ''}
+            </div>
+        `;
+        return div;
+    }
+    function updateFields(container, type, count) {
+        const existing = container.querySelectorAll('.passenger-card').length;
+        if (existing > count) {
+            container.querySelectorAll(`.passenger-card:nth-child(n+${count + 1})`).forEach(el => el.remove());
+        } else if (existing < count) {
+            for (let i = existing; i < count; i++) {
+                container.appendChild(createPassengerField(type, i));
+            }
+        }
+    }
+    updateFields(adultFields, 'adult', adults);
+    updateFields(childFields, 'child', children);
+    updateFields(infantFields, 'infant', infants);
+    updateChildLinkedAdultOptions();
+    document.querySelectorAll('.passenger-card-header').forEach(header => {
+        header.removeEventListener('click', togglePassengerDetails);
+        header.addEventListener('ascus', togglePassengerDetails);
+    });
+    function togglePassengerDetails() {
+        const details = this.nextElementSibling;
+        const icon = this.querySelector('.toggle-icon');
+        const isExpanded = this.getAttribute('aria-expanded') === 'true';
+        this.setAttribute('aria-expanded', !isExpanded);
+        details.style.display = isExpanded ? 'none' : 'block';
+        icon.textContent = isExpanded ? '+' : '−';
+    }
+    document.querySelectorAll('input[type="file"]').forEach(fileInput => {
+        fileInput.removeEventListener('change', handleFileChange);
+        fileInput.addEventListener('change', handleFileChange);
+        fileInput.required = true;
+        fileInput.setAttribute('aria-required', 'true');
+    });
+    setTimeout(() => {
+        document.querySelectorAll('input[type="file"]').forEach(fileInput => {
+            if (!fileInput.files || fileInput.files.length === 0) {
+                const index = fileInput.name.match(/\d+/)[0];
+                const type = fileInput.name.includes('adult') ? 'Adult' : 'Child';
+                const errorElement = document.getElementById(`error-${fileInput.name}`);
+                if (errorElement) {
+                    errorElement.textContent = `${type} ${parseInt(index) + 1}: ID document is required.`;
+                    errorElement.classList.remove('hidden');
+                }
+            }
+        });
+    }, 0);
+    async function handleFileChange(e) {
+        const fileInput = e.target;
+        const file = fileInput.files[0];
+        const preview = fileInput.nextElementSibling.nextElementSibling;
+        const errorElement = fileInput.nextElementSibling;
+        preview.innerHTML = '';
+        if (!file) {
+            errorElement.textContent = 'Please upload an ID document.';
             errorElement.classList.remove('hidden');
+            fileInput.setCustomValidity('Please upload an ID document.');
             return;
         }
-        if (file.size > 5 * 1024 * 1024) {
-            const errorElement = document.getElementById(`error-${input.id}`);
-            errorElement.textContent = 'File size must be less than 5MB.';
+        fileInput.setCustomValidity('');
+        if (file.size > 2621440) {
+            errorElement.textContent = 'File size exceeds 2.5MB limit. Please upload a smaller file.';
             errorElement.classList.remove('hidden');
+            fileInput.value = '';
+            fileInput.setCustomValidity('File size exceeds 2.5MB limit.');
             return;
         }
+        const validTypes = ['image/jpeg', 'image/png', 'application/pdf'];
+        if (!validTypes.includes(file.type)) {
+            errorElement.textContent = 'Invalid file type. Please upload a PDF, JPG, or PNG file.';
+            errorElement.classList.remove('hidden');
+            fileInput.value = '';
+            fileInput.setCustomValidity('Invalid file type.');
+            return;
+        }
+        const clearButton = document.createElement('button');
+        clearButton.type = 'button';
+        clearButton.className = 'text-xs text-var-alert-error-text mt-1';
+        clearButton.textContent = 'Clear File';
+        clearButton.addEventListener('click', () => {
+            fileInput.value = '';
+            preview.innerHTML = '';
+            clearButton.remove();
+            errorElement.textContent = '';
+            errorElement.classList.add('hidden');
+            fileInput.setCustomValidity('');
+            fileInput.dataset.verificationStatus = '';
+        });
+        if (file.type.startsWith('image/')) {
+            const img = document.createElement('img');
+            img.src = URL.createObjectURL(file);
+            img.alt = 'File preview';
+            img.className = 'max-w-full h-auto';
+            preview.appendChild(img);
+        } else if (file.type === 'application/pdf') {
+            const span = document.createElement('span');
+            span.className = 'pdf-icon';
+            span.textContent = '📄 PDF';
+            preview.appendChild(span);
+        }
+        preview.appendChild(clearButton);
         const formData = new FormData();
         formData.append('file', file);
         try {
-            const response = await fetch('/bookings/validate_file/', {
+            const response = await fetch(window.urls.validateFile, {
                 method: 'POST',
                 body: formData,
                 headers: { 'X-CSRFToken': getCsrfToken() }
             });
-            const data = await response.json();
-            if (data.success && data.file_id) {
-                localStorage.setItem(`file-${input.id}`, data.file_id);
-                previewContainer.classList.remove('hidden');
-                previewContainer.innerHTML = file.type === 'application/pdf'
-                    ? `<span class="pdf-icon">PDF: ${file.name}</span>`
-                    : `<img src="${URL.createObjectURL(file)}" alt="File preview" class="max-w-full max-h-24 object-contain rounded">`;
-            } else {
-                const errorElement = document.getElementById(`error-${input.id}`);
-                errorElement.textContent = data.error || 'File upload failed.';
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                logger.error('Non-JSON response received from validate_file');
+                errorElement.textContent = 'Server error: Unable to validate file. Please try a smaller file or contact support.';
                 errorElement.classList.remove('hidden');
-            }
-        } catch (e) {
-            logger.error('File upload error:', e);
-            const errorElement = document.getElementById(`error-${input.id}`);
-            errorElement.textContent = 'File upload failed. Please try again.';
-            errorElement.classList.remove('hidden');
-        }
-    };
-
-    async function proceedToPayment() {
-        if (typeof window.stripe === 'undefined') {
-            logger.error('Stripe is not defined');
-            displayBackendErrors([{ field: 'general', message: 'Payment processing is unavailable. Please try again later.' }], document.getElementById('proceed-to-payment'));
-            return;
-        }
-
-        const button = document.getElementById('proceed-to-payment');
-        button.querySelector('.spinner').classList.remove('hidden');
-        button.disabled = true;
-
-        // Prevent multiple submissions
-        if (button.dataset.isSubmitting === 'true') {
-            logger.warn('Submission already in progress, ignoring.');
-            button.querySelector('.spinner').classList.add('hidden');
-            button.disabled = false;
-            return;
-        }
-        button.dataset.isSubmitting = 'true';
-
-        // Prepare FormData
-        const formData = new FormData(bookingForm);
-        formData.append('privacy_consent', 'true');
-        formData.append('total_price', latestTotalPrice);
-        formData.append('is_emergency', emergencyCheckbox?.checked ? 'true' : 'false'); // Ensure is_emergency is included
-
-        // Validate total_price
-        if (!latestTotalPrice || parseFloat(latestTotalPrice) <= 0) {
-            logger.error('Invalid or missing total_price');
-            displayBackendErrors([{ field: 'general', 'message': 'Invalid total price. Please try again.' }], button);
-            button.querySelector('.spinner').classList.add('hidden');
-            button.disabled = false;
-            button.dataset.isSubmitting = 'false';
-            return;
-        }
-
-        // Add passenger details
-        for (const type of ['adult', 'youth', 'child', 'infant']) {
-            const count = parseInt(document.getElementById(`${type}s`)?.value || 0);
-            for (let i = 0; i < count; i++) {
-                formData.append(`${type}_first_name_${i}`, document.getElementById(`${type}_first_name_${i}`)?.value || '');
-                formData.append(`${type}_last_name_${i}`, document.getElementById(`${type}_last_name_${i}`)?.value || '');
-                formData.append(`${type}_age_${i}`, document.getElementById(`${type}_age_${i}`)?.value || '');
-                if (type === 'adult' || type === 'youth') {
-                    formData.append(`${type}_is_parent_guardian_${i}`, document.getElementById(`${type}_is_parent_guardian_${i}`)?.checked ? 'true' : 'false');
-                    formData.append(`${type}_is_group_leader_${i}`, document.getElementById(`${type}_is_group_leader_${i}`)?.checked ? 'true' : 'false');
-                }
-                const documentInput = document.getElementById(`${type}_document_${i}`);
-                if (documentInput?.files[0]) {
-                    formData.append(`${type}_document_${i}`, documentInput.files[0]);
-                }
-            }
-        }
-
-        // Add guest_email for unauthenticated users
-        if (!window.isAuthenticated) {
-            const guestEmail = document.getElementById('guest_email')?.value || '';
-            if (!guestEmail) {
-                displayBackendErrors([{ field: 'guest_email', 'message': 'Email is required for guest users.' }], button);
-                button.querySelector('.spinner').classList.add('hidden');
-                button.disabled = false;
-                button.dataset.isSubmitting = 'false';
+                fileInput.value = '';
+                preview.innerHTML = '';
+                clearButton.remove();
+                fileInput.setCustomValidity('Server error.');
                 return;
             }
-            formData.append('guest_email', guestEmail);
-        }
-
-        // Add cargo details if applicable
-        if (formData.get('add_cargo') === 'true') {
-            formData.append('cargo_type', document.getElementById('cargo_type')?.value || '');
-            formData.append('weight_kg', document.getElementById('weight_kg')?.value || '0');
-            formData.append('dimensions_cm', document.getElementById('dimensions_cm')?.value || '');
-        }
-
-        // Add file IDs for responsibility_declaration and consent_form
-        ['responsibility_declaration', 'consent_form'].forEach(id => {
-            const savedFileId = localStorage.getItem(`file-${id}`);
-            if (savedFileId) {
-                formData.append(id, savedFileId);
-            }
-        });
-
-        // Log formData for debugging
-        console.log('FormData for booking:', Object.fromEntries(formData.entries()));
-
-        try {
-            // Step 1: Create booking
-            const bookingResponse = await fetch('/bookings/', {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'X-CSRFToken': getCsrfToken()
-                }
-            });
-
-            const bookingData = await bookingResponse.json();
-            if (!bookingResponse.ok || !bookingData.success) {
-                logger.error('Booking creation failed:', bookingData.errors);
-                displayBackendErrors(bookingData.errors || [{ field: 'general', 'message': 'Failed to create booking.' }], button);
-                button.querySelector('.spinner').classList.add('hidden');
-                button.disabled = false;
-                button.dataset.isSubmitting = 'false';
-                return;
-            }
-
-            console.log('Booking created:', bookingData.booking_id);
-
-            // Step 2: Create checkout session
-            console.log('FormData for checkout:', Object.fromEntries(formData.entries()));
-            const checkoutResponse = await fetch('/bookings/create-checkout-session/', {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'X-CSRFToken': getCsrfToken()
-                }
-            });
-
-            const checkoutData = await checkoutResponse.json();
-            if (checkoutData.sessionId) {
-                // Store sessionId in localStorage for debugging
-                localStorage.setItem('last_stripe_session_id', checkoutData.sessionId);
-                logger.log('Redirecting to Stripe with sessionId:', checkoutData.sessionId);
-                await window.stripe.redirectToCheckout({ sessionId: checkoutData.sessionId });
+            const data = await response.json();
+            if (!data.valid) {
+                errorElement.textContent = data.error || 'Invalid file. Please upload a valid PDF, JPG, or PNG file.';
+                errorElement.classList.remove('hidden');
+                fileInput.value = '';
+                preview.innerHTML = '';
+                clearButton.remove();
+                fileInput.setCustomValidity('Invalid file.');
+                fileInput.dataset.verificationStatus = '';
             } else {
-                logger.error('Checkout session creation failed:', checkoutData.errors);
-                displayBackendErrors(checkoutData.errors || [{ field: 'general', 'message': 'Failed to create payment session.' }], button);
+                fileInput.dataset.verificationStatus = data.verification_status || 'pending';
+                errorElement.textContent = data.verification_status === 'verified' ? '' : 'Document verification pending. Please wait for confirmation.';
+                errorElement.classList.toggle('hidden', data.verification_status === 'verified');
+                fileInput.setCustomValidity('');
             }
-        } catch (e) {
-            logger.error('Payment error:', e);
-            displayBackendErrors([{ field: 'general', 'message': 'Payment initiation failed. Please try again.' }], button);
-        } finally {
-            button.querySelector('.spinner').classList.add('hidden');
-            button.disabled = false;
-            button.dataset.isSubmitting = 'false';
+        } catch (err) {
+            logger.error('File validation failed:', err);
+            errorElement.textContent = 'Error validating file. Please try a smaller file or contact support.';
+            errorElement.classList.remove('hidden');
+            fileInput.value = '';
+            preview.innerHTML = '';
+            clearButton.remove();
+            fileInput.setCustomValidity('Error validating file.');
+            fileInput.dataset.verificationStatus = '';
         }
     }
+}
 
-    document.addEventListener('DOMContentLoaded', () => {
-        loadFormData();
-        updatePassengerFields();
-        toggleRequiredFields();
-        updateSummary();
-
-        bookingForm.addEventListener('input', saveFormData);
-        [adultsInput, youthsInput, childrenInput, infantsInput].forEach(input => {
-            if (input) {
-                input.addEventListener('change', () => {
-                    updatePassengerFields();
-                    toggleRequiredFields();
-                    saveFormData();
-                    updateSummary();
-                });
+// Update child and infant linked adult dropdowns
+function updateChildLinkedAdultOptions() {
+    const adultsCount = parseInt(adultsInput?.value || 0);
+    const childFields = document.getElementById('child-fields');
+    const infantFields = document.getElementById('infant-fields');
+    [childFields, infantFields].forEach(container => {
+        if (!container) return;
+        container.querySelectorAll('select[name*="_linked_adult_"]').forEach(select => {
+            const index = parseInt(select.name.match(/child_linked_adult_(\d+)/)?.[1] || select.name.match(/infant_linked_adult_(\d+)/)?.[1] || 0);
+            const currentValue = select.value;
+            select.innerHTML = '<option value="" disabled>Select an adult</option>';
+            for (let i = 0; i < adultsCount; i++) {
+                const adultName = document.querySelector(`[name="adult_first_name_${i}"]`)?.value || `Adult ${i + 1}`;
+                const option = document.createElement('option');
+                option.value = i;
+                option.textContent = adultName;
+                if (String(i) === currentValue) option.selected = true;
+                select.appendChild(option);
+            }
+            if (currentValue && !select.querySelector(`option[value="${currentValue}"]`)) {
+                select.value = '';
             }
         });
-
-        nextButtons.forEach(button => {
-            button.addEventListener('click', async () => {
-                button.querySelector('.spinner').classList.remove('hidden');
-                button.disabled = true;
-                const nextStep = parseInt(button.dataset.next);
-                const valid = await validateStep(nextStep - 1, button);
-                if (valid) {
-                    updateStep(nextStep);
-                    saveFormData();
-                    updateSummary();
-                }
-                button.querySelector('.spinner').classList.add('hidden');
-                button.disabled = false;
-            });
-        });
-
-        prevButtons.forEach(button => {
-            button.addEventListener('click', () => {
-                const prevStep = parseInt(button.dataset.prev);
-                updateStep(prevStep);
-                saveFormData();
-            });
-        });
-
-        cargoCheckbox?.addEventListener('change', () => {
-            cargoFields.classList.toggle('hidden', !cargoCheckbox.checked);
-            saveFormData();
-            updateSummary();
-        });
-
-        unaccompaniedMinorCheckbox?.addEventListener('change', () => {
-            unaccompaniedMinorFields.classList.toggle('hidden', !unaccompaniedMinorCheckbox.checked);
-            toggleRequiredFields();
-            saveFormData();
-            updateSummary();
-        });
-
-        [groupBookingCheckbox, emergencyCheckbox].forEach(checkbox => {
-            checkbox?.addEventListener('change', () => {
-                saveFormData();
-                updateSummary();
-            });
-        });
-
-        passengerDetails?.addEventListener('click', (e) => {
-            if (e.target.classList.contains('passenger-fieldset-header')) {
-                const index = Array.from(e.target.parentNode.parentNode.children).indexOf(e.target.parentNode);
-                const type = e.target.closest('.passenger-fieldset').parentNode.id.replace('-fields', '');
-                const content = e.target.nextElementSibling;
-                const isOpen = content.classList.toggle('open');
-                e.target.querySelector('.toggle-icon').textContent = isOpen ? '−' : '+';
-                passengerData[type][index].open = isOpen;
-                savePassengerData();
-            }
-        });
-
-        document.getElementById('proceed-to-payment')?.addEventListener('click', async () => {
-            const valid = await validateStep(4, document.getElementById('proceed-to-payment'));
-            if (valid) {
-                await proceedToPayment();
-            }
-        });
-
-        [document.getElementById('responsibility_declaration'), document.getElementById('consent_form')].forEach(input => {
-            if (input) {
-                input.addEventListener('change', () => handleFileUpload(input, input.nextElementSibling));
-            }
-        });
-
-        AOS.init();
     });
-})();
+}
+
+// Toggle vehicle fields
+function toggleVehicleFields() {
+    if (addVehicleCheckbox && vehicleFields) {
+        vehicleFields.classList.toggle('hidden', !addVehicleCheckbox.checked);
+        vehicleFields.querySelectorAll('input:not([name="vehicle_license_plate"]), select').forEach(input => {
+            input.required = addVehicleCheckbox.checked;
+        });
+    }
+}
+
+// Toggle cargo fields
+function toggleCargoFields() {
+    if (addCargoCheckbox && cargoFields) {
+        cargoFields.classList.toggle('hidden', !addCargoCheckbox.checked);
+        cargoFields.querySelectorAll('input:not([name="cargo_license_plate"]):not([name="cargo_dimensions_cm"]), select').forEach(input => {
+            input.required = addCargoCheckbox.checked;
+        });
+    }
+}
+
+// Update booking summary
+const debouncedUpdateSummary = debounce(async function updateSummary() {
+    if (currentStep !== 4) {
+        logger.log('Not on Step 4, skipping summary update');
+        return;
+    }
+
+    if (!summarySection || !summarySchedule || !summaryDuration || !summaryPassengers || !summaryPassengerBreakdown || !summaryAddOns || !summaryVehicle || !summaryCargo || !summaryCost || !weatherWarning) {
+        logger.warn('Summary elements missing');
+        if (summarySection) {
+            summarySection.innerHTML = '<div class="alert error bg-var-alert-error-bg p-4 rounded-lg shadow-sm"><p class="font-semibold text-var-alert-error-text font-poppins">Error: Unable to load summary due to missing elements.</p></div>';
+        }
+        if (summaryCost) summaryCost.textContent = '0.00';
+        latestTotalPrice = '0.00';
+        if (weatherWarning) weatherWarning.innerHTML = '';
+        return;
+    }
+
+    const step4 = document.querySelector('.form-step[data-step="4"]');
+    if (step4) step4.setAttribute('aria-busy', 'true');
+
+    if (summarySection) {
+        summarySection.innerHTML = '<div class="spinner w-8 h-8 border-2 border-var-text-color border-t-transparent rounded-full animate-spin mx-auto" aria-live="polite"></div>';
+    }
+
+    const scheduleId = scheduleInput?.value?.trim() || '';
+    if (!scheduleId || isNaN(parseInt(scheduleId))) {
+        if (summarySection) {
+            summarySection.innerHTML = `
+                <div class="alert error bg-var-alert-error-bg p-4 rounded-lg shadow-sm">
+                    <p class="font-semibold text-var-alert-error-text font-poppins">Error: Please select a valid schedule in Step 1 to view the booking summary.</p>
+                </div>`;
+        }
+        if (summaryCost) summaryCost.textContent = '0.00';
+        latestTotalPrice = '0.00';
+        if (weatherWarning) weatherWarning.innerHTML = '';
+        if (step4) step4.setAttribute('aria-busy', 'false');
+        return;
+    }
+
+    try {
+        if (!scheduleCache) {
+            const response = await fetch(window.urls.getScheduleUpdates, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            if (!response.ok) throw new Error('Schedule fetch failed');
+            scheduleCache = await response.json();
+        }
+
+        const schedule = scheduleCache.schedules.find(s => String(s.id) === String(scheduleId));
+        if (!schedule || schedule.status !== 'scheduled' || new Date(schedule.departure_time) <= new Date()) {
+            if (summarySection) {
+                summarySection.innerHTML = `
+                    <div class="alert error bg-var-alert-error-bg p-4 rounded-lg shadow-sm">
+                        <p class="font-semibold text-var-alert-error-text font-poppins">Error: Selected schedule is no longer available. Please choose a new schedule in Step 1.</p>
+                    </div>`;
+            }
+            if (summaryCost) summaryCost.textContent = '0.00';
+            latestTotalPrice = '0.00';
+            if (weatherWarning) weatherWarning.innerHTML = '';
+            if (scheduleErrorReset) scheduleErrorReset.style.display = 'block';
+            if (step4) step4.setAttribute('aria-busy', 'false');
+            return;
+        }
+
+        const formData = new FormData(bookingForm);
+        formData.append('step', currentStep);
+
+        ['premium_seating', 'priority_boarding', 'cabin', 'meal_breakfast', 'meal_lunch', 'meal_dinner', 'meal_snack'].forEach((type, index) => {
+            const quantity = document.getElementById(`${type}_quantity`)?.value || '0';
+            if (parseInt(quantity) > 0) {
+                formData.append(`add_ons[${index}][add_on_type]`, type);
+                formData.append(`add_ons[${index}][quantity]`, quantity);
+            }
+        });
+
+        const pricingResponse = await fetch(window.urls.getPricing, {
+            method: 'POST',
+            body: formData,
+            headers: { 'X-CSRFToken': getCsrfToken() }
+        });
+        if (!pricingResponse.ok) throw new Error('Pricing fetch failed');
+        pricingCache = await pricingResponse.json();
+        latestTotalPrice = pricingCache.total_price || '0.00';
+
+        let backendSummary = window.backendSummary || null;
+        if (!backendSummary) {
+            const summaryResponse = await fetch(window.urls.bookings, {
+                method: 'POST',
+                body: formData,
+                headers: { 'X-CSRFToken': getCsrfToken() }
+            });
+            if (summaryResponse.ok) {
+                const data = await summaryResponse.json();
+                if (data.success && data.summary) {
+                    backendSummary = data.summary;
+                    logger.log('Backend summary loaded:', backendSummary);
+                }
+            }
+        }
+
+        let weatherHtml = '';
+        try {
+            const weatherResponse = await fetch(`${window.urls.getWeatherConditions}?schedule_id=${scheduleId}`, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            if (weatherResponse.ok) {
+                const weatherData = await weatherResponse.json();
+                if (weatherData.warning) {
+                    weatherHtml = `
+                        <div class="alert warning bg-yellow-100 p-4 rounded-lg shadow-sm">
+                            <p class="font-semibold text-yellow-800 font-poppins">${weatherData.warning}</p>
+                        </div>`;
+                }
+            }
+        } catch (e) {
+            logger.warn('Weather fetch failed:', e);
+        }
+
+        if (summarySchedule) {
+            summarySchedule.textContent = backendSummary?.schedule?.route || `${schedule.route.departure_port} to ${schedule.route.destination_port} - ${new Date(schedule.departure_time).toLocaleString('en-US', {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+            })}`;
+        }
+
+        if (summaryDuration) {
+            summaryDuration.textContent = backendSummary?.schedule?.estimated_duration || schedule.estimated_duration;
+        }
+
+        const adults = parseInt(adultsInput?.value || 0);
+        const children = parseInt(childrenInput?.value || 0);
+        const infants = parseInt(infantsInput?.value || 0);
+
+        if (summaryPassengers) {
+            summaryPassengers.textContent = `${adults} Adult${adults !== 1 ? 's' : ''}, ${children} Child${children !== 1 ? 'ren' : ''}, ${infants} Infant${infants !== 1 ? 's' : ''}`;
+        }
+
+        // ------------------ PASSENGER BREAKDOWN ------------------
+        let passengerBreakdown = '';
+
+        // Adults
+        document.querySelectorAll('#adult-fields .passenger-card').forEach((card, i) => {
+            const firstName = card.querySelector('[name^="adult_first_name"]')?.value || 'Unknown';
+            const lastName = card.querySelector('[name^="adult_last_name"]')?.value || '';
+            const age = card.querySelector('[name^="adult_age"]')?.value || '';
+            passengerBreakdown += `<p class="text-xs md:text-sm text-var-text-color font-poppins">Adult ${i + 1}: ${firstName} ${lastName}${age ? ` (Age: ${age})` : ''}</p>`;
+        });
+
+        // Children
+        document.querySelectorAll('#child-fields .passenger-card').forEach((card, i) => {
+            const firstName = card.querySelector('[name^="child_first_name"]')?.value || 'Unknown';
+            const lastName = card.querySelector('[name^="child_last_name"]')?.value || '';
+            const age = card.querySelector('[name^="child_age"]')?.value || '';
+            const linkedAdultIndex = card.querySelector('[name^="child_linked_adult"]')?.value || '';
+            const linkedAdultName = linkedAdultIndex !== ''
+                ? document.querySelector(`[name="adult_first_name_${linkedAdultIndex}"]`)?.value || `Adult ${parseInt(linkedAdultIndex)+1}`
+                : '';
+            passengerBreakdown += `<p class="text-xs md:text-sm text-var-text-color font-poppins">Child ${i + 1}: ${firstName} ${lastName}${age ? ` (Age: ${age})` : ''}${linkedAdultName ? `, Linked Adult: ${linkedAdultName}` : ''}</p>`;
+        });
+
+        // Infants
+        document.querySelectorAll('#infant-fields .passenger-card').forEach((card, i) => {
+            const firstName = card.querySelector('[name^="infant_first_name"]')?.value || 'Unknown';
+            const lastName = card.querySelector('[name^="infant_last_name"]')?.value || '';
+            const dob = card.querySelector('[name^="infant_dob"]')?.value || '';
+            const linkedAdultIndex = card.querySelector('[name^="infant_linked_adult"]')?.value || '';
+            const linkedAdultName = linkedAdultIndex !== ''
+                ? document.querySelector(`[name="adult_first_name_${linkedAdultIndex}"]`)?.value || `Adult ${parseInt(linkedAdultIndex)+1}`
+                : '';
+            passengerBreakdown += `<p class="text-xs md:text-sm text-var-text-color font-poppins">Infant ${i + 1}: ${firstName} ${lastName}${dob ? ` (DOB: ${new Date(dob).toLocaleDateString('en-US')})` : ''}${linkedAdultName ? `, Linked Adult: ${linkedAdultName}` : ''}</p>`;
+        });
+
+        if (summaryPassengerBreakdown) {
+            summaryPassengerBreakdown.innerHTML = passengerBreakdown;
+        }
+
+        // ------------------ ADD-ONS ------------------
+        const addOns = [];
+        ['premium_seating', 'priority_boarding', 'cabin', 'meal_breakfast', 'meal_lunch', 'meal_dinner', 'meal_snack'].forEach(type => {
+            const quantity = document.getElementById(`${type}_quantity`)?.value || '0';
+            if (parseInt(quantity) > 0) {
+                addOns.push(`${quantity} ${type.replace('meal_', '').replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}`);
+            }
+        });
+        if (summaryAddOns) {
+            summaryAddOns.innerHTML = addOns.length > 0 ? addOns.map(item => `<p class="text-xs md:text-sm text-var-text-color font-poppins">${item}</p>`).join('') : '<p class="text-xs md:text-sm text-var-text-color font-poppins">None</p>';
+        }
+
+        // ------------------ VEHICLE ------------------
+        if (summaryVehicle) {
+            summaryVehicle.innerHTML = addVehicleCheckbox?.checked ? `
+                <p class="text-xs md:text-sm text-var-text-color font-poppins">Type: ${document.getElementById('vehicle_type')?.value || 'N/A'}</p>
+                <p class="text-xs md:text-sm text-var-text-color font-poppins">Dimensions: ${document.getElementById('vehicle_dimensions')?.value || 'N/A'}</p>
+                <p class="text-xs md:text-sm text-var-text-color font-poppins">License Plate: ${document.getElementById('vehicle_license_plate')?.value || 'N/A'}</p>
+            ` : '<p class="text-xs md:text-sm text-var-text-color font-poppins">None</p>';
+        }
+
+        // ------------------ CARGO ------------------
+        if (summaryCargo) {
+            summaryCargo.innerHTML = addCargoCheckbox?.checked ? `
+                <p class="text-xs md:text-sm text-var-text-color font-poppins">Type: ${document.getElementById('cargo_type')?.value || 'N/A'}</p>
+                <p class="text-xs md:text-sm text-var-text-color font-poppins">Weight: ${document.getElementById('cargo_weight_kg')?.value || '0'} kg</p>
+                <p class="text-xs md:text-sm text-var-text-color font-poppins">Dimensions: ${document.getElementById('cargo_dimensions_cm')?.value || 'N/A'}</p>
+                <p class="text-xs md:text-sm text-var-text-color font-poppins">License Plate: ${document.getElementById('cargo_license_plate')?.value || 'N/A'}</p>
+            ` : '<p class="text-xs md:text-sm text-var-text-color font-poppins">None</p>';
+        }
+
+        // ------------------ TOTAL COST ------------------
+        if (summaryCost) {
+            summaryCost.textContent = parseFloat(latestTotalPrice).toFixed(2);
+        }
+
+        // ------------------ WEATHER WARNING ------------------
+        if (weatherWarning) {
+            weatherWarning.innerHTML = weatherHtml;
+        }
+
+        // ------------------ FINAL SUMMARY SECTION ------------------
+        if (summarySection) {
+            summarySection.innerHTML = `
+                <div class="bg-var-card-bg p-4 rounded-lg shadow-sm">
+                    <h3 class="text-lg font-semibold text-var-text-color font-poppins">Schedule</h3>
+                    <p class="text-xs md:text-sm text-var-text-color font-poppins"><strong>Route:</strong> <span id="summary-schedule">${summarySchedule?.textContent || 'N/A'}</span></p>
+                    <p class="text-xs md:text-sm text-var-text-color font-poppins"><strong>Duration:</strong> <span id="summary-duration">${summaryDuration?.textContent || 'N/A'}</span></p>
+                </div>
+                <div class="bg-var-card-bg p-4 rounded-lg shadow-sm">
+                    <h3 class="text-lg font-semibold text-var-text-color font-poppins">Passengers</h3>
+                    <p class="text-xs md:text-sm text-var-text-color font-poppins"><span id="summary-passengers">${summaryPassengers?.textContent || 'None'}</span></p>
+                    <div id="summary-passenger-breakdown">${summaryPassengerBreakdown?.innerHTML || ''}</div>
+                </div>
+                <div id="summary-add-ons" class="bg-var-card-bg p-4 rounded-lg shadow-sm">
+                    <h3 class="text-lg font-semibold text-var-text-color font-poppins">Add-Ons</h3>
+                    ${summaryAddOns?.innerHTML || '<p class="text-xs md:text-sm text-var-text-color font-poppins">None</p>'}
+                </div>
+                <div id="summary-vehicle" class="bg-var-card-bg p-4 rounded-lg shadow-sm">
+                    <h3 class="text-lg font-semibold text-var-text-color font-poppins">Vehicle</h3>
+                    ${summaryVehicle?.innerHTML || '<p class="text-xs md:text-sm text-var-text-color font-poppins">None</p>'}
+                </div>
+                <div id="summary-cargo" class="bg-var-card-bg p-4 rounded-lg shadow-sm">
+                    <h3 class="text-lg font-semibold text-var-text-color font-poppins">Cargo</h3>
+                    ${summaryCargo?.innerHTML || '<p class="text-xs md:text-sm text-var-text-color font-poppins">None</p>'}
+                </div>
+                <div class="bg-var-card-bg p-4 rounded-lg shadow-sm">
+                    <h3 class="text-lg font-semibold text-var-text-color font-poppins">Total Cost</h3>
+                    <p class="text-base md:text-lg font-bold text-var-step-4-accent font-poppins">FJD <span id="summary-cost">${summaryCost?.textContent || '0.00'}</span></p>
+                </div>
+            `;
+        }
+
+    } catch (e) {
+        logger.error('Summary update failed:', e);
+        if (summarySection) {
+            summarySection.innerHTML = `
+                <div class="alert error bg-var-alert-error-bg p-4 rounded-lg shadow-sm">
+                    <p class="font-semibold text-var-alert-error-text font-poppins">Error: Unable to load booking summary. Please try again.</p>
+                </div>`;
+        }
+        if (summaryCost) summaryCost.textContent = '0.00';
+        latestTotalPrice = '0.00';
+        if (weatherWarning) weatherWarning.innerHTML = '';
+    } finally {
+        if (step4) step4.setAttribute('aria-busy', 'false');
+    }
+}, 300);
+
+
+// Validate email format
+function isValidEmail(email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+}
+
+// Validate step and proceed
+async function validateStep(step, button) {
+    if (!bookingForm || !button) {
+        logger.warn('Booking form or button not found');
+        return;
+    }
+    toggleButtonLoading(button, true);
+    document.querySelectorAll('.error-message').forEach(el => {
+        el.textContent = '';
+        el.classList.add('hidden');
+    });
+    document.querySelectorAll('.alert.error').forEach(el => el.remove());
+    if (step === 1) {
+        const scheduleId = scheduleInput?.value?.trim() || '';
+        if (!scheduleId || isNaN(parseInt(scheduleId))) {
+            displayBackendErrors(
+                [{ field: 'schedule_id', message: 'Please select a valid schedule.' }],
+                button
+            );
+            toggleButtonLoading(button, false);
+            return;
+        }
+        if (!window.isAuthenticated && guestEmailInput) {
+            const guestEmail = guestEmailInput.value?.trim() || '';
+            if (!guestEmail || !isValidEmail(guestEmail)) {
+                displayBackendErrors(
+                    [{ field: 'guest_email', message: 'Please enter a valid email address.' }],
+                    button
+                );
+                toggleButtonLoading(button, false);
+                return;
+            }
+        }
+        try {
+            const response = await fetch(window.urls.getScheduleUpdates, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            if (!response.ok) throw new Error('Schedule fetch failed');
+
+            scheduleCache = await response.json();
+            const schedule = scheduleCache.schedules.find(s => String(s.id) === String(scheduleId));
+
+            if (!schedule || schedule.status !== 'scheduled' || new Date(schedule.departure_time) <= new Date()) {
+                displayBackendErrors(
+                    [{ field: 'schedule_id', message: 'Selected schedule is no longer available. Please choose a new schedule.' }],
+                    button
+                );
+                if (scheduleErrorReset) scheduleErrorReset.style.display = 'block';
+                toggleButtonLoading(button, false);
+                return;
+            }
+        } catch (e) {
+            logger.error('Error verifying schedule_id:', e);
+            displayBackendErrors(
+                [{ field: 'schedule_id', message: 'Unable to verify schedule availability. Please try again.' }],
+                button
+            );
+            toggleButtonLoading(button, false);
+            return;
+        }
+
+    }
+    if (step === 2) {
+        const adults = parseInt(adultsInput?.value || 0);
+        const children = parseInt(childrenInput?.value || 0);
+        const infants = parseInt(infantsInput?.value || 0);
+        if (adults === 0) {
+            displayBackendErrors(
+                [{ field: 'passenger-details', message: 'At least one adult is required.' }],
+                button
+            );
+            toggleButtonLoading(button, false);
+            return;
+        }
+        const errors = [];
+        ['adult', 'child', 'infant'].forEach(type => {
+            const count = parseInt(document.getElementById(`${type}s`)?.value || 0);
+            for (let i = 0; i < count; i++) {
+                const firstName = document.querySelector(`[name="${type}_first_name_${i}"]`)?.value?.trim();
+                if (!firstName) {
+                    errors.push({ field: `${type}_first_name_${i}`, message: `${type.charAt(0).toUpperCase() + type.slice(1)} ${i + 1}: First name is required.` });
+                }
+                const lastName = document.querySelector(`[name="${type}_last_name_${i}"]`)?.value?.trim();
+                if (!lastName) {
+                    errors.push({ field: `${type}_last_name_${i}`, message: `${type.charAt(0).toUpperCase() + type.slice(1)} ${i + 1}: Last name is required.` });
+                }
+                if (type !== 'infant') {
+                    const age = document.querySelector(`[name="${type}_age_${i}"]`)?.value;
+                    if (!age || isNaN(parseInt(age)) || (type === 'adult' && parseInt(age) < 18) || (type === 'child' && (parseInt(age) < 2 || parseInt(age) > 17))) {
+                        errors.push({ field: `${type}_age_${i}`, message: `${type.charAt(0).toUpperCase() + type.slice(1)} ${i + 1}: Valid age is required (Adult: 18+, Child: 2-17).` });
+                    }
+                }
+                if (type === 'adult') {
+                    const phone = document.querySelector(`[name="${type}_phone_${i}"]`)?.value?.trim();
+                    if (!phone || !/^\+?[\d\s-]{7,15}$/.test(phone)) {
+                        errors.push({ field: `${type}_phone_${i}`, message: `${type.charAt(0).toUpperCase() + type.slice(1)} ${i + 1}: Valid phone number is required.` });
+                    }
+                }
+                if (type !== 'infant') {
+                    const fileInput = document.querySelector(`[name="${type}_id_document_${i}"]`);
+                    const errorElement = document.getElementById(`error-${type}_id_document_${i}`);
+                    if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+                        errors.push({ field: `${type}_id_document_${i}`, message: `${type.charAt(0).toUpperCase() + type.slice(1)} ${i + 1}: ID document is required.` });
+                        if (errorElement) {
+                            errorElement.textContent = `${type.charAt(0).toUpperCase() + type.slice(1)} ${i + 1}: ID document is required.`;
+                            errorElement.classList.remove('hidden');
+                        }
+                    } else {
+                        const status = fileInput.dataset.verificationStatus || 'pending';
+                        if (status !== 'verified') {
+                            errors.push({ field: `${type}_id_document_${i}`, message: `${type.charAt(0).toUpperCase() + type.slice(1)} ${i + 1}: ID document is ${status}. Please upload a verified document.` });
+                            if (errorElement) {
+                                errorElement.textContent = `${type.charAt(0).toUpperCase() + type.slice(1)} ${i + 1}: ID document is ${status}. Please upload a verified document.`;
+                                errorElement.classList.remove('hidden');
+                            }
+                        }
+                    }
+                }
+                if (type !== 'adult') {
+                    const linkedAdult = document.querySelector(`[name="${type}_linked_adult_${i}"]`);
+                    if (!linkedAdult || !linkedAdult.value) {
+                        errors.push({ field: `${type}_linked_adult_${i}`, message: `${type.charAt(0).toUpperCase() + type.slice(1)} ${i + 1}: Must be linked to an adult.` });
+                    } else if (isNaN(parseInt(linkedAdult.value)) || parseInt(linkedAdult.value) >= adults) {
+                        errors.push({ field: `${type}_linked_adult_${i}`, message: `${type.charAt(0).toUpperCase() + type.slice(1)} ${i + 1}: Invalid linked adult.` });
+                    }
+                }
+                if (type === 'infant') {
+                    const dobInput = document.querySelector(`[name="${type}_dob_${i}"]`);
+                    if (!dobInput || !dobInput.value) {
+                        errors.push({ field: `${type}_dob_${i}`, message: `Infant ${i + 1}: Date of birth is required.` });
+                    } else {
+                        const dob = new Date(dobInput.value);
+                        const now = new Date();
+                        const ageInMonths = (now - dob) / (1000 * 60 * 60 * 24 * 30);
+                        if (ageInMonths > 24) {
+                            errors.push({ field: `${type}_dob_${i}`, message: `Infant ${i + 1}: Must be under 2 years old.` });
+                        }
+                    }
+                }
+            }
+        });
+        if (errors.length > 0) {
+            displayBackendErrors(errors, button);
+            toggleButtonLoading(button, false);
+            return;
+        }
+    }
+    if (step === 3) {
+        const errors = [];
+        if (addCargoCheckbox?.checked) {
+            const cargoType = document.getElementById('cargo_type')?.value?.trim();
+            const weightKg = document.getElementById('cargo_weight_kg')?.value?.trim();
+            if (!cargoType) {
+                errors.push({ field: 'cargo_type', message: 'Cargo type is required when adding cargo.' });
+            }
+            if (!weightKg || isNaN(parseFloat(weightKg)) || parseFloat(weightKg) <= 0) {
+                errors.push({ field: 'cargo_weight_kg', message: 'Cargo weight must be a positive number.' });
+            }
+        }
+        if (errors.length > 0) {
+            displayBackendErrors(errors, button);
+            toggleButtonLoading(button, false);
+            return;
+        }
+    }
+    if (step === 4 && !privacyConsent?.checked) {
+        displayBackendErrors(
+            [{ field: 'privacy-consent', message: 'You must agree to the Privacy Policy and Terms of Service.' }],
+            button
+        );
+        toggleButtonLoading(button, false);
+        return;
+    }
+    const formData = new FormData(bookingForm);
+    formData.append('step', step);
+    ['premium_seating', 'priority_boarding', 'cabin', 'meal_breakfast', 'meal_lunch', 'meal_dinner', 'meal_snack'].forEach((type, index) => {
+        const quantity = document.getElementById(`${type}_quantity`)?.value || '0';
+        if (parseInt(quantity) > 0) {
+            formData.append(`add_ons[${index}][add_on_type]`, type);
+            formData.append(`add_ons[${index}][quantity]`, quantity);
+        }
+    });
+    try {
+        const csrfToken = getCsrfToken();
+        if (!csrfToken) {
+            displayBackendErrors(
+                [{ field: 'general', message: 'CSRF token missing. Please refresh the page and try again.' }],
+                button
+            );
+            toggleButtonLoading(button, false);
+            return;
+        }
+        logger.log('Form data sent to validate_step:', [...formData.entries()]);
+        const response = await fetch(window.urls.validateStep, {
+            method: 'POST',
+            body: formData,
+            headers: { 'X-CSRFToken': csrfToken }
+        });
+        if (!response.ok) {
+            let errorMessage = `HTTP error! Status: ${response.status}`;
+            try {
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    const errorData = await response.json();
+                    errorMessage = errorData.message || errorMessage;
+                    if (errorData.errors) {
+                        displayBackendErrors(errorData.errors, button);
+                        toggleButtonLoading(button, false);
+                        return;
+                    }
+                }
+            } catch (e) {
+                logger.error('Error parsing error response:', e);
+            }
+            if (response.status === 413) {
+                displayBackendErrors(
+                    [{ field: 'general', message: 'Uploaded files are too large. Please ensure all files are under 2.5MB and try again.' }],
+                    button
+                );
+            } else {
+                displayBackendErrors(
+                    [{ field: 'general', message: `${errorMessage}. Please try again or contact support.` }],
+                    button
+                );
+            }
+            toggleButtonLoading(button, false);
+            return;
+        }
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            logger.error('Non-JSON response received from validate_step');
+            displayBackendErrors(
+                [{ field: 'general', message: 'Server error: Unable to process request. Please try smaller files or contact support.' }],
+                button
+            );
+            toggleButtonLoading(button, false);
+            return;
+        }
+        const data = await response.json();
+        logger.log('validate_step response:', data);
+        if (data.valid) {
+            if (step === 4) {
+                const paymentResponse = await fetch(window.urls.createCheckoutSession, {
+                    method: 'POST',
+                    body: formData,
+                    headers: { 'X-CSRFToken': csrfToken }
+                });
+                const paymentContentType = paymentResponse.headers.get('content-type');
+                if (!paymentContentType || !paymentContentType.includes('application/json')) {
+                    logger.error('Non-JSON response received from createCheckoutSession');
+                    displayBackendErrors(
+                        [{ field: 'payment', message: 'Server error: Unable to initiate payment. Please try again or contact support.' }],
+                        button
+                    );
+                    toggleButtonLoading(button, false);
+                    return;
+                }
+                const paymentData = await paymentResponse.json();
+                if (paymentData.sessionId) {
+                    window.stripe.redirectToCheckout({ sessionId: paymentData.sessionId });
+                } else {
+                    const errors = paymentData.errors || [{ field: 'payment', message: 'Failed to initiate payment. Please check your input and try again.' }];
+                    displayBackendErrors(errors, button);
+                }
+            } else {
+                updateStep(step + 1);
+            }
+        } else {
+            logger.error('Server validation errors:', data.errors);
+            displayBackendErrors(
+                data.errors && data.errors.length > 0
+                    ? data.errors
+                    : [{ field: 'general', message: 'An error occurred. Please check your input and try again.' }],
+                button
+            );
+        }
+    } catch (e) {
+        logger.error('Step validation failed:', e);
+        displayBackendErrors(
+            [{ field: 'general', message: `Validation failed: ${e.message}. Please try again or contact support.` }],
+            button
+        );
+    } finally {
+        toggleButtonLoading(button, false);
+    }
+}
+
+// Initialize event listeners
+function initializeEventListeners() {
+    if (eventListenersAdded) return;
+    eventListenersAdded = true;
+    nextButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            const nextStep = parseInt(button.dataset.next);
+            if (!isNaN(nextStep)) {
+                validateStep(nextStep - 1, button);
+            }
+        });
+    });
+    prevButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            const prevStep = parseInt(button.dataset.prev);
+            if (!isNaN(prevStep)) {
+                updateStep(prevStep);
+            }
+        });
+    });
+    if (adultsInput) {
+        adultsInput.addEventListener('input', () => {
+            updatePassengerFields();
+            debouncedUpdateSummary();
+            updateChildLinkedAdultOptions();
+        });
+    }
+    if (childrenInput) {
+        childrenInput.addEventListener('input', () => {
+            updatePassengerFields();
+            debouncedUpdateSummary();
+        });
+    }
+    if (infantsInput) {
+        infantsInput.addEventListener('input', () => {
+            updatePassengerFields();
+            debouncedUpdateSummary();
+        });
+    }
+    if (addVehicleCheckbox) {
+        addVehicleCheckbox.addEventListener('change', () => {
+            toggleVehicleFields();
+            debouncedUpdateSummary();
+        });
+    }
+    if (addCargoCheckbox) {
+        addCargoCheckbox.addEventListener('change', () => {
+            toggleCargoFields();
+            debouncedUpdateSummary();
+        });
+    }
+    if (proceedToPayment) {
+        proceedToPayment.addEventListener('click', () => {
+            if (!privacyConsent?.checked) {
+                displayBackendErrors([{ field: 'privacy-consent', message: 'You must agree to the Privacy Policy and Terms of Service.' }], proceedToPayment);
+                return;
+            }
+            validateStep(4, proceedToPayment);
+        });
+    }
+    if (resetScheduleButton) {
+        resetScheduleButton.addEventListener('click', () => {
+            clearFormData();
+            updateStep(1);
+        });
+    }
+    ['premium_seating', 'priority_boarding', 'cabin', 'meal_breakfast', 'meal_lunch', 'meal_dinner', 'meal_snack'].forEach(type => {
+        const input = document.getElementById(`${type}_quantity`);
+        if (input) {
+            input.addEventListener('input', debouncedUpdateSummary);
+        }
+    });
+    if (scheduleInput) {
+        scheduleInput.addEventListener('change', () => {
+            scheduleCache = null;
+            debouncedUpdateSummary();
+            saveFormData();
+        });
+    }
+    if (guestEmailInput) {
+        guestEmailInput.addEventListener('input', saveFormData);
+    }
+    document.querySelectorAll('#vehicle-fields input, #vehicle-fields select, #cargo-fields input, #cargo-fields select').forEach(input => {
+        input.addEventListener('input', debouncedUpdateSummary);
+    });
+    document.querySelectorAll('input[name*="adult_first_name_"], input[name*="adult_last_name_"]').forEach(input => {
+        input.addEventListener('input', updateChildLinkedAdultOptions);
+    });
+}
+
+// Initialize AOS and load form data
+document.addEventListener('DOMContentLoaded', () => {
+    AOS.init({ duration: 600, once: true });
+    loadFormData();
+    initializeEventListeners();
+});

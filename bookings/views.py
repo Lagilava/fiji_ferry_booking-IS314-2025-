@@ -1,39 +1,39 @@
-import logging
-import os
-import stripe
-from datetime import timedelta
-import requests
-from django.conf import settings
-from django.core.cache import cache
-from django.core.validators import FileExtensionValidator
-from django.db.models import Subquery, Max, OuterRef
-from datetime import datetime
-from django.shortcuts import render, get_object_or_404, redirect
-from django.http import JsonResponse, HttpResponseForbidden, HttpResponse, StreamingHttpResponse
-from django.contrib import messages
-from django.views.decorators.cache import cache_page
-from django.views.decorators.http import require_POST, require_GET
-from django.views.decorators.csrf import csrf_exempt
-from django.contrib.auth.decorators import login_required
-from django.core.mail import send_mail
-from django.urls import reverse
-from django.utils import timezone
-from django.core.exceptions import ValidationError
-from decimal import Decimal
-from io import BytesIO
-from django.core.files.base import ContentFile
-import qrcode
+import datetime
+import hashlib
 import json
+import logging
+import re
 import time
 import uuid
+from decimal import Decimal
+from io import BytesIO
 
-from .models import Schedule, Booking, Passenger, Payment, Ticket, Cargo, Route, DocumentVerification, WeatherCondition
+import stripe
+import qrcode
+import requests
+from django.conf import settings
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.core.cache import cache
+from django.core.exceptions import ValidationError
+from django.core.files.base import ContentFile, File
+from django.core.mail import send_mail
+from django.core.validators import FileExtensionValidator
+from django.db.models import Subquery, Max, OuterRef
+from django.http import JsonResponse, HttpResponseForbidden, StreamingHttpResponse, HttpResponse
+from django.shortcuts import render, get_object_or_404, redirect
+from django.urls import reverse
+from django.utils import timezone
+from django.views.decorators.cache import cache_page
+from django.views.decorators.csrf import csrf_exempt, csrf_protect
+from django.views.decorators.http import require_POST, require_GET
+
 from .decorators import login_required_allow_anonymous
 from .forms import CargoBookingForm, ModifyBookingForm
+from .models import Schedule, Booking, Passenger, Payment, Ticket, Cargo, Route, WeatherCondition, AddOn
 
 logger = logging.getLogger(__name__)
 stripe.api_key = settings.STRIPE_SECRET_KEY
-
 
 def safe_float(val):
     try:
@@ -47,131 +47,118 @@ def safe_int(val):
     except (TypeError, ValueError):
         return 0
 
-def calculate_cargo_price(weight_kg, cargo_type):
-    base_rate = Decimal('5.00')
-    type_multiplier = {
-        'parcel': Decimal('1.0'),
-        'pallet': Decimal('1.2'),
-        'vehicle': Decimal('3.0'),
-        'bulk': Decimal('1.5')
-    }
-    return weight_kg * base_rate * type_multiplier.get(cargo_type, Decimal('1.0'))
-
-
-def calculate_passenger_price(adults, youths, children, infants, schedule):
-    base_fare = schedule.route.base_fare or Decimal('35.50')
-    return (
-        adults * base_fare +
-        youths * base_fare * Decimal('0.75') +  # Youths pay 75% of adult fare
-        children * base_fare * Decimal('0.5') +
-        infants * base_fare * Decimal('0.1')
-    )
-
-def calculate_total_price(adults, youths, children, infants, schedule, add_cargo, cargo_type, weight_kg, is_emergency):
-    passenger_price = calculate_passenger_price(adults, youths, children, infants, schedule)
-    cargo_price = calculate_cargo_price(Decimal(weight_kg), cargo_type) if add_cargo and cargo_type and weight_kg else Decimal('0.00')
-    emergency_surcharge = Decimal('50.00') if is_emergency else Decimal('0.00')
-    return passenger_price + cargo_price + emergency_surcharge
+@require_GET
+@csrf_exempt
+def check_session(request):
+    """
+    Check if the user's session is valid.
+    """
+    if request.session.session_key:
+        return JsonResponse({'valid': True})
+    return JsonResponse({'valid': False}, status=401)
 
 @require_GET
 def weather_stream(request):
+    API_KEY = settings.WEATHER_API_KEY
+    FETCH_INTERVAL = 30  # seconds
+
+    def fetch_weather(route, port):
+        """Fetch weather from DB or API"""
+        now = timezone.now()
+        # Check DB first
+        weather = WeatherCondition.objects.filter(
+            route=route, port=port, expires_at__gt=now
+        ).order_by('-updated_at').first()
+
+        if weather and not weather.is_expired():
+            return weather
+
+        # Fallback to API
+        try:
+            resp = requests.get(
+                'https://api.weatherapi.com/v1/current.json',
+                params={'key': API_KEY, 'q': f"{port.lat},{port.lng}", 'aqi': 'no'},
+                timeout=5
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            temperature = data['current']['temp_c']
+            wind_speed = data['current']['wind_kph']
+            condition = data['current']['condition']['text']
+            precipitation_probability = data['current'].get('precip_mm', 0) * 100
+
+            weather, _ = WeatherCondition.objects.update_or_create(
+                route=route,
+                port=port,
+                defaults={
+                    'temperature': temperature,
+                    'wind_speed': wind_speed,
+                    'precipitation_probability': precipitation_probability,
+                    'condition': condition,
+                    'expires_at': now + datetime.timedelta(minutes=30),
+                    'updated_at': now
+                }
+            )
+            return weather
+        except requests.RequestException as e:
+            return None
+
     def stream():
-        since = request.GET.get('since')
-        last_sent = None
-        if since:
-            try:
-                last_sent = timezone.datetime.fromisoformat(since.replace('Z', '+00:00'))
-                if not timezone.is_aware(last_sent):
-                    last_sent = timezone.make_aware(last_sent)
-            except ValueError:
-                logger.error(f"Invalid 'since' parameter: {since}")
-                yield f"data: {json.dumps({'weather': [], 'error': 'Invalid since parameter'})}\n\n"
-                time.sleep(5)
-                return
-
+        last_sent_times = {}
         while True:
-            try:
-                # Get routes for active schedules only
-                now = timezone.now()
-                schedules = Schedule.objects.filter(
-                    status='scheduled',
-                    departure_time__gt=now
-                ).select_related('route')
-                route_ids = schedules.values_list('route_id', flat=True).distinct()
-                routes = Route.objects.filter(id__in=route_ids).select_related('departure_port')
+            now = timezone.now()
+            schedules = Schedule.objects.filter(
+                status='scheduled', departure_time__gt=now
+            ).select_related('route__departure_port')
+            route_ids = schedules.values_list('route_id', flat=True).distinct()
+            routes = Route.objects.filter(id__in=route_ids).select_related('departure_port')
 
-                weather_data = []
-                # Subquery to get the latest updated_at for each route_id
-                latest_conditions_subquery = WeatherCondition.objects.filter(
-                    route_id=OuterRef('route_id'),
-                    expires_at__gt=timezone.now()
-                ).values('route_id').annotate(
-                    latest_updated=Max('updated_at')
-                ).values('latest_updated')
+            weather_data = []
 
-                # Main query to get the latest WeatherCondition for scheduled routes
-                latest_conditions = WeatherCondition.objects.filter(
-                    route_id__in=route_ids,
-                    expires_at__gt=timezone.now(),
-                    updated_at__in=Subquery(latest_conditions_subquery)
-                )
-                if last_sent:
-                    latest_conditions = latest_conditions.filter(updated_at__gt=last_sent)
+            for route in routes:
+                port = route.departure_port
+                weather = fetch_weather(route, port)
+                last_sent = last_sent_times.get(route.id)
 
-                latest_per_route = {wc.route_id: wc for wc in latest_conditions}
+                if weather and (not last_sent or weather.updated_at > last_sent):
+                    data = {
+                        'route_id': route.id,
+                        'port': port.name,
+                        'temperature': safe_float(weather.temperature),
+                        'wind_speed': safe_float(weather.wind_speed),
+                        'precipitation_probability': safe_float(weather.precipitation_probability),
+                        'condition': weather.condition,
+                        'updated_at': weather.updated_at.isoformat(),
+                        'expires_at': weather.expires_at.isoformat(),
+                        'warning': None
+                    }
+                    if data['wind_speed'] and data['wind_speed'] > 30:
+                        data['warning'] = 'Strong winds expected, potential delays.'
+                    elif data['precipitation_probability'] and data['precipitation_probability'] > 50:
+                        data['warning'] = 'High chance of rain, please prepare accordingly.'
 
-                for route in routes:
-                    wc = latest_per_route.get(route.id)
-                    if wc:
-                        weather_data.append({
-                            'route_id': route.id,
-                            'condition': wc.condition,
-                            'temperature': safe_float(wc.temperature),
-                            'wind_speed': safe_float(wc.wind_speed),
-                            'precipitation_probability': safe_float(wc.precipitation_probability),
-                            'port': wc.port.name,
-                            'is_expired': wc.is_expired(),
-                            'updated_at': wc.updated_at.isoformat(),
-                            'expires_at': wc.expires_at.isoformat(),
-                            'error': None
-                        })
-                    elif not last_sent:
-                        # Only include missing data if no 'since' filter is applied
-                        weather_data.append({
-                            'route_id': route.id,
-                            'condition': None,
-                            'temperature': None,
-                            'wind_speed': None,
-                            'precipitation_probability': None,
-                            'port': route.departure_port.name,
-                            'is_expired': True,
-                            'updated_at': None,
-                            'expires_at': None,
-                            'error': 'No valid weather data available'
-                        })
+                    weather_data.append(data)
+                    last_sent_times[route.id] = now
 
-                if weather_data:
-                    yield f"data: {json.dumps({'weather': weather_data})}\n\n"
-                yield ":\n\n"  # keep-alive
-                last_sent = timezone.now() if weather_data else last_sent
-                time.sleep(30)
-            except Exception as e:
-                logger.error(f"SSE stream error: {str(e)}")
-                yield f"data: {json.dumps({'weather': [], 'error': str(e)})}\n\n"
-                time.sleep(5)
+            if weather_data:
+                yield f"data: {json.dumps({'weather': weather_data})}\n\n"
+
+            yield ":\n\n"  # SSE keep-alive
+            time.sleep(FETCH_INTERVAL)
 
     response = StreamingHttpResponse(stream(), content_type='text/event-stream')
     response['Cache-Control'] = 'no-cache'
     response['X-Accel-Buffering'] = 'no'
     return response
 
-
 @require_GET
 @cache_page(60 * 10)  # Cache for 10 minutes
 def get_weather_conditions(request):
-    # Parse 'since' parameter
+    schedule_id = request.GET.get('schedule_id')
     since = request.GET.get('since')
     last_updated = None
+
+    # Parse 'since' parameter for conditional updates
     if since:
         try:
             last_updated = timezone.datetime.fromisoformat(since.replace('Z', '+00:00'))
@@ -179,124 +166,201 @@ def get_weather_conditions(request):
                 last_updated = timezone.make_aware(last_updated)
         except ValueError:
             logger.error(f"Invalid 'since' parameter: {since}")
-            return JsonResponse({'weather': [], 'error': 'Invalid since parameter'}, status=400)
+            return JsonResponse({'valid': False, 'error': 'Invalid since parameter'}, status=400)
 
-    # Get routes for active schedules only
+    # Validate schedule_id
+    if not schedule_id or not schedule_id.isdigit():
+        logger.error(f"Invalid schedule_id: {schedule_id}")
+        return JsonResponse({'valid': False, 'error': 'Invalid schedule ID'}, status=400)
+
+    # Fetch the specific schedule
+    try:
+        schedule = Schedule.objects.select_related('route__departure_port').get(
+            id=schedule_id,
+            status='scheduled',
+            departure_time__gt=timezone.now()
+        )
+    except Schedule.DoesNotExist:
+        logger.error(f"Schedule not found or invalid: {schedule_id}")
+        return JsonResponse({'valid': False, 'error': 'Schedule not found or no longer available'}, status=404)
+
+    route = schedule.route
+    port = route.departure_port
+
+    # Generate concise cache key using MD5 hash of route_id
+    cache_key = f"weather_route_{hashlib.md5(str(route.id).encode()).hexdigest()}"
+    logger.debug(f"Generated cache key: {cache_key}")
+
+    # Check cache
+    cached_weather = cache.get(cache_key)
+    if cached_weather and (not last_updated or cached_weather['updated_at'] > last_updated.isoformat()):
+        logger.info(f"Cache hit for route_id: {route.id}")
+        return JsonResponse({'valid': True, 'weather': cached_weather})
+
+    # Check database for existing weather condition
     now = timezone.now()
-    schedules = Schedule.objects.filter(
-        status='scheduled',
-        departure_time__gt=now
-    ).select_related('route')
-    route_ids = schedules.values_list('route_id', flat=True).distinct()
-    routes = Route.objects.filter(id__in=route_ids).select_related('departure_port')
-
-    weather_data = []
-
-    # Prefetch existing weather conditions for scheduled routes
-    weather_conditions = WeatherCondition.objects.filter(
-        route_id__in=route_ids,
-        expires_at__gt=timezone.now()
+    weather = WeatherCondition.objects.filter(
+        route=route,
+        port=port,
+        expires_at__gt=now
     )
     if last_updated:
-        weather_conditions = weather_conditions.filter(updated_at__gt=last_updated)
+        weather = weather.filter(updated_at__gt=last_updated)
+    weather = weather.first()
 
-    weather_cache = {(w.route_id, w.port_id): w for w in weather_conditions}
+    weather_data = None
+    if weather:
+        weather_data = {
+            'route_id': route.id,
+            'port': port.name,
+            'temperature': float(weather.temperature) if weather.temperature is not None else None,
+            'wind_speed': float(weather.wind_speed) if weather.wind_speed is not None else None,
+            'precipitation_probability': float(weather.precipitation_probability) if weather.precipitation_probability is not None else None,
+            'condition': weather.condition,
+            'updated_at': weather.updated_at.isoformat(),
+            'expires_at': weather.expires_at.isoformat(),
+            'warning': None
+        }
+        # Generate warning based on conditions (customize as needed)
+        if weather.wind_speed and weather.wind_speed > 30:
+            weather_data['warning'] = 'Strong winds expected, potential delays.'
+        elif weather.precipitation_probability and weather.precipitation_probability > 50:
+            weather_data['warning'] = 'High chance of rain, please prepare accordingly.'
 
-    for route in routes:
-        key = (route.id, route.departure_port.id)
-        weather = weather_cache.get(key)
+    else:
+        # Fetch from Weather API
+        try:
+            response = requests.get(
+                'https://api.weatherapi.com/v1/current.json',
+                params={
+                    'key': settings.WEATHER_API_KEY,
+                    'q': f"{port.lat},{port.lng}",  # Fixed 'lng' to 'lon' assuming model field
+                    'aqi': 'no'
+                },
+                timeout=5
+            )
+            response.raise_for_status()
+            data = response.json()
 
-        if weather:
-            # Use cached data
-            weather_data.append({
-                'route_id': route.id,
-                'port': route.departure_port.name,
-                'temperature': safe_float(weather.temperature),
-                'wind_speed': safe_float(weather.wind_speed),
-                'precipitation_probability': safe_float(weather.precipitation_probability),
-                'condition': weather.condition,
-                'updated_at': weather.updated_at.isoformat(),
-                'expires_at': weather.expires_at.isoformat()
-            })
-            continue
+            temperature = data['current']['temp_c']
+            wind_speed = data['current']['wind_kph']
+            condition = data['current']['condition']['text']
+            precipitation_probability = data['current'].get('precip_mm', 0) * 100
 
-        if not last_updated:
-            # Fetch fresh data from WeatherAPI only if no 'since' filter
-            try:
-                response = requests.get(
-                    'https://api.weatherapi.com/v1/current.json',
-                    params={
-                        'key': settings.WEATHER_API_KEY,
-                        'q': f"{route.departure_port.lat},{route.departure_port.lng}",
-                        'aqi': 'no'
-                    },
-                    timeout=5  # prevent hanging requests
-                )
-                response.raise_for_status()
-                data = response.json()
-
-                temperature = data['current']['temp_c']
-                wind_speed = data['current']['wind_kph']
-                condition = data['current']['condition']['text']
-                precipitation_probability = data['current'].get('precip_in', 0) * 100  # Convert inches to percentage
-
-                # Save/update in DB
-                WeatherCondition.objects.update_or_create(
-                    route=route,
-                    port=route.departure_port,
-                    defaults={
-                        'temperature': temperature,
-                        'wind_speed': wind_speed,
-                        'precipitation_probability': precipitation_probability,
-                        'condition': condition,
-                        'expires_at': timezone.now() + timedelta(minutes=30),
-                        'updated_at': timezone.now()
-                    }
-                )
-
-                weather_data.append({
-                    'route_id': route.id,
-                    'port': route.departure_port.name,
+            # Create or update WeatherCondition
+            weather, _ = WeatherCondition.objects.update_or_create(
+                route=route,
+                port=port,
+                defaults={
                     'temperature': temperature,
                     'wind_speed': wind_speed,
                     'precipitation_probability': precipitation_probability,
                     'condition': condition,
-                    'updated_at': timezone.now().isoformat(),
-                    'expires_at': (timezone.now() + timedelta(minutes=30)).isoformat()
-                })
+                    'expires_at': now + datetime.timedelta(minutes=30),
+                    'updated_at': now
+                }
+            )
 
-            except requests.RequestException as e:
-                logger.error(f"WeatherAPI error for {route.departure_port.name}: {str(e)}")
-                weather_data.append({
-                    'route_id': route.id,
-                    'port': route.departure_port.name,
-                    'temperature': None,
-                    'wind_speed': None,
-                    'precipitation_probability': None,
-                    'condition': None,
-                    'updated_at': None,
-                    'expires_at': None,
-                    'error': 'Weather data unavailable'
-                })
+            weather_data = {
+                'route_id': route.id,
+                'port': port.name,
+                'temperature': temperature,
+                'wind_speed': wind_speed,
+                'precipitation_probability': precipitation_probability,
+                'condition': condition,
+                'updated_at': now.isoformat(),
+                'expires_at': (now + datetime.timedelta(minutes=30)).isoformat(),
+                'warning': None
+            }
+            # Generate warning based on conditions
+            if wind_speed > 30:
+                weather_data['warning'] = 'Strong winds expected, potential delays.'
+            elif precipitation_probability > 50:
+                weather_data['warning'] = 'High chance of rain, please prepare accordingly.'
 
-    return JsonResponse({'weather': weather_data})
+        except requests.RequestException as e:
+            logger.error(f"WeatherAPI error for {port.name}: {str(e)}")
+            weather_data = {
+                'route_id': route.id,
+                'port': port.name,
+                'temperature': None,
+                'wind_speed': None,
+                'precipitation_probability': None,
+                'condition': None,
+                'updated_at': None,
+                'expires_at': None,
+                'warning': None,
+                'error': 'Weather data unavailable'
+            }
 
+    # Cache the result
+    cache.set(cache_key, weather_data, timeout=60 * 10)
+    logger.info(f"Weather data cached for route_id: {route.id}")
+
+    return JsonResponse({'valid': True, 'weather': weather_data})
 
 def privacy_policy(request):
     return render(request, 'privacy_policy.html')
 
+def calculate_cargo_price(weight_kg, cargo_type):
+    try:
+        weight_kg = Decimal(str(weight_kg))
+        if weight_kg <= 0:
+            raise ValueError("Weight must be positive")
 
-def generate_cargo_qr(request, cargo):
-    qr_data = request.build_absolute_uri(
-        reverse('bookings:view_cargo', args=[
-            f"CargoID:{cargo.id}|Booking:{cargo.booking.id}|Type:{cargo.cargo_type}|Weight:{cargo.weight_kg}kg"
-        ])
+        base_rate = Decimal('5.00')  # base price per kg
+
+        # Multipliers for cargo categories
+        type_multiplier = {
+            'Light Cargo': Decimal('1.2'),   # parcels, boxes
+            'Heavy Cargo': Decimal('2.0'),   # machinery, materials
+            'Bulk Cargo': Decimal('1.5'),    # produce, sand, fuel
+            'Livestock': Decimal('2.5')      # animals require special handling
+        }
+
+        multiplier = type_multiplier.get(cargo_type, Decimal('1.0'))
+        return weight_kg * base_rate * multiplier
+
+    except (ValueError, TypeError) as e:
+        logger.error(
+            f"Invalid cargo weight or type: weight_kg={weight_kg}, cargo_type={cargo_type}, error={str(e)}"
+        )
+        raise ValueError("Invalid cargo weight or type")
+
+def calculate_addon_price(addon_type, quantity):
+    try:
+        quantity = int(quantity)
+        if quantity < 0:
+            raise ValueError("Quantity cannot be negative")
+        if addon_type not in dict(AddOn.ADD_ON_TYPE_CHOICES).keys():
+            raise ValueError(f"Invalid add-on type: {addon_type}")
+        prices = {
+            'premium_seating': Decimal('20.00'),
+            'priority_boarding': Decimal('10.00'),
+            'cabin': Decimal('50.00'),
+            'meal_breakfast': Decimal('15.00'),
+            'meal_lunch': Decimal('15.00'),
+            'meal_dinner': Decimal('15.00'),
+            'meal_snack': Decimal('5.00')
+        }
+        return prices.get(addon_type, Decimal('0.00')) * Decimal(quantity)
+    except (ValueError, TypeError) as e:
+        logger.error(f"Invalid addon quantity: addon_type={addon_type}, quantity={quantity}, error={str(e)}")
+        raise ValueError("Invalid addon quantity")
+
+def calculate_passenger_price(adults, children, infants, schedule):
+    base_fare = schedule.route.base_fare or Decimal('35.50')
+    return (
+        Decimal(adults) * base_fare +
+        Decimal(children) * base_fare * Decimal('0.5') +
+        Decimal(infants) * base_fare * Decimal('0.1')
     )
-    qr = qrcode.make(qr_data)
-    buffer = BytesIO()
-    qr.save(buffer, format='PNG')
-    cargo.qr_code.save(f"cargo_{cargo.id}.png", ContentFile(buffer.getvalue()))
 
+def calculate_total_price(adults, children, infants, schedule, add_cargo, cargo_type, weight_kg, addons):
+    passenger_price = calculate_passenger_price(adults, children, infants, schedule)
+    cargo_price = calculate_cargo_price(weight_kg, cargo_type) if add_cargo and cargo_type and weight_kg else Decimal('0.00')
+    addon_price = sum(calculate_addon_price(addon['type'], addon['quantity']) for addon in addons)
+    return passenger_price + cargo_price + addon_price
 
 def routes_api(request):
     try:
@@ -315,27 +379,28 @@ def routes_api(request):
                     'lng': route.destination_port.lng
                 },
                 'distance_km': float(route.distance_km) if route.distance_km else None,
-                'estimated_duration': int(route.estimated_duration.total_seconds()) if route.estimated_duration else None,
+                'estimated_duration': int(route.estimated_duration.total_seconds() / 60) if route.estimated_duration else None,
                 'base_fare': float(route.base_fare) if route.base_fare else None,
                 'schedule_id': route.schedules.first().id if route.schedules.exists() else None,
                 'waypoints': route.waypoints or [
-                    [route.departure_lat, route.departure_lng],
-                    [route.destination_lat, route.destination_lng]
+                    [route.departure_port.lat, route.departure_port.lng],
+                    [route.destination_port.lat, route.destination_port.lng]
                 ]
             }
             for route in routes
         ]
         return JsonResponse({'routes': routes_data})
     except Exception as e:
+        logger.error(f"Routes API error: {str(e)}")
         return JsonResponse({'error': str(e)}, status=500)
 
-
+@require_GET
 def homepage(request):
     now = timezone.now()
     schedules = Schedule.objects.filter(
         status='scheduled',
         departure_time__gt=now
-    ).select_related('ferry', 'route', 'route__departure_port', 'route__destination_port').order_by('departure_time')
+    ).select_related('ferry', 'route__departure_port', 'route__destination_port').order_by('departure_time')
 
     route_input = request.GET.get('route', '').strip().lower()
     travel_date = request.GET.get('date', '').strip()
@@ -354,9 +419,9 @@ def homepage(request):
 
     if travel_date:
         try:
-            travel_date_obj = datetime.strptime(travel_date, '%Y-%m-%d')
+            travel_date_obj = datetime.datetime.strptime(travel_date, '%Y-%m-%d')
             travel_date_start = timezone.make_aware(travel_date_obj)
-            travel_date_end = travel_date_start + timezone.timedelta(days=1)
+            travel_date_end = travel_date_start + datetime.timedelta(days=1)
             schedules = schedules.filter(
                 departure_time__range=(travel_date_start, travel_date_end)
             )
@@ -371,10 +436,10 @@ def homepage(request):
         next_departure_info = {
             'time': next_departure.departure_time.strftime('%a, %b %d, %H:%M'),
             'route': f"{next_departure.route.departure_port.name} to {next_departure.route.destination_port.name}",
-            'schedule_id': next_departure.id
+            'schedule_id': next_departure.id,
+            'estimated_duration': int(next_departure.route.estimated_duration.total_seconds() / 60) if next_departure.route.estimated_duration else None
         }
 
-    # Fetch weather data for scheduled routes
     weather_data = []
     schedule_route_ids = schedules.values_list('route_id', flat=True).distinct()
     latest_conditions_subquery = WeatherCondition.objects.filter(
@@ -432,7 +497,6 @@ def homepage(request):
     }
     return render(request, 'home.html', context)
 
-
 @login_required_allow_anonymous
 def booking_history(request):
     logger.debug(
@@ -440,7 +504,6 @@ def booking_history(request):
         f"session_guest_email={request.session.get('guest_email')}, "
         f"session_keys={list(request.session.keys())}"
     )
-    logger.debug(f"Messages: {list(messages.get_messages(request))}")
 
     if request.method == 'POST':
         guest_email = request.POST.get('guest_email', '').strip()
@@ -449,25 +512,19 @@ def booking_history(request):
             logger.debug(f"Set guest_email in session: {guest_email}")
 
     if request.user.is_authenticated:
-        bookings = Booking.objects.filter(user=request.user).select_related('schedule__ferry',
-                                                                          'schedule__route').order_by('-booking_date')
+        bookings = Booking.objects.filter(user=request.user).select_related('schedule__ferry', 'schedule__route').order_by('-booking_date')
     else:
         guest_email = request.session.get('guest_email')
-        bookings = Booking.objects.filter(guest_email=guest_email).select_related('schedule__ferry',
-                                                                                'schedule__route').order_by(
-            '-booking_date') if guest_email else []
-
-    logger.debug(f"Found {bookings.count()} bookings: {[b.id for b in bookings]}")
+        bookings = Booking.objects.filter(guest_email=guest_email).select_related('schedule__ferry', 'schedule__route').order_by('-booking_date') if guest_email else []
 
     for booking in bookings:
         booking.update_status_if_expired()
 
     return render(request, 'bookings/history.html', {
         'bookings': bookings,
-        'cutoff_time': timezone.now() + timezone.timedelta(hours=6),
+        'cutoff_time': timezone.now() + datetime.timedelta(hours=6),
         'is_guest': not request.user.is_authenticated
     })
-
 
 @login_required
 def generate_ticket(request, booking_id):
@@ -481,34 +538,30 @@ def generate_ticket(request, booking_id):
             ticket = Ticket.objects.create(
                 booking=booking,
                 passenger=passenger,
-                ticket_status='active'
+                ticket_status='active',
+                qr_token=uuid.uuid4().hex
             )
             qr_data = request.build_absolute_uri(reverse('bookings:view_ticket', args=[ticket.qr_token]))
-            qr = qrcode.make(qr_data)
+            qr = qrcode.QRCode()
+            qr.add_data(qr_data)
+            qr.make(fit=True)
+            img = qr.make_image(fill_color="black", back_color="white")
             buffer = BytesIO()
-            qr.save(buffer, format='PNG')
+            img.save(buffer, format='PNG')
             ticket.qr_code.save(f"ticket_{ticket.id}.png", ContentFile(buffer.getvalue()))
 
     messages.success(request, f"Tickets generated for Booking #{booking.id}.")
     return redirect('bookings:view_tickets', booking_id=booking.id)
 
-
 @login_required
-def view_cargo(request, qr_data):
-    parts = dict(x.split(':') for x in qr_data.split('|'))
-    cargo_id = parts.get('CargoID')
-    if not cargo_id:
-        messages.error(request, "Invalid cargo QR code.")
-        return redirect('bookings:booking_history')
+def view_cargo(request, cargo_id):
     cargo = get_object_or_404(Cargo, id=cargo_id, booking__user=request.user)
     return render(request, 'bookings/view_cargo.html', {'cargo': cargo})
-
 
 @login_required_allow_anonymous
 def view_ticket(request, qr_token):
     try:
-        ticket = Ticket.objects.select_related('booking', 'passenger', 'booking__schedule__ferry',
-                                               'booking__schedule__route').get(qr_token=qr_token)
+        ticket = Ticket.objects.select_related('booking__schedule__ferry', 'booking__schedule__route', 'passenger').get(qr_token=qr_token)
     except Ticket.DoesNotExist:
         messages.error(request, "Invalid or expired ticket link.")
         return redirect('bookings:booking_history')
@@ -518,13 +571,12 @@ def view_ticket(request, qr_token):
         return HttpResponseForbidden("You are not authorized to view this ticket.")
     return render(request, 'bookings/view_ticket.html', {'ticket': ticket})
 
-
 def get_schedule_updates(request):
     now = timezone.now()
     schedules = Schedule.objects.filter(
         status='scheduled',
         departure_time__gt=now
-    ).select_related('ferry', 'route').order_by('departure_time')
+    ).select_related('ferry', 'route__departure_port', 'route__destination_port').order_by('departure_time')
     data = {
         'schedules': [
             {
@@ -533,6 +585,7 @@ def get_schedule_updates(request):
                 'departure_time': s.departure_time.isoformat(),
                 'status': s.status,
                 'available_seats': s.available_seats,
+                'estimated_duration': int(s.route.estimated_duration.total_seconds() / 60) if s.route.estimated_duration else None,
                 'route': {
                     'base_fare': str(s.route.base_fare),
                     'departure_port': s.route.departure_port.name,
@@ -543,103 +596,128 @@ def get_schedule_updates(request):
     }
     return JsonResponse(data)
 
-
 @require_POST
 def get_pricing(request):
     try:
         schedule_id = request.POST.get('schedule_id')
-        if not schedule_id:
-            return JsonResponse({'error': 'Schedule ID is required.'}, status=400)
-
         adults = safe_int(request.POST.get('adults'))
-        youths = safe_int(request.POST.get('youths'))
         children = safe_int(request.POST.get('children'))
         infants = safe_int(request.POST.get('infants'))
         add_cargo = request.POST.get('add_cargo') == 'true'
         cargo_type = request.POST.get('cargo_type', '')
-        weight_kg = safe_float(request.POST.get('weight_kg', '0'))
-        is_emergency = request.POST.get('is_emergency') == 'true'
+        weight_kg = safe_float(request.POST.get('weight_kg', 0))
+        license_plate = request.POST.get('license_plate', '')
+        addons = []
+        for addon_type in dict(AddOn.ADD_ON_TYPE_CHOICES).keys():
+            quantity = safe_int(request.POST.get(f'{addon_type}_quantity', 0))
+            if quantity > 0:
+                addons.append({'type': addon_type, 'quantity': quantity})
 
-        if any(n < 0 for n in [adults, youths, children, infants, weight_kg]):
+        if not schedule_id:
+            return JsonResponse({'error': 'Schedule ID is required.'}, status=400)
+
+        if any(n < 0 for n in [adults, children, infants, weight_kg]):
             return JsonResponse({'error': 'Passenger counts and weight cannot be negative.'}, status=400)
 
-        if add_cargo and not cargo_type:
-            return JsonResponse({'error': 'Cargo type is required when adding cargo.'}, status=400)
+        if add_cargo and not (cargo_type and weight_kg and license_plate):
+            return JsonResponse({'error': 'Cargo type, weight, and license plate are required when adding cargo.'}, status=400)
 
         schedule = get_object_or_404(Schedule, id=schedule_id)
 
         total_price = calculate_total_price(
-            adults, youths, children, infants, schedule, add_cargo, cargo_type, weight_kg, is_emergency
+            adults, children, infants, schedule, add_cargo, cargo_type, weight_kg, addons
         )
 
         breakdown = {
             'adults': str(Decimal(adults) * (schedule.route.base_fare or Decimal('35.50'))),
-            'youths': str(Decimal(youths) * (schedule.route.base_fare or Decimal('35.50')) * Decimal('0.75')),
             'children': str(Decimal(children) * (schedule.route.base_fare or Decimal('35.50')) * Decimal('0.5')),
             'infants': str(Decimal(infants) * (schedule.route.base_fare or Decimal('35.50')) * Decimal('0.1')),
             'cargo': str(calculate_cargo_price(Decimal(weight_kg), cargo_type) if add_cargo else Decimal('0.00')),
-            'emergency_surcharge': str(Decimal('50.00') if is_emergency else Decimal('0.00'))
+            'addons': {addon['type']: str(calculate_addon_price(addon['type'], addon['quantity'])) for addon in addons}
         }
-
-        logger.debug(f"Pricing calculated: schedule_id={schedule_id}, total_price={total_price}, breakdown={breakdown}")
 
         return JsonResponse({'total_price': str(total_price), 'breakdown': breakdown})
 
     except Exception as e:
-        logger.exception(f"Pricing error: {e}")
+        logger.exception(f"Pricing error: {str(e)}")
         return JsonResponse({'error': f"An error occurred: {str(e)}"}, status=400)
 
 
 
-def generate_manifest(booking, passengers):
-    manifest = {
-        'booking_id': booking.id,
-        'schedule': {
-            'ferry': booking.schedule.ferry.name,
-            'route': f"{booking.schedule.route.departure_port} → {booking.schedule.route.destination_port}",
-            'departure_time': booking.schedule.departure_time.isoformat(),
-        },
-        'passengers': [],
-        'group_leader': None,
-        'total_passengers': booking.number_of_passengers,
-        'is_emergency': booking.is_emergency,
-        'is_unaccompanied_minor': booking.is_unaccompanied_minor,
-        'cargo': None,
-        'consent_form': booking.consent_form.url if booking.consent_form else None,
-        'responsibility_declaration': booking.responsibility_declaration.url if booking.responsibility_declaration else None
+def validate_passenger_data(request, p_type, index, adults, errors):
+    first_name = request.POST.get(f'{p_type}_first_name_{index}', '').strip()
+    last_name = request.POST.get(f'{p_type}_last_name_{index}', '').strip()
+    age = request.POST.get(f'{p_type}_age_{index}', '').strip()
+    dob = request.POST.get(f'{p_type}_dob_{index}', '').strip()
+    linked_adult_index = request.POST.get(f'{p_type}_linked_adult_{index}', '').strip()
+    document = request.FILES.get(f'{p_type}_id_document_{index}')
+
+    # Mandatory fields
+    if not first_name:
+        errors.append({'field': f'{p_type}_first_name_{index}', 'message': f'{p_type.capitalize()} {index + 1}: First name is required.', 'step': 2})
+    if not last_name:
+        errors.append({'field': f'{p_type}_last_name_{index}', 'message': f'{p_type.capitalize()} {index + 1}: Last name is required.', 'step': 2})
+
+    # Document validation for adults and children
+    if p_type in ['adult', 'child']:
+        if not document:
+            errors.append({'field': f'{p_type}_id_document_{index}', 'message': f'{p_type.capitalize()} {index + 1}: ID document is required.', 'step': 2})
+        else:
+            try:
+                FileExtensionValidator(allowed_extensions=['pdf', 'jpg', 'jpeg', 'png'])(document)
+                if document.size > 2.5 * 1024 * 1024:  # 2.5MB
+                    errors.append({'field': f'{p_type}_id_document_{index}', 'message': f'{p_type.capitalize()} {index + 1}: Document size must be less than 2.5MB.', 'step': 2})
+            except ValidationError as e:
+                errors.append({'field': f'{p_type}_id_document_{index}', 'message': f'{p_type.capitalize()} {index + 1}: Invalid file type. Please upload a PDF, JPG, or PNG.', 'step': 2})
+
+    # Infant-specific validation
+    if p_type == 'infant' and not dob:
+        errors.append({'field': f'{p_type}_dob_{index}', 'message': f'Infant {index + 1}: Date of birth is required.', 'step': 2})
+
+    # Linked adult validation for children and infants
+    if p_type in ['child', 'infant']:
+        if not linked_adult_index:
+            errors.append({'field': f'{p_type}_linked_adult_{index}', 'message': f'{p_type.capitalize()} {index + 1}: Must be linked to an adult.', 'step': 2})
+        else:
+            try:
+                linked_adult_index = int(linked_adult_index)
+                if linked_adult_index < 0 or linked_adult_index >= adults:
+                    errors.append({'field': f'{p_type}_linked_adult_{index}', 'message': f'{p_type.capitalize()} {index + 1}: Invalid linked adult.', 'step': 2})
+            except (ValueError, TypeError):
+                errors.append({'field': f'{p_type}_linked_adult_{index}', 'message': f'{p_type.capitalize()} {index + 1}: Invalid linked adult.', 'step': 2})
+
+    # Age and DOB validation
+    if p_type == 'infant' and dob:
+        try:
+            dob_date = datetime.datetime.strptime(dob, '%Y-%m-%d').date()
+            age_days = (datetime.date.today() - dob_date).days
+            if age_days > 730:  # 2 years
+                errors.append({'field': f'{p_type}_dob_{index}', 'message': f'Infant {index + 1}: Must be under 2 years old.', 'step': 2})
+        except ValueError:
+            errors.append({'field': f'{p_type}_dob_{index}', 'message': f'Infant {index + 1}: Invalid date of birth.', 'step': 2})
+
+    if p_type in ['adult', 'child'] and age:
+        try:
+            age = int(age)
+            if p_type == 'child' and not (2 <= age <= 17):
+                errors.append({'field': f'{p_type}_age_{index}', 'message': f'Child {index + 1}: Age must be 2-17.', 'step': 2})
+            elif p_type == 'adult' and age < 18:
+                errors.append({'field': f'{p_type}_age_{index}', 'message': f'Adult {index + 1}: Age must be 18 or older.', 'step': 2})
+        except (ValueError, TypeError):
+            errors.append({'field': f'{p_type}_age_{index}', 'message': f'{p_type.capitalize()} {index + 1}: Invalid age.', 'step': 2})
+
+    return {
+        'first_name': first_name,
+        'last_name': last_name,
+        'age': age,
+        'dob': dob,
+        'linked_adult_index': linked_adult_index,
+        'document': document
     }
 
-    for passenger in passengers:
-        passenger_data = {
-            'type': passenger.passenger_type,
-            'first_name': passenger.first_name,
-            'last_name': passenger.last_name,
-            'age': passenger.age,
-            'is_group_leader': passenger.is_group_leader,
-            'document_status': passenger.verification_status,
-            'document': passenger.document.url if passenger.document else None,
-            'verification_id': passenger.documentverification_set.first().id if passenger.documentverification_set.exists() else None
-        }
-        manifest['passengers'].append(passenger_data)
-        if passenger.is_group_leader:
-            manifest['group_leader'] = f"{passenger.first_name} {passenger.last_name}"
-
-    if hasattr(booking, 'cargo'):
-        cargo = booking.cargo
-        manifest['cargo'] = {
-            'type': cargo.cargo_type,
-            'weight_kg': str(cargo.weight_kg),
-            'dimensions_cm': cargo.dimensions_cm,
-            'price': str(cargo.price),
-        }
-
-    return manifest
-
 @require_POST
+@csrf_protect
 def validate_step(request):
-    if request.method != 'POST':
-        return JsonResponse({'success': False, 'errors': [{'field': 'general', 'message': 'Invalid request method'}], 'step': 1})
-
     step = request.POST.get('step')
     errors = []
 
@@ -647,388 +725,328 @@ def validate_step(request):
         schedule_id = request.POST.get('schedule_id', '').strip()
         guest_email = request.POST.get('guest_email', '').strip()
         is_authenticated = request.user.is_authenticated
+        total_passengers = safe_int(request.POST.get('adults', '0')) + safe_int(request.POST.get('children', '0')) + safe_int(request.POST.get('infants', '0'))
 
         cache_key = f'schedule_exists_{schedule_id}'
         schedule_exists = cache.get(cache_key)
         if schedule_exists is None:
-            schedule_exists = Schedule.objects.filter(id=schedule_id, status='scheduled', departure_time__gt=timezone.now()).exists()
-            cache.set(cache_key, schedule_exists, timeout=3600)
+            try:
+                schedule = Schedule.objects.get(id=schedule_id, status='scheduled', departure_time__gt=timezone.now())
+                schedule_exists = True
+                if total_passengers > schedule.available_seats:
+                    errors.append({'field': 'schedule_id', 'message': f'Not enough seats available ({schedule.available_seats} remaining).'})
+                cache.set(cache_key, schedule_exists, timeout=3600)
+            except Schedule.DoesNotExist:
+                schedule_exists = False
+                errors.append({'field': 'schedule_id', 'message': 'Please select a valid ferry schedule.'})
+                cache.set(cache_key, schedule_exists, timeout=3600)
 
         if not schedule_id or not schedule_exists:
             errors.append({'field': 'schedule_id', 'message': 'Please select a valid ferry schedule.'})
 
-        if not is_authenticated and not guest_email:
-            errors.append({'field': 'guest_email', 'message': 'Guest email is required.'})
+        if not is_authenticated:
+            if not guest_email:
+                errors.append({'field': 'guest_email', 'message': 'Guest email is required.'})
+            elif not re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', guest_email):
+                errors.append({'field': 'guest_email', 'message': 'Please enter a valid email address.'})
 
     elif step == '2':
         adults = safe_int(request.POST.get('adults', '0'))
-        youths = safe_int(request.POST.get('youths', '0'))
         children = safe_int(request.POST.get('children', '0'))
         infants = safe_int(request.POST.get('infants', '0'))
 
-        total_passengers = adults + youths + children + infants
+        total_passengers = adults + children + infants
         if total_passengers == 0:
             errors.append({'field': 'general', 'message': 'At least one passenger is required.'})
-        if (infants > 0 or children > 0 or youths > 0) and adults == 0:
-            errors.append({'field': 'general', 'message': 'Minors must be accompanied by an adult.'})
+        if (children > 0 or infants > 0) and adults == 0:
+            errors.append({'field': 'general', 'message': 'Children and infants must be accompanied by an adult.'})
 
-        for field, value in [('adults', adults), ('youths', youths), ('children', children), ('infants', infants)]:
+        for field, value in [('adults', adults), ('children', children), ('infants', infants)]:
             if value < 0:
                 errors.append({'field': field, 'message': f'{field.capitalize()} count cannot be negative.'})
 
-        for type in ['adult', 'youth', 'child', 'infant']:
-            count = (
-                adults if type == 'adult' else
-                youths if type == 'youth' else
-                children if type == 'child' else
-                infants
-            )
+        for p_type in ['adult', 'child', 'infant']:
+            count = adults if p_type == 'adult' else children if p_type == 'child' else infants
             for i in range(count):
-                first_name = request.POST.get(f'{type}_first_name_{i}', '').strip()
-                last_name = request.POST.get(f'{type}_last_name_{i}', '').strip()
-                age = request.POST.get(f'{type}_age_{i}', '').strip()
-                is_group_leader = request.POST.get(f'{type}_is_group_leader_{i}') == 'true'
-
-                if not first_name:
-                    errors.append({'field': f'{type}_first_name_{i}', 'message': f'{type.capitalize()} {i + 1}: First name is required.'})
-                if not last_name:
-                    errors.append({'field': f'{type}_last_name_{i}', 'message': f'{type.capitalize()} {i + 1}: Last name is required.'})
-                try:
-                    age = int(age)
-                    if type == 'infant' and not (0 <= age <= 2):
-                        errors.append({'field': f'{type}_age_{i}', 'message': f'Infant {i + 1}: Age must be 0-2.'})
-                    elif type == 'child' and not (2 <= age <= 11):
-                        errors.append({'field': f'{type}_age_{i}', 'message': f'Child {i + 1}: Age must be 2-11.'})
-                    elif type == 'youth' and not (12 <= age <= 17):
-                        errors.append({'field': f'{type}_is_group_leader_{i}', 'message': f'Youth {i + 1}: Youth cannot be group leader.'})
-                    elif type == 'adult' and age < 18:
-                        errors.append({'field': f'{type}_age_{i}', 'message': f'Adult {i + 1}: Age must be 18 or older.'})
-                except (ValueError, TypeError):
-                    errors.append({'field': f'{type}_age_{i}', 'message': f'{type.capitalize()} {i + 1}: Invalid age.'})
-
-        has_minors = children > 0 or infants > 0 or youths > 0
-        has_parent = any(
-            request.POST.get(f'{type}_is_parent_guardian_{i}') == 'true'
-            for type in ['adult', 'youth']
-            for i in range(adults if type == 'adult' else youths)
-        )
-        responsibility_declaration = request.FILES.get('responsibility_declaration')
-        if has_minors and adults > 0 and not has_parent and not responsibility_declaration:
-            errors.append({'field': 'responsibility_declaration', 'message': 'Responsibility declaration is required if no adult is a parent.'})
+                validate_passenger_data(request, p_type, i, adults, errors)
 
     elif step == '3':
-        is_unaccompanied_minor = request.POST.get('is_unaccompanied_minor') == 'true'
-        has_minors = safe_int(request.POST.get('children', 0)) > 0 or safe_int(request.POST.get('infants', 0)) > 0 or safe_int(request.POST.get('youths', 0)) > 0
-        if is_unaccompanied_minor and has_minors:
-            if not request.POST.get('guardian_contact', '').strip():
-                errors.append({'field': 'guardian_contact', 'message': 'Guardian contact is required for unaccompanied minors.'})
-            if not request.FILES.get('consent_form'):
-                errors.append({'field': 'consent_form', 'message': 'Consent form is required for unaccompanied minors.'})
-        if request.POST.get('add_cargo') == 'true':
-            if not request.POST.get('cargo_type', '').strip():
+        add_cargo = request.POST.get('add_cargo') == 'true'
+        if add_cargo:
+            cargo_type = request.POST.get('cargo_type', '').strip()
+            cargo_weight = request.POST.get('cargo_weight_kg', '').strip()
+            cargo_dimensions = request.POST.get('cargo_dimensions_cm', '').strip()
+            if not cargo_type:
                 errors.append({'field': 'cargo_type', 'message': 'Cargo type is required.'})
             try:
-                weight = float(request.POST.get('weight_kg', 0))
+                weight = float(cargo_weight)
                 if weight <= 0:
-                    errors.append({'field': 'weight_kg', 'message': 'Cargo weight must be a positive number.'})
+                    errors.append({'field': 'cargo_weight_kg', 'message': 'Cargo weight must be a positive number.'})
             except ValueError:
-                errors.append({'field': 'weight_kg', 'message': 'Cargo weight must be a valid number.'})
+                errors.append({'field': 'cargo_weight_kg', 'message': 'Cargo weight must be a valid number.'})
+            if not cargo_dimensions or not re.match(r'^\d+x\d+x\d+$', cargo_dimensions):
+                errors.append({'field': 'cargo_dimensions_cm', 'message': 'Cargo dimensions must be in format LxWxH (e.g., 400x180x150).'})
 
     elif step == '4':
-        if request.POST.get('privacy_consent') != 'true':
-            errors.append({'field': 'privacy_consent', 'message': 'You must agree to the privacy policy.'})
+        if not request.POST.get('privacy_consent'):
+            errors.append({'field': 'privacy-consent', 'message': 'You must agree to the privacy policy.'})
 
     if errors:
-        return JsonResponse({'success': False, 'errors': errors, 'step': step})
-    return JsonResponse({'success': True, 'step': step})
-
+        return JsonResponse({'valid': False, 'errors': errors, 'step': step}, status=400)
+    return JsonResponse({'valid': True, 'step': step})
 
 @csrf_exempt
 def validate_file(request):
     if request.method != 'POST':
-        return JsonResponse({'error': 'Invalid request method.'}, status=405)
+        return JsonResponse({'valid': False, 'error': 'Invalid request method.'}, status=405)
 
     file = request.FILES.get('file')
     if not file:
         logger.error('No file provided for validation')
-        return JsonResponse({'error': 'No file provided.'}, status=400)
-
-    file_validator = FileExtensionValidator(allowed_extensions=['pdf', 'jpg', 'jpeg', 'png'])
+        return JsonResponse({'valid': False, 'error': 'No file provided.'}, status=400)
 
     try:
-        # Validate file extension
-        file_validator(file)
-
-        # Validate file size
-        if file.size > 5 * 1024 * 1024:
-            return JsonResponse({'error': 'File size must be less than 5MB.'}, status=400)
-
-        # Ensure temp directory exists
-        temp_dir = os.path.join(settings.MEDIA_ROOT, 'temp_uploads')
-        os.makedirs(temp_dir, exist_ok=True)
-
-        # Sanitize filename
-        import re
-        safe_name = re.sub(r'[^a-zA-Z0-9_.-]', '_', file.name)
-
-        # Save file
-        file_id = str(uuid.uuid4())
-        file_path = os.path.join(temp_dir, f'{file_id}_{safe_name}')
-        with open(file_path, 'wb+') as dest:
-            for chunk in file.chunks():
-                dest.write(chunk)
-
-        temp_url = f'/media/temp_uploads/{file_id}_{safe_name}'
-        return JsonResponse({'success': True, 'file_id': file_id, 'temp_url': temp_url})
-
+        FileExtensionValidator(allowed_extensions=['pdf', 'jpg', 'jpeg', 'png'])(file)
+        if file.size > 2621440:  # 2.5MB
+            logger.error(f"File too large: {file.name}, size: {file.size} bytes")
+            return JsonResponse({'valid': False, 'error': 'File size exceeds 2.5MB limit. Please upload a smaller file.'}, status=413)
+        # Placeholder for document verification logic
+        verification_status = 'verified'  # Replace with actual verification (e.g., OCR or manual check)
+        logger.info(f"File validated successfully: {file.name}")
+        return JsonResponse({'valid': True, 'file_name': file.name, 'verification_status': verification_status})
     except ValidationError as e:
-        return JsonResponse({'error': 'File must be PDF, JPG, JPEG, or PNG.'}, status=400)
+        logger.error(f"File validation error: {str(e)}")
+        return JsonResponse({'valid': False, 'error': str(e)}, status=400)
     except Exception as e:
-        import traceback
-        logger.error(f'File upload error: {traceback.format_exc()}')
-        return JsonResponse({'error': 'Unexpected server error. Please try again.'}, status=500)
-
-
+        logger.error(f"Unexpected file upload error: {str(e)}")
+        return JsonResponse({'valid': False, 'error': 'Unexpected error during file validation. Please try again.'}, status=500)
 
 @require_POST
 def create_checkout_session(request):
     try:
-        # Retrieve POST data
         schedule_id = request.POST.get('schedule_id')
         total_price = request.POST.get('total_price')
         adults = safe_int(request.POST.get('adults', '0'))
-        youths = safe_int(request.POST.get('youths', '0'))
         children = safe_int(request.POST.get('children', '0'))
         infants = safe_int(request.POST.get('infants', '0'))
         add_cargo = request.POST.get('add_cargo') == 'true'
         cargo_type = request.POST.get('cargo_type', '')
-        weight_kg = request.POST.get('weight_kg', '0')
-        is_emergency = request.POST.get('is_emergency', '').lower() in ('true', '1', 'on')
+        weight_kg = request.POST.get('cargo_weight_kg', '')
+        license_plate = request.POST.get('cargo_license_plate', '')
         guest_email = request.POST.get('guest_email', '')
+        addons = []
+        for addon_type in dict(AddOn.ADD_ON_TYPE_CHOICES).keys():
+            quantity = safe_int(request.POST.get(f'{addon_type}_quantity', 0))
+            if quantity > 0:
+                addons.append({'type': addon_type, 'quantity': quantity})
 
-        # Log incoming data for debugging
-        logger.debug(f"create_checkout_session POST data: {dict(request.POST)}, is_emergency={is_emergency}")
+        logger.debug(f"create_checkout_session POST data: {dict(request.POST)}")
 
-        # Validate inputs
-        if not schedule_id:
-            logger.error("Missing schedule_id")
-            return JsonResponse({'errors': [{'field': 'schedule_id', 'message': 'Schedule ID is required.'}]}, status=400)
-
-        # Validate passenger counts
-        total_passengers = adults + youths + children + infants
-        if total_passengers <= 0:
-            logger.error("No passengers specified")
-            return JsonResponse({'errors': [{'field': 'passengers', 'message': 'At least one passenger is required.'}]}, status=400)
-
-        # Validate cargo if present
-        if add_cargo:
-            if not cargo_type or not weight_kg:
-                logger.error(f"Missing cargo details: cargo_type={cargo_type}, weight_kg={weight_kg}")
-                return JsonResponse({'errors': [{'field': 'cargo', 'message': 'Cargo type and weight are required when adding cargo.'}]}, status=400)
-            try:
-                weight_kg = float(weight_kg)
-                if weight_kg <= 0:
-                    logger.error(f"Invalid cargo weight: {weight_kg}")
-                    return JsonResponse({'errors': [{'field': 'weight_kg', 'message': 'Cargo weight must be greater than zero.'}]}, status=400)
-            except ValueError:
-                logger.error(f"Invalid cargo weight format: {weight_kg}")
-                return JsonResponse({'errors': [{'field': 'weight_kg', 'message': 'Cargo weight must be a valid number.'}]}, status=400)
-
-        # Validate passenger details
         errors = []
-        for p_type in ['adult', 'youth', 'child', 'infant']:
-            count = safe_int(request.POST.get(f'{p_type}s', '0'))
-            for i in range(count):
-                first_name = request.POST.get(f'{p_type}_first_name_{i}', '').strip()
-                last_name = request.POST.get(f'{p_type}_last_name_{i}', '').strip()
-                age = request.POST.get(f'{p_type}_age_{i}', '').strip()
-                if not first_name:
-                    errors.append({'field': f'{p_type}_first_name_{i}', 'message': f'{p_type.capitalize()} {i + 1}: First name is required.'})
-                if not last_name:
-                    errors.append({'field': f'{p_type}_last_name_{i}', 'message': f'{p_type.capitalize()} {i + 1}: Last name is required.'})
+        if not schedule_id:
+            errors.append({'field': 'schedule_id', 'message': 'Schedule ID is required.'})
+
+        total_passengers = adults + children + infants
+        if total_passengers <= 0:
+            errors.append({'field': 'passengers', 'message': 'At least one passenger is required.'})
+
+        # Validate cargo fields
+        if add_cargo:
+            if not cargo_type:
+                errors.append({'field': 'cargo_type', 'message': 'Cargo type is required when adding cargo.'})
+            if not weight_kg:
+                errors.append({'field': 'cargo_weight_kg', 'message': 'Cargo weight is required when adding cargo.'})
+            else:
                 try:
-                    age = int(age)
-                    if p_type == 'infant' and not (0 <= age <= 2):
-                        errors.append({'field': f'{p_type}_age_{i}', 'message': f'Infant {i + 1}: Age must be 0-2.'})
-                    elif p_type == 'child' and not (2 <= age <= 11):
-                        errors.append({'field': f'{p_type}_age_{i}', 'message': f'Child {i + 1}: Age must be 2-11.'})
-                    elif p_type == 'youth' and not (12 <= age <= 17):
-                        errors.append({'field': f'{p_type}_age_{i}', 'message': f'Youth {i + 1}: Age must be 12-17.'})
-                    elif p_type == 'adult' and age < 18:
-                        errors.append({'field': f'{p_type}_age_{i}', 'message': f'Adult {i + 1}: Age must be 18 or older.'})
+                    weight_kg = float(weight_kg)
+                    if weight_kg <= 0:
+                        errors.append({'field': 'cargo_weight_kg', 'message': 'Cargo weight must be greater than zero.'})
                 except (ValueError, TypeError):
-                    errors.append({'field': f'{p_type}_age_{i}', 'message': f'{p_type.capitalize()} {i + 1}: Invalid age.'})
+                    errors.append({'field': 'cargo_weight_kg', 'message': 'Cargo weight must be a valid number.'})
+
+        # Validate passenger data
+        for p_type in ['adult', 'child', 'infant']:
+            count = adults if p_type == 'adult' else children if p_type == 'child' else infants
+            for i in range(count):
+                validate_passenger_data(request, p_type, i, adults, errors)
 
         if errors:
-            logger.error(f"Passenger validation errors: {errors}")
+            logger.error(f"Validation errors: {errors}")
             return JsonResponse({'success': False, 'errors': errors}, status=400)
 
-        # Verify schedule exists and has enough seats
-        try:
-            schedule = Schedule.objects.select_related('route', 'route__departure_port', 'route__destination_port').get(id=schedule_id)
-            if schedule.available_seats < total_passengers:
-                logger.error(f"Not enough seats: schedule_id={schedule_id}, available_seats={schedule.available_seats}, requested={total_passengers}")
-                return JsonResponse({'errors': [{'field': 'schedule_id', 'message': 'Not enough seats available for this schedule.'}]}, status=400)
-            if schedule.status != 'scheduled' or schedule.departure_time <= timezone.now():
-                logger.error(f"Invalid schedule status or time: schedule_id={schedule_id}, status={schedule.status}")
-                return JsonResponse({'errors': [{'field': 'schedule_id', 'message': 'Selected schedule is not available.'}]}, status=400)
-        except Schedule.DoesNotExist:
-            logger.error(f"Schedule not found: schedule_id={schedule_id}")
-            return JsonResponse({'errors': [{'field': 'schedule_id', 'message': 'Invalid schedule ID.'}]}, status=400)
+        schedule = get_object_or_404(Schedule, id=schedule_id)
+        if schedule.available_seats < total_passengers:
+            logger.error(f"Not enough seats: schedule_id={schedule_id}, available_seats={schedule.available_seats}, requested={total_passengers}")
+            return JsonResponse({'errors': [{'field': 'schedule_id', 'message': 'Not enough seats available for this schedule.'}]}, status=400)
+        if schedule.status != 'scheduled' or schedule.departure_time <= timezone.now():
+            logger.error(f"Invalid schedule status or time: schedule_id={schedule_id}, status={schedule.status}")
+            return JsonResponse({'errors': [{'field': 'schedule_id', 'message': 'Selected schedule is not available.'}]}, status=400)
 
-        # Get booking_id from session
-        booking_id = request.session.get('booking_id')
-        if not booking_id:
-            logger.error("No booking_id in session")
-            return JsonResponse({'errors': [{'field': 'general', 'message': 'No booking found. Please start over.'}]}, status=400)
-
-        try:
-            booking = Booking.objects.get(id=booking_id)
-        except Booking.DoesNotExist:
-            logger.error(f"Booking {booking_id} not found")
-            return JsonResponse({'errors': [{'field': 'general', 'message': 'Booking not found.'}]}, status=404)
-
-        # Authorization check
-        if request.user.is_authenticated and booking.user != request.user:
-            logger.error(f"User {request.user} not authorized for booking {booking_id}")
-            return JsonResponse({'errors': [{'field': 'general', 'message': 'Unauthorized'}]}, status=403)
-        if not request.user.is_authenticated and booking.guest_email != guest_email:
-            logger.error(f"Guest email mismatch for booking {booking_id}, expected={booking.guest_email}, got={guest_email}")
-            return JsonResponse({'errors': [{'field': 'guest_email', 'message': 'Unauthorized'}]}, status=403)
-
-        # Check for existing checkout session to prevent duplicates
-        lock_key = f"checkout_lock_{booking_id}"
-        if cache.get(lock_key):
-            logger.warning(f"Checkout session already in progress for booking {booking_id}")
-            return JsonResponse({'errors': [{'field': 'general', 'message': 'A checkout session is already in progress. Please wait.'}]}, status=429)
-        cache.set(lock_key, True, timeout=300)  # Lock for 5 minutes
-
-        # Recalculate total price to ensure consistency
         try:
             calculated_price = calculate_total_price(
-                adults, youths, children, infants, schedule, add_cargo, cargo_type, weight_kg, is_emergency
+                adults, children, infants, schedule, add_cargo, cargo_type, float(weight_kg) if weight_kg and add_cargo else 0, addons
             )
-            price_breakdown = {
-                'adults': str(Decimal(adults) * (schedule.route.base_fare or Decimal('35.50'))),
-                'youths': str(Decimal(youths) * (schedule.route.base_fare or Decimal('35.50')) * Decimal('0.75')),
-                'children': str(Decimal(children) * (schedule.route.base_fare or Decimal('35.50')) * Decimal('0.5')),
-                'infants': str(Decimal(infants) * (schedule.route.base_fare or Decimal('35.50')) * Decimal('0.1')),
-                'cargo': str(calculate_cargo_price(Decimal(weight_kg), cargo_type) if add_cargo else Decimal('0.00')),
-                'emergency_surcharge': str(Decimal('50.00') if is_emergency else Decimal('0.00'))
-            }
-            logger.debug(f"Calculated price: {calculated_price}, breakdown={price_breakdown}, inputs: adults={adults}, youths={youths}, children={children}, infants={infants}, add_cargo={add_cargo}, cargo_type={cargo_type}, weight_kg={weight_kg}, is_emergency={is_emergency}")
-
             if not total_price:
-                logger.warning("No total_price provided, using calculated price")
                 total_price = calculated_price
             else:
                 total_price = Decimal(total_price)
                 if abs(total_price - calculated_price) > Decimal('0.01'):
-                    logger.error(f"Price mismatch: provided={total_price}, calculated={calculated_price}, breakdown={price_breakdown}")
-                    cache.delete(lock_key)  # Release lock on error
-                    return JsonResponse({
-                        'errors': [{
-                            'field': 'total_price',
-                            'message': f'Provided total price ({total_price}) does not match calculated price ({calculated_price}). Breakdown: {price_breakdown}'
-                        }]
-                    }, status=400)
+                    logger.error(f"Price mismatch: provided={total_price}, calculated={calculated_price}")
+                    return JsonResponse({'errors': [{'field': 'total_price', 'message': 'Provided total price does not match calculated price.'}]}, status=400)
             if total_price <= 0:
                 logger.error(f"Invalid total_price: {total_price}")
-                cache.delete(lock_key)  # Release lock on error
                 return JsonResponse({'errors': [{'field': 'total_price', 'message': 'Total price must be greater than zero.'}]}, status=400)
         except (ValueError, TypeError) as e:
             logger.error(f"Invalid total_price format: {total_price}, error: {str(e)}")
-            cache.delete(lock_key)  # Release lock on error
             return JsonResponse({'errors': [{'field': 'total_price', 'message': 'Total price must be a valid number.'}]}, status=400)
 
-        # Create Stripe checkout session
+        customer_email = request.user.email if request.user.is_authenticated else guest_email
+        if not customer_email:
+            return JsonResponse({'errors': [{'field': 'guest_email', 'message': 'A valid email is required for payment.'}]}, status=400)
+
+        # Create Booking
+        booking_kwargs = {
+            'user': request.user if request.user.is_authenticated else None,
+            'schedule': schedule,
+            'guest_email': guest_email if not request.user.is_authenticated else None,
+            'passenger_adults': adults,
+            'passenger_children': children,
+            'passenger_infants': infants,
+            'total_price': total_price,
+            'status': 'pending'
+        }
+
         try:
-            amount_cents = int(total_price * 100)
-            if amount_cents <= 0:
-                logger.error(f"Invalid amount_cents: {amount_cents}")
-                cache.delete(lock_key)  # Release lock on error
-                return JsonResponse({'errors': [{'field': 'total_price', 'message': 'Payment amount must be positive.'}]}, status=400)
+            booking = Booking.objects.create(**booking_kwargs)
+            booking.clean()
+        except ValidationError as e:
+            logger.error(f"Booking creation error: {str(e)}")
+            return JsonResponse({'errors': [{'field': 'general', 'message': f'Failed to create booking: {str(e)}'}]}, status=400)
 
-            customer_email = booking.user.email if booking.user else guest_email
-            if not customer_email:
-                logger.error("No valid email for payment")
-                cache.delete(lock_key)  # Release lock on error
-                return JsonResponse({'errors': [{'field': 'guest_email', 'message': 'A valid email is required for payment.'}]}, status=400)
-
-            success_url = request.build_absolute_uri('/bookings/success/?session_id={CHECKOUT_SESSION_ID}')
-            cancel_url = request.build_absolute_uri('/bookings/cancel/')
-
-            logger.info(f"Creating Stripe session for booking {booking_id}: amount={amount_cents}, email={customer_email}")
-
-            session = stripe.checkout.Session.create(
-                payment_method_types=['card'],
-                line_items=[{
-                    'price_data': {
-                        'currency': 'fjd',
-                        'product_data': {'name': f'Ferry Booking #{booking.id}'},
-                        'unit_amount': amount_cents,
-                    },
-                    'quantity': 1,
-                }],
-                mode='payment',
-                success_url=success_url,
-                cancel_url=cancel_url,
-                metadata={'booking_id': str(booking.id), 'guest_email': guest_email or ''},
-                customer_email=customer_email,
-            )
-
-            # Update booking with session ID
-            booking.stripe_session_id = session.id
-            booking.total_price = total_price  # Ensure booking reflects the validated price
-            booking.save()
-
-            # Create or update Payment object
-            payment, created = Payment.objects.get_or_create(
-                booking=booking,
-                session_id=session.id,
-                defaults={
-                    'payment_method': 'stripe',
-                    'amount': total_price,
-                    'payment_status': 'pending'
+        # Create Passengers
+        adult_passengers = []
+        for p_type in ['adult', 'child', 'infant']:
+            count = adults if p_type == 'adult' else children if p_type == 'child' else infants
+            for i in range(count):
+                passenger_data = validate_passenger_data(request, p_type, i, adults, [])
+                passenger_kwargs = {
+                    'booking': booking,
+                    'first_name': passenger_data['first_name'],
+                    'last_name': passenger_data['last_name'],
+                    'passenger_type': p_type,
+                    'document': passenger_data['document']
                 }
-            )
-            if not created:
-                payment.amount = total_price
-                payment.payment_status = 'pending'
-                payment.save()
+                if p_type in ['adult', 'child'] and passenger_data['age']:
+                    passenger_kwargs['age'] = int(passenger_data['age'])
+                if p_type == 'infant' and passenger_data['dob']:
+                    passenger_kwargs['date_of_birth'] = datetime.datetime.strptime(passenger_data['dob'], '%Y-%m-%d').date()
 
-            # Store session data
-            request.session['stripe_session_id'] = session.id
-            logger.info(f"Stripe session created for booking {booking_id}: session_id={session.id}")
+                try:
+                    passenger = Passenger.objects.create(**passenger_kwargs)
+                    passenger.clean()
+                    if p_type in ['child', 'infant'] and passenger_data['linked_adult_index']:
+                        try:
+                            linked_adult = adult_passengers[int(passenger_data['linked_adult_index'])]
+                            passenger.linked_adult = linked_adult
+                            passenger.save()
+                        except (IndexError, ValueError):
+                            passenger.delete()
+                            booking.delete()
+                            errors.append({'field': f'{p_type}_linked_adult_{i}', 'message': f'{p_type.capitalize()} {i + 1}: Invalid linked adult.'})
+                            return JsonResponse({'success': False, 'errors': errors}, status=400)
+                    if p_type == 'adult':
+                        adult_passengers.append(passenger)
+                except ValidationError as e:
+                    logger.error(f"Passenger creation error: {str(e)}")
+                    passenger.delete()
+                    booking.delete()
+                    errors.append({'field': f'{p_type}_{i}', 'message': f'{p_type.capitalize()} {i + 1}: {str(e)}'})
+                    return JsonResponse({'success': False, 'errors': errors}, status=400)
 
-            cache.delete(lock_key)  # Release lock on success
-            return JsonResponse({'sessionId': session.id})
+        # Create Cargo
+        if add_cargo and cargo_type and weight_kg:
+            try:
+                weight_kg = float(weight_kg)
+                if weight_kg <= 0:
+                    errors.append({'field': 'cargo_weight_kg', 'message': 'Cargo weight must be greater than zero.'})
+                    booking.delete()
+                    return JsonResponse({'success': False, 'errors': errors}, status=400)
+                Cargo.objects.create(
+                    booking=booking,
+                    cargo_type=cargo_type,
+                    weight_kg=Decimal(weight_kg),
+                    dimensions_cm=request.POST.get('dimensions_cm', ''),
+                    license_plate=license_plate,
+                    price=calculate_cargo_price(Decimal(weight_kg), cargo_type)
+                )
+            except (ValueError, TypeError) as e:
+                logger.error(f"Cargo creation error: {str(e)}")
+                booking.delete()
+                errors.append({'field': 'cargo_weight_kg', 'message': 'Cargo weight must be a valid number.'})
+                return JsonResponse({'success': False, 'errors': errors}, status=400)
 
-        except stripe.error.StripeError as e:
-            logger.error(f"Stripe error for booking {booking_id}: {str(e)}")
-            cache.delete(lock_key)  # Release lock on error
-            return JsonResponse({'errors': [{'field': 'general', 'message': f"Payment processing error: {str(e)}"}]}, status=400)
-        except Exception as e:
-            logger.exception(f"Unexpected error creating checkout session for booking {booking_id}: {str(e)}")
-            cache.delete(lock_key)  # Release lock on error
-            return JsonResponse({'errors': [{'field': 'general', 'message': 'An unexpected error occurred. Please contact support.'}]}, status=500)
+        # Create Add-ons
+        for addon in addons:
+            try:
+                AddOn.objects.create(
+                    booking=booking,
+                    add_on_type=addon['type'],
+                    quantity=addon['quantity'],
+                    price=calculate_addon_price(addon['type'], addon['quantity'])
+                )
+            except ValueError as e:
+                logger.error(f"Add-on creation error: {str(e)}")
+                booking.delete()
+                errors.append({'field': 'addons', 'message': f'Invalid add-on: {str(e)}'})
+                return JsonResponse({'success': False, 'errors': errors}, status=400)
+
+        # Update available seats
+        schedule.available_seats -= total_passengers
+        schedule.save()
+
+        # Create Stripe session
+        session = stripe.checkout.Session.create(
+            payment_method_types=['card'],
+            line_items=[{
+                'price_data': {
+                    'currency': 'fjd',
+                    'product_data': {'name': f'Ferry Booking #{booking.id}'},
+                    'unit_amount': int(total_price * 100),
+                },
+                'quantity': 1,
+            }],
+            mode='payment',
+            success_url=request.build_absolute_uri('/bookings/success/?session_id={CHECKOUT_SESSION_ID}'),
+            cancel_url=request.build_absolute_uri('/bookings/cancel/'),
+            metadata={'booking_id': str(booking.id), 'guest_email': guest_email or ''},
+            customer_email=customer_email,
+        )
+
+        # Save session ID to booking
+        booking.stripe_session_id = session.id
+        booking.save()
+
+        # Store booking_id in session
+        request.session['booking_id'] = booking.id
+        request.session['stripe_session_id'] = session.id
+        if guest_email and not request.user.is_authenticated:
+            request.session['guest_email'] = guest_email
+
+        return JsonResponse({'sessionId': session.id})
 
     except Exception as e:
-        logger.exception(f"Checkout session error: {e}")
-        cache.delete(lock_key)  # Release lock on error
-        return JsonResponse({'errors': [{'field': 'general', 'message': f"An error occurred: {str(e)}"}]}, status=400)
+        logger.exception(f"Checkout session error: {str(e)}")
+        return JsonResponse({'errors': [{'field': 'general', 'message': f"Checkout error: {str(e)}"}]}, status=400)
 
 @login_required_allow_anonymous
 def book_ticket(request):
-    # Handle query parameters
     schedule_id = request.GET.get('schedule_id', '').strip()
     to_port = request.GET.get('to_port', '').strip().lower()
 
-    # Filter schedules based on query parameters
     available_schedules = Schedule.objects.filter(
         status='scheduled',
         departure_time__gt=timezone.now()
-    ).select_related('ferry', 'route', 'route__departure_port', 'route__destination_port')
+    ).select_related('ferry', 'route__departure_port', 'route__destination_port')
 
     if schedule_id:
         try:
@@ -1049,136 +1067,120 @@ def book_ticket(request):
             logger.warning(f"No schedules found for to_port={to_port}")
             messages.error(request, f"No schedules available for destination: {to_port.capitalize()}.")
 
+    form_data = {
+        'step': request.GET.get('step', 1),
+        'schedule_id': schedule_id or '',
+        'adults': 0,
+        'children': 0,
+        'infants': 0,
+        'guest_email': request.session.get('guest_email', ''),
+        'add_cargo': False,
+        'cargo_type': '',
+        'weight_kg': '',
+        'dimensions_cm': '',
+        'license_plate': '',
+        'privacy_consent': False,
+        'to_port': to_port or '',
+        **{f'{addon_type}_quantity': 0 for addon_type in dict(AddOn.ADD_ON_TYPE_CHOICES).keys()}
+    }
+
+    # Load passenger data from session if available
+    passenger_data = request.session.get('passenger_data', [])
+    for p_type in ['adult', 'child', 'infant']:
+        key = 'children' if p_type == 'child' else f'{p_type}s'
+        count = form_data.get(key, 0)
+        for i in range(count):
+            form_data.update({
+                f'passenger_{p_type}_{i}_first_name': request.session.get(f'passenger_{p_type}_{i}_first_name', ''),
+                f'passenger_{p_type}_{i}_last_name': request.session.get(f'passenger_{p_type}_{i}_last_name', ''),
+                f'passenger_{p_type}_{i}_age': request.session.get(f'passenger_{p_type}_{i}_age', ''),
+                f'passenger_{p_type}_{i}_dob': request.session.get(f'passenger_{p_type}_{i}_dob', ''),
+                f'passenger_{p_type}_{i}_linked_adult': request.session.get(f'passenger_{p_type}_{i}_linked_adult', '')
+            })
+
     if request.method == 'POST':
         logger.debug(f'POST data: {request.POST}')
         logger.debug(f'FILES data: {request.FILES}')
         errors = []
 
-        # Parse and validate passenger counts
         adults = safe_int(request.POST.get('adults', '0'))
-        youths = safe_int(request.POST.get('youths', '0'))
         children = safe_int(request.POST.get('children', '0'))
         infants = safe_int(request.POST.get('infants', '0'))
-
-        if adults < 0 or youths < 0 or children < 0 or infants < 0:
-            errors.append({'field': 'general', 'message': 'Passenger counts cannot be negative.', 'step': 2})
-
-        total_passengers = adults + youths + children + infants
-        if total_passengers == 0:
-            errors.append({'field': 'general', 'message': 'At least one passenger is required.', 'step': 2})
-
-        if (youths > 0 or children > 0 or infants > 0) and adults == 0:
-            errors.append({'field': 'general', 'message': 'Minors must be accompanied by an adult.', 'step': 2})
-
         schedule_id = request.POST.get('schedule_id')
         guest_email = request.POST.get('guest_email')
-        is_unaccompanied_minor = request.POST.get('is_unaccompanied_minor') == 'true'
-        guardian_contact = request.POST.get('guardian_contact')
-        consent_form = request.FILES.get('consent_form')
-        is_group_booking = request.POST.get('is_group_booking') == 'true'
         add_cargo = request.POST.get('add_cargo') == 'true'
         cargo_type = request.POST.get('cargo_type')
         weight_kg = request.POST.get('weight_kg')
         dimensions_cm = request.POST.get('dimensions_cm')
-        is_emergency = request.POST.get('is_emergency') == 'true'
+        license_plate = request.POST.get('license_plate')
         privacy_consent = request.POST.get('privacy_consent') == 'true'
-        responsibility_declaration = request.FILES.get('responsibility_declaration')
+        addons = []
+        for addon_type in dict(AddOn.ADD_ON_TYPE_CHOICES).keys():
+            quantity = safe_int(request.POST.get(f'{addon_type}_quantity', 0))
+            if quantity > 0:
+                addons.append({'type': addon_type, 'quantity': quantity, 'description': request.POST.get(f'{addon_type}_description', '')})
 
-        # Validate files
-        file_validator = FileExtensionValidator(allowed_extensions=['pdf', 'jpg', 'jpeg', 'png'])
-        if consent_form:
-            try:
-                file_validator(consent_form)
-            except ValidationError as e:
-                errors.append({'field': 'consent_form', 'message': 'Consent form must be a PDF, JPG, JPEG, or PNG file.', 'step': 3})
-        if responsibility_declaration:
-            try:
-                file_validator(responsibility_declaration)
-            except ValidationError as e:
-                errors.append({'field': 'responsibility_declaration', 'message': 'Responsibility declaration must be a PDF, JPG, JPEG, or PNG file.', 'step': 2})
+        if adults < 0 or children < 0 or infants < 0:
+            errors.append({'field': 'general', 'message': 'Passenger counts cannot be negative.', 'step': 2})
 
-        # Form data for passenger details
+        total_passengers = adults + children + infants
+        if total_passengers == 0:
+            errors.append({'field': 'general', 'message': 'At least one passenger is required.', 'step': 2})
+
+        if (children > 0 or infants > 0) and adults == 0:
+            errors.append({'field': 'general', 'message': 'Children and infants must be accompanied by an adult.', 'step': 2})
+
         form_data = {
             'schedule_id': schedule_id,
             'adults': adults,
-            'youths': youths,
             'children': children,
             'infants': infants,
             'guest_email': guest_email,
-            'is_unaccompanied_minor': is_unaccompanied_minor,
-            'guardian_contact': guardian_contact,
-            'is_group_booking': is_group_booking,
             'add_cargo': add_cargo,
             'cargo_type': cargo_type,
             'weight_kg': weight_kg,
             'dimensions_cm': dimensions_cm,
-            'is_emergency': is_emergency,
+            'license_plate': license_plate,
             'privacy_consent': privacy_consent,
+            'addons': addons
         }
 
-        # Validate passenger details
-        passenger_types = [('adult', adults), ('youth', youths), ('child', children), ('infant', infants)]
-        for p_type, count in passenger_types:
+        passenger_data = []
+        for p_type in ['adult', 'child', 'infant']:
+            count = adults if p_type == 'adult' else children if p_type == 'child' else infants
             for i in range(count):
-                first_name = request.POST.get(f'{p_type}_first_name_{i}', '').strip()
-                last_name = request.POST.get(f'{p_type}_last_name_{i}', '').strip()
-                age = request.POST.get(f'{p_type}_age_{i}', '').strip()
-                is_group_leader = request.POST.get(f'{p_type}_is_group_leader_{i}') == 'true'
-                is_parent_guardian = request.POST.get(f'{p_type}_is_parent_guardian_{i}') == 'true'
-                document = request.FILES.get(f'{p_type}_document_{i}')
+                passenger = validate_passenger_data(request, p_type, i, adults, errors)
+                passenger_data.append({
+                    'type': p_type,
+                    'first_name': passenger['first_name'],
+                    'last_name': passenger['last_name'],
+                    'age': passenger['age'],
+                    'dob': passenger['dob'],
+                    'linked_adult_index': passenger['linked_adult_index']
+                })
+                form_data.update({
+                    f'passenger_{p_type}_{i}_first_name': passenger['first_name'],
+                    f'passenger_{p_type}_{i}_last_name': passenger['last_name'],
+                    f'passenger_{p_type}_{i}_age': passenger['age'],
+                    f'passenger_{p_type}_{i}_dob': passenger['dob'],
+                    f'passenger_{p_type}_{i}_linked_adult': passenger['linked_adult_index'],
+                    f'passenger_{p_type}_{i}_document': passenger['document']
+                })
+                # Store passenger data in session
+                request.session[f'passenger_{p_type}_{i}_first_name'] = passenger['first_name']
+                request.session[f'passenger_{p_type}_{i}_last_name'] = passenger['last_name']
+                request.session[f'passenger_{p_type}_{i}_age'] = passenger['age']
+                request.session[f'passenger_{p_type}_{i}_dob'] = passenger['dob']
+                request.session[f'passenger_{p_type}_{i}_linked_adult'] = passenger['linked_adult_index']
 
-                form_data[f'passenger_{p_type}_{i}_first_name'] = first_name
-                form_data[f'passenger_{p_type}_{i}_last_name'] = last_name
-                form_data[f'passenger_{p_type}_{i}_age'] = age
-                form_data[f'passenger_{p_type}_{i}_is_group_leader'] = is_group_leader
-                form_data[f'passenger_{p_type}_{i}is_parent_guardian'] = is_parent_guardian
-                form_data[f'passenger_{p_type}_{i}_document'] = document
-
-                if not first_name:
-                    errors.append({'field': f'{p_type}_first_name_{i}', 'message': f'{p_type.capitalize()} {i + 1}: First name is required.', 'step': 2})
-                if not last_name:
-                    errors.append({'field': f'{p_type}_last_name_{i}', 'message': f'{p_type.capitalize()} {i + 1}: Last name is required.', 'step': 2})
-                try:
-                    age = int(age)
-                    if p_type == 'infant' and not (0 <= age <= 2):
-                        errors.append({'field': f'{p_type}_age_{i}', 'message': f'Infant {i + 1}: Age must be 0-2.', 'step': 2})
-                    elif p_type == 'child' and not (2 <= age <= 11):
-                        errors.append({'field': f'{p_type}_age_{i}', 'message': f'Child {i + 1}: Age must be 2-11.', 'step': 2})
-                    elif p_type == 'youth' and not (12 <= age <= 17):
-                        errors.append({'field': f'{p_type}_age_{i}', 'message': f'Youth {i + 1}: Age must be 12-17.', 'step': 2})
-                    elif p_type == 'adult' and age < 18:
-                        errors.append({'field': f'{p_type}_age_{i}', 'message': f'Adult {i + 1}: Age must be 18 or older.', 'step': 2})
-                    if p_type == 'youth' and is_group_leader:
-                        errors.append({'field': f'{p_type}_is_group_leader_{i}', 'message': f'Youth {i + 1}: Youth cannot be group leader.', 'step': 2})
-                except (ValueError, TypeError):
-                    errors.append({'field': f'{p_type}_age_{i}', 'message': f'{p_type.capitalize()} {i + 1}: Invalid age.', 'step': 2})
-
-                if document:
-                    try:
-                        file_validator(document)
-                    except ValidationError as e:
-                        errors.append({'field': f'{p_type}_document_{i}', 'message': f'Document for {p_type.capitalize()} {i + 1} must be a PDF, JPG, JPEG, or PNG file.', 'step': 2})
-
-        # Other validations
         if not schedule_id:
             errors.append({'field': 'schedule_id', 'message': 'Please select a valid ferry schedule.', 'step': 1})
 
         if not request.user.is_authenticated and not guest_email:
             errors.append({'field': 'guest_email', 'message': 'Guest email is required.', 'step': 1})
 
-        has_minors = youths > 0 or children > 0 or infants > 0
-        has_parent = any(form_data.get(f'passenger_{t}_{i}is_parent_guardian') for t in ['adult', 'youth'] for i in range(adults if t == 'adult' else youths))
-        if has_minors and adults > 0 and not has_parent and not responsibility_declaration:
-            errors.append({'field': 'responsibility_declaration', 'message': 'Responsibility declaration is required if no adult is a parent.', 'step': 2})
-
-        if is_unaccompanied_minor and has_minors:
-            if not guardian_contact:
-                errors.append({'field': 'guardian_contact', 'message': 'Guardian contact is required for unaccompanied minors.', 'step': 3})
-            if not consent_form:
-                errors.append({'field': 'consent_form', 'message': 'Consent form is required for unaccompanied minors.', 'step': 3})
-
-        if add_cargo and not cargo_type:
-            errors.append({'field': 'cargo_type', 'message': 'Cargo type is required.', 'step': 3})
+        if add_cargo and not (cargo_type and weight_kg and license_plate):
+            errors.append({'field': 'cargo', 'message': 'Cargo type, weight, and license plate are required.', 'step': 3})
         if add_cargo and weight_kg:
             try:
                 weight_kg = float(weight_kg)
@@ -1198,170 +1200,217 @@ def book_ticket(request):
             errors.append({'field': 'schedule_id', 'message': 'Not enough seats available.', 'step': 1})
             return JsonResponse({'success': False, 'errors': errors})
 
-        # Calculate total price
         total_price = calculate_total_price(
-            adults, youths, children, infants, schedule,
-            add_cargo, cargo_type, float(weight_kg) if weight_kg else 0, is_emergency
+            adults, children, infants, schedule, add_cargo, cargo_type, float(weight_kg) if weight_kg else 0, addons
         )
 
-        # Create booking, mapping youths to passenger_children
+        if request.POST.get('step') == '4':
+            base_fare = schedule.route.base_fare or Decimal('35.50')
+            summary = {
+                'schedule': {
+                    'route': f"{schedule.route.departure_port.name} to {schedule.route.destination_port.name}",
+                    'departure_time': schedule.departure_time.strftime("%a, %b %d, %H:%M"),
+                    'estimated_duration': int(schedule.route.estimated_duration.total_seconds() / 60) if schedule.route.estimated_duration else "N/A"
+                },
+                'passengers': passenger_data,
+                'cargo': {
+                    'type': cargo_type,
+                    'weight_kg': weight_kg,
+                    'license_plate': license_plate,
+                    'price': str(calculate_cargo_price(Decimal(weight_kg), cargo_type)) if add_cargo else None
+                } if add_cargo else None,
+                'addons': [
+                    {'type': addon['type'], 'quantity': addon['quantity'], 'price': str(calculate_addon_price(addon['type'], addon['quantity']))}
+                    for addon in addons
+                ],
+                'pricing': {
+                    'adults': str(Decimal(adults) * base_fare),
+                    'children': str(Decimal(children) * base_fare * Decimal('0.5')),
+                    'infants': str(Decimal(infants) * base_fare * Decimal('0.1')),
+                    'cargo': str(calculate_cargo_price(Decimal(weight_kg), cargo_type)) if add_cargo else "0.00",
+                    'addons': sum(calculate_addon_price(addon['type'], addon['quantity']) for addon in addons),
+                    'total': str(total_price)
+                }
+            }
+        else:
+            summary = None
+
         booking_kwargs = {
             'user': request.user if request.user.is_authenticated else None,
             'schedule': schedule,
             'guest_email': guest_email if not request.user.is_authenticated else None,
             'passenger_adults': adults,
-            'passenger_children': youths + children,  # Combine youths and children
+            'passenger_children': children,
             'passenger_infants': infants,
-            'number_of_passengers': total_passengers,
             'total_price': total_price,
-            'is_unaccompanied_minor': is_unaccompanied_minor,
-            'guardian_contact': guardian_contact,
-            'consent_form': consent_form,
-            'is_group_booking': is_group_booking,
-            'is_emergency': is_emergency,
             'status': 'pending'
         }
-        if responsibility_declaration:
-            booking_kwargs['responsibility_declaration'] = responsibility_declaration
 
         try:
             booking = Booking.objects.create(**booking_kwargs)
-        except Exception as e:
+            booking.clean()
+        except ValidationError as e:
             logger.error(f"Booking creation error: {str(e)}")
-            errors.append({'field': 'general', 'message': 'Failed to create booking due to invalid data.', 'step': 4})
+            errors.append({'field': 'general', 'message': f'Failed to create booking: {str(e)}', 'step': 4})
             return JsonResponse({'success': False, 'errors': errors})
 
-        # Create passengers
-        group_leader = None
-        passengers = []
-        for p_type, count in passenger_types:
-            # Map youth to child in Passenger model
-            db_type = 'child' if p_type == 'youth' else p_type
+        adult_passengers = []
+        for p_type in ['adult', 'child', 'infant']:
+            count = adults if p_type == 'adult' else children if p_type == 'child' else infants
             for i in range(count):
-                first_name = form_data[f'passenger_{p_type}_{i}_first_name']
-                last_name = form_data[f'passenger_{p_type}_{i}_last_name']
-                age = int(form_data[f'passenger_{p_type}_{i}_age'])
-                is_group_leader_flag = form_data[f'passenger_{p_type}_{i}_is_group_leader']
-                is_parent_guardian = form_data[f'passenger_{p_type}_{i}is_parent_guardian']
-                document = form_data[f'passenger_{p_type}_{i}_document']
-                verification_status = 'pending' if document else 'missing'
+                passenger_data = validate_passenger_data(request, p_type, i, adults, [])
+                passenger_kwargs = {
+                    'booking': booking,
+                    'first_name': passenger_data['first_name'],
+                    'last_name': passenger_data['last_name'],
+                    'passenger_type': p_type,
+                    'document': passenger_data['document']
+                }
+                if p_type in ['adult', 'child'] and passenger_data['age']:
+                    passenger_kwargs['age'] = int(passenger_data['age'])
+                if p_type == 'infant' and passenger_data['dob']:
+                    passenger_kwargs['date_of_birth'] = datetime.datetime.strptime(passenger_data['dob'], '%Y-%m-%d').date()
 
-                passenger = Passenger.objects.create(
-                    booking=booking,
-                    first_name=first_name,
-                    last_name=last_name,
-                    age=age,
-                    passenger_type=db_type,
-                    document=document,
-                    verification_status=verification_status,
-                    is_group_leader=is_group_leader_flag,
-                    is_parent_guardian=is_parent_guardian
-                )
-                if is_group_booking and is_group_leader_flag:
-                    group_leader = passenger
-                if document:
-                    DocumentVerification.objects.create(
-                        passenger=passenger,
-                        document=document,
-                        verification_status='pending',
-                        expires_at=schedule.departure_time + timezone.timedelta(days=1) if not request.user.is_authenticated else None
-                    )
-                passengers.append(passenger)
+                try:
+                    passenger = Passenger.objects.create(**passenger_kwargs)
+                    passenger.clean()
+                    if p_type in ['child', 'infant'] and passenger_data['linked_adult_index']:
+                        try:
+                            linked_adult = adult_passengers[int(passenger_data['linked_adult_index'])]
+                            passenger.linked_adult = linked_adult
+                            passenger.save()
+                        except (IndexError, ValueError):
+                            passenger.delete()
+                            errors.append({'field': f'{p_type}_linked_adult_{i}', 'message': f'{p_type.capitalize()} {i + 1}: Invalid linked adult.', 'step': 2})
+                            booking.delete()
+                            return JsonResponse({'success': False, 'errors': errors})
+                    if p_type == 'adult':
+                        adult_passengers.append(passenger)
+                except ValidationError as e:
+                    logger.error(f"Passenger creation error: {str(e)}")
+                    passenger.delete()
+                    booking.delete()
+                    errors.append({'field': f'{p_type}_{i}', 'message': f'{p_type.capitalize()} {i + 1}: {str(e)}', 'step': 2})
+                    return JsonResponse({'success': False, 'errors': errors})
 
-        if group_leader:
-            booking.group_leader = group_leader
-            booking.save()
-
-        if is_group_booking:
-            manifest = generate_manifest(booking, passengers)
-            request.session['manifest'] = manifest
-            logger.info(f"Group booking manifest generated: Booking #{booking.id}")
-
-        # Create cargo
         if add_cargo and cargo_type and weight_kg:
             try:
                 weight_kg = float(weight_kg)
                 if weight_kg <= 0:
                     errors.append({'field': 'weight_kg', 'message': 'Cargo weight must be greater than zero.', 'step': 3})
+                    booking.delete()
                     return JsonResponse({'success': False, 'errors': errors})
-                cargo = Cargo.objects.create(
+                Cargo.objects.create(
                     booking=booking,
                     cargo_type=cargo_type,
                     weight_kg=Decimal(weight_kg),
                     dimensions_cm=dimensions_cm or '',
+                    license_plate=license_plate,
                     price=calculate_cargo_price(Decimal(weight_kg), cargo_type)
                 )
-                generate_cargo_qr(request, cargo)
             except ValueError:
                 errors.append({'field': 'weight_kg', 'message': 'Cargo weight must be a valid number.', 'step': 3})
+                booking.delete()
                 return JsonResponse({'success': False, 'errors': errors})
 
-        # Handle emergency and unaccompanied minor notifications
-        if is_emergency:
-            booking.notes = "Emergency booking: Verify child/infant/youth documents on-site if missing."
-            booking.save()
-            send_mail(
-                'Emergency Booking Notification',
-                f'Emergency Booking #{booking.id} created. Please prioritize processing and verify documents on-site if missing.',
-                settings.DEFAULT_FROM_EMAIL,
-                [settings.ADMIN_EMAIL],
-                fail_silently=True
-            )
+        for addon in addons:
+            try:
+                AddOn.objects.create(
+                    booking=booking,
+                    add_on_type=addon['type'],
+                    description=addon['description'],
+                    quantity=addon['quantity'],
+                    price=calculate_addon_price(addon['type'], addon['quantity'])
+                )
+            except ValueError as e:
+                logger.error(f"Add-on creation error: {str(e)}")
+                booking.delete()
+                errors.append({'field': 'addons', 'message': f'Invalid add-on: {str(e)}', 'step': 4})
+                return JsonResponse({'success': False, 'errors': errors})
 
-        if is_unaccompanied_minor:
-            send_mail(
-                'Unaccompanied Minor Notification',
-                f'Booking #{booking.id} includes unaccompanied minors. Guardian contact: {guardian_contact}. Please ensure staff supervision.',
-                settings.DEFAULT_FROM_EMAIL,
-                [settings.ADMIN_EMAIL],
-                fail_silently=True
-            )
-
-        # Update schedule seats
         schedule.available_seats -= total_passengers
         schedule.save()
 
-        if is_group_booking:
-            logger.info(f"Group booking created: Booking #{booking.id}, Passengers: {total_passengers}")
-
-        # Store booking_id and guest_email in session
         request.session['booking_id'] = booking.id
         if not request.user.is_authenticated and guest_email:
             request.session['guest_email'] = guest_email
+        request.session['passenger_data'] = passenger_data
+        request.session.modified = True
 
         return JsonResponse({
             'success': True,
-            'booking_id': booking.id  # Include booking_id for client-side use
+            'booking_id': booking.id
         })
 
-    # GET request
-    form_data = {
-        'step': 1,
-        'schedule_id': schedule_id or '',
-        'adults': 0,
-        'youths': 0,
-        'children': 0,
-        'infants': 0,
-        'guest_email': request.session.get('guest_email', ''),
-        'is_unaccompanied_minor': False,
-        'guardian_contact': '',
-        'is_group_booking': False,
-        'add_cargo': False,
-        'cargo_type': '',
-        'weight_kg': '',
-        'dimensions_cm': '',
-        'is_emergency': False,
-        'privacy_consent': False,
-        'to_port': to_port or ''  # Include to_port in form_data
-    }
+    summary = None
+    if form_data['step'] == '4' and schedule_id:
+        try:
+            schedule = Schedule.objects.get(id=schedule_id, status='scheduled', departure_time__gt=timezone.now())
+            adults = safe_int(form_data['adults'])
+            children = safe_int(form_data['children'])
+            infants = safe_int(form_data['infants'])
+            add_cargo = form_data['add_cargo']
+            cargo_type = form_data['cargo_type']
+            weight_kg = safe_float(form_data['weight_kg'])
+            license_plate = form_data['license_plate']
+            addons = form_data['addons']
+
+            # Populate passenger_data from session or form_data
+            passenger_data = []
+            for p_type in ['adult', 'child', 'infant']:
+                count = adults if p_type == 'adult' else children if p_type == 'child' else infants
+                for i in range(count):
+                    passenger = {
+                        'type': p_type,
+                        'first_name': form_data.get(f'passenger_{p_type}_{i}_first_name', request.session.get(f'passenger_{p_type}_{i}_first_name', 'Unknown')),
+                        'last_name': form_data.get(f'passenger_{p_type}_{i}_last_name', request.session.get(f'passenger_{p_type}_{i}_last_name', '')),
+                        'age': form_data.get(f'passenger_{p_type}_{i}_age', request.session.get(f'passenger_{p_type}_{i}_age', '')),
+                        'dob': form_data.get(f'passenger_{p_type}_{i}_dob', request.session.get(f'passenger_{p_type}_{i}_dob', '')),
+                        'linked_adult_index': form_data.get(f'passenger_{p_type}_{i}_linked_adult', request.session.get(f'passenger_{p_type}_{i}_linked_adult', ''))
+                    }
+                    passenger_data.append(passenger)
+
+            total_price = calculate_total_price(
+                adults, children, infants, schedule, add_cargo, cargo_type, weight_kg, addons
+            )
+            base_fare = schedule.route.base_fare or Decimal('35.50')
+            summary = {
+                'schedule': {
+                    'route': f"{schedule.route.departure_port.name} to {schedule.route.destination_port.name}",
+                    'departure_time': schedule.departure_time.strftime("%a, %b %d, %H:%M"),
+                    'estimated_duration': int(schedule.route.estimated_duration.total_seconds() / 60) if schedule.route.estimated_duration else "N/A"
+                },
+                'passengers': passenger_data,
+                'cargo': {
+                    'type': cargo_type,
+                    'weight_kg': weight_kg,
+                    'license_plate': license_plate,
+                    'price': str(calculate_cargo_price(Decimal(weight_kg), cargo_type)) if add_cargo else None
+                } if add_cargo else None,
+                'addons': [
+                    {'type': addon['type'], 'quantity': addon['quantity'], 'price': str(calculate_addon_price(addon['type'], addon['quantity']))}
+                    for addon in addons
+                ],
+                'pricing': {
+                    'adults': str(Decimal(adults) * base_fare),
+                    'children': str(Decimal(children) * base_fare * Decimal('0.5')),
+                    'infants': str(Decimal(infants) * base_fare * Decimal('0.1')),
+                    'cargo': str(calculate_cargo_price(Decimal(weight_kg), cargo_type)) if add_cargo else "0.00",
+                    'addons': sum(calculate_addon_price(addon['type'], addon['quantity']) for addon in addons),
+                    'total': str(total_price)
+                }
+            }
+        except Schedule.DoesNotExist:
+            messages.error(request, "Selected schedule is not available.")
+
     return render(request, 'bookings/book.html', {
         'schedules': available_schedules,
         'user': request.user,
         'form_data': form_data,
         'debug': settings.DEBUG,
-        'stripe_publishable_key': settings.STRIPE_PUBLISHABLE_KEY
+        'stripe_publishable_key': settings.STRIPE_PUBLISHABLE_KEY,
+        'summary': summary
     })
-
 
 @login_required_allow_anonymous
 def view_tickets(request, booking_id):
@@ -1376,29 +1425,29 @@ def view_tickets(request, booking_id):
 
     tickets = Ticket.objects.filter(booking=booking).select_related('passenger')
     cargo = Cargo.objects.filter(booking=booking).first()
+    addons = AddOn.objects.filter(booking=booking)
 
-    # Calculate amount to charge for pending payments
     amount_to_charge = booking.total_price
     if booking.status == 'pending' and 'price_difference' in request.session:
         amount_to_charge = Decimal(str(request.session.get('price_difference', booking.total_price)))
 
-    # Calculate passenger breakdown
-    youths = sum(1 for p in booking.passengers.all() if p.passenger_type == 'child' and 12 <= p.age <= 17)
-    children = booking.passenger_children - youths
+    base_fare = booking.schedule.route.base_fare or Decimal('35.50')
     passenger_price = calculate_passenger_price(
-        booking.passenger_adults, youths, children, booking.passenger_infants, booking.schedule
+        booking.passenger_adults, booking.passenger_children, booking.passenger_infants, booking.schedule
     )
 
     return render(request, 'bookings/ticket.html', {
         'booking': booking,
         'tickets': tickets,
         'cargo': cargo,
+        'addons': addons,
         'amount_to_charge': amount_to_charge,
-        'price_adults': booking.passenger_adults * (booking.schedule.route.base_fare or Decimal('35.50')),
-        'price_youths': youths * (booking.schedule.route.base_fare or Decimal('35.50')) * Decimal('0.75'),
-        'price_children': children * (booking.schedule.route.base_fare or Decimal('35.50')) * Decimal('0.5'),
-        'price_infants': booking.passenger_infants * (booking.schedule.route.base_fare or Decimal('35.50')) * Decimal('0.1'),
+        'price_adults': booking.passenger_adults * base_fare,
+        'price_children': booking.passenger_children * base_fare * Decimal('0.5'),
+        'price_infants': booking.passenger_infants * base_fare * Decimal('0.1'),
         'cargo_price': cargo.price if cargo else Decimal('0.00'),
+        'addon_prices': {addon.add_on_type: addon.price for addon in addons},
+        'estimated_duration': int(booking.schedule.route.estimated_duration.total_seconds() / 60) if booking.schedule.route.estimated_duration else None,
         'stripe_publishable_key': settings.STRIPE_PUBLISHABLE_KEY
     })
 
@@ -1406,28 +1455,22 @@ def view_tickets(request, booking_id):
 def process_payment(request, booking_id):
     booking = get_object_or_404(Booking, id=booking_id)
 
-    # Authorization checks
     if booking.user and booking.user != request.user:
         logger.error(f"Authorization failed: User {request.user} not authorized for booking {booking_id}")
         return HttpResponseForbidden("You are not authorized to process this payment.")
 
-    # Booking status checks
     if booking.status == 'cancelled':
         messages.error(request, "This booking is no longer valid.")
         return redirect('bookings:booking_history')
 
-    # Calculate total amount
-    price_adults = Decimal(booking.passenger_adults) * Decimal('35.50')
-    price_children = Decimal(booking.passenger_children) * Decimal('20.00')
-    price_infants = Decimal(booking.passenger_infants) * Decimal('0.00')
+    base_fare = booking.schedule.route.base_fare or Decimal('35.50')
+    price_adults = Decimal(booking.passenger_adults) * base_fare
+    price_children = Decimal(booking.passenger_children) * base_fare * Decimal('0.5')
+    price_infants = Decimal(booking.passenger_infants) * base_fare * Decimal('0.1')
+    cargo_price = sum(cargo.price for cargo in Cargo.objects.filter(booking=booking))
+    addon_price = sum(addon.price for addon in AddOn.objects.filter(booking=booking))
+    total_price = price_adults + price_children + price_infants + cargo_price + addon_price
 
-    cargo_price = Decimal('0.00')
-    if hasattr(booking, 'cargo_set'):
-        cargo_price = sum((cargo.price or Decimal('0.00')) for cargo in booking.cargo_set.all())
-
-    total_price = price_adults + price_children + price_infants + cargo_price
-
-    # Handle price difference from modification
     price_difference = request.session.get('price_difference')
     if price_difference is not None:
         try:
@@ -1441,14 +1484,12 @@ def process_payment(request, booking_id):
         logger.error(f"Invalid amount_to_charge for booking {booking_id}: {amount_to_charge}")
         return JsonResponse({'error': 'Payment amount must be greater than zero.'}, status=400)
 
-    # Handle POST: create Stripe session
     if request.method == 'POST':
         try:
             amount_cents = int(amount_to_charge * 100)
             if amount_cents <= 0:
                 return JsonResponse({'error': 'Payment amount must be positive.'}, status=400)
 
-            # Determine email for Stripe
             customer_email = booking.user.email if booking.user else booking.guest_email
             if not customer_email:
                 return JsonResponse({'error': 'A valid email is required for payment.'}, status=400)
@@ -1475,11 +1516,9 @@ def process_payment(request, booking_id):
                 customer_email=customer_email,
             )
 
-            # Save session ID to booking
             booking.stripe_session_id = session.id
             booking.save()
 
-            # Create Payment object
             Payment.objects.create(
                 booking=booking,
                 payment_method='stripe',
@@ -1488,7 +1527,6 @@ def process_payment(request, booking_id):
                 payment_status='pending'
             )
 
-            # Store booking/session in Django session
             request.session['booking_id'] = booking.id
             request.session['stripe_session_id'] = session.id
             if booking.guest_email and not request.user.is_authenticated:
@@ -1498,15 +1536,12 @@ def process_payment(request, booking_id):
             return JsonResponse({'sessionId': session.id})
 
         except stripe.error.StripeError as e:
-            body = getattr(e, 'json_body', None)
-            err = body.get('error') if body else str(e)
-            logger.error(f"Stripe error for booking {booking_id}: {err}")
-            return JsonResponse({'error': f"Payment processing error: {err}"}, status=400)
+            logger.error(f"Stripe error for booking {booking_id}: {str(e)}")
+            return JsonResponse({'error': f"Payment processing error: {str(e)}"}, status=400)
         except Exception as e:
             logger.error(f"Unexpected error for booking {booking_id}: {str(e)}")
             return JsonResponse({'error': 'An unexpected error occurred. Please contact support.'}, status=500)
 
-    # GET: render payment page
     return render(request, 'bookings/payment.html', {
         'booking': booking,
         'amount_to_charge': amount_to_charge,
@@ -1514,41 +1549,51 @@ def process_payment(request, booking_id):
         'price_children': price_children,
         'price_infants': price_infants,
         'cargo_price': cargo_price,
+        'addon_price': addon_price,
         'stripe_publishable_key': settings.STRIPE_PUBLISHABLE_KEY
     })
 
-
-
-@login_required_allow_anonymous
 def payment_success(request):
     booking_id = request.session.get('booking_id')
     session_id = request.GET.get('session_id') or request.session.get('stripe_session_id')
 
-    logger.debug(f"Payment success: booking_id={booking_id}, session_id={session_id}, session={dict(request.session)}")
+    logger.debug(f"Payment success: booking_id={booking_id}, session_id={session_id}")
 
-    # Fallback to retrieve booking_id and guest_email from Stripe metadata
-    if not booking_id and session_id and session_id != '{CHECKOUT_SESSION_ID}':
+    if not session_id or session_id == '{CHECKOUT_SESSION_ID}':
+        logger.warning("Invalid or missing session_id in payment_success")
+        session_id = None
+        if booking_id:
+            try:
+                booking = Booking.objects.get(id=booking_id)
+                session_id = booking.stripe_session_id
+                logger.debug(f"Retrieved session_id {session_id} from booking {booking_id}")
+            except Booking.DoesNotExist:
+                logger.error(f"Booking {booking_id} not found")
+                messages.error(request, "Booking not found. Please contact support.")
+                return redirect('bookings:booking_history')
+
+    if not booking_id and session_id:
         try:
-            stripe.api_key = settings.STRIPE_SECRET_KEY
             session = stripe.checkout.Session.retrieve(session_id)
             booking_id = session.metadata.get('booking_id')
             guest_email = session.metadata.get('guest_email')
             if guest_email and not request.session.get('guest_email'):
                 request.session['guest_email'] = guest_email
                 logger.debug(f"Restored guest_email from metadata: {guest_email}")
-            logger.debug(f"Retrieved booking_id from metadata: {booking_id}")
         except stripe.error.StripeError as e:
             logger.error(f"Stripe error retrieving session {session_id}: {str(e)}")
             messages.error(request, "Error verifying payment session. Please contact support.")
             return redirect('bookings:booking_history')
+        except Exception as e:
+            logger.error(f"Unexpected error retrieving session {session_id}: {str(e)}")
+            messages.error(request, "An unexpected error occurred retrieving payment session. Please contact support.")
+            return redirect('bookings:booking_history')
 
-    # Check for missing booking_id
     if not booking_id:
         logger.error("Missing booking_id in session and metadata")
         messages.error(request, "Payment status could not be verified due to missing booking information. Please contact support.")
         return redirect('bookings:booking_history')
 
-    # Fetch booking
     try:
         booking = Booking.objects.get(id=booking_id)
     except Booking.DoesNotExist:
@@ -1556,34 +1601,19 @@ def payment_success(request):
         messages.error(request, "Booking not found. Please contact support.")
         return redirect('bookings:booking_history')
 
-    # Authorization checks
     if request.user.is_authenticated and booking.user != request.user:
         logger.error(f"Authorization failed: User {request.user} not authorized for booking {booking_id}")
         return HttpResponseForbidden("You are not authorized to view this booking.")
     if not request.user.is_authenticated and booking.guest_email != request.session.get('guest_email'):
-        logger.error(f"Authorization failed: Guest email mismatch for booking {booking_id}, expected={booking.guest_email}, got={request.session.get('guest_email')}")
+        logger.error(f"Authorization failed: Guest email mismatch for booking {booking_id}")
         return HttpResponseForbidden("You are not authorized to view this booking.")
 
-    # Check booking status
     if booking.evaluated_status == 'cancelled':
         logger.error(f"Booking {booking_id} is cancelled or expired")
         messages.error(request, "This booking is no longer valid.")
         return redirect('bookings:booking_history')
 
-    # Handle missing or invalid session_id
-    if not session_id or session_id == '{CHECKOUT_SESSION_ID}':
-        logger.warning(f"Invalid or missing session_id, falling back to booking.stripe_session_id for booking {booking_id}")
-        session_id = booking.stripe_session_id
-        if not session_id:
-            logger.error(f"No valid session_id found for booking {booking_id}")
-            messages.error(request, "Invalid payment session. Please try again or contact support.")
-            return redirect('bookings:booking_history')
-
     try:
-        # Initialize passengers list
-        passengers = []
-
-        # Debug mode for testing
         if session_id == 'debug-mode' and settings.DEBUG:
             payment, _ = Payment.objects.get_or_create(
                 booking=booking,
@@ -1601,30 +1631,22 @@ def payment_success(request):
             booking.save()
             logger.info(f"Debug mode payment processed for booking {booking.id}")
         else:
-            # Try all Payment objects associated with the booking
-            payments = Payment.objects.filter(booking=booking).order_by('-payment_date')  # Fixed: Use payment_date
-            session_found = False
-            for payment in payments:
-                try:
-                    session = stripe.checkout.Session.retrieve(payment.session_id, expand=['payment_intent'])
-                    if session.metadata.get('booking_id') != str(booking_id):
-                        logger.warning(f"Session {payment.session_id} metadata mismatch for booking {booking_id}")
-                        continue
-                    if not session.payment_intent:
-                        logger.warning(f"No payment_intent found for session {payment.session_id}, booking {booking_id}")
-                        continue
-                    session_found = True
-                    break
-                except stripe.error.InvalidRequestError as e:
-                    logger.error(f"InvalidRequestError for session {payment.session_id}, booking {booking_id}: {str(e)}")
-                    continue
+            if not session_id:
+                logger.error(f"No valid session_id found for booking {booking_id}")
+                messages.error(request, "Invalid payment session. Please try again or contact support.")
+                return redirect('bookings:booking_history')
 
-            if not session_found:
-                logger.error(f"No valid session with payment_intent found for booking {booking_id}")
+            session = stripe.checkout.Session.retrieve(session_id, expand=['payment_intent'])
+            if not session.payment_intent:
+                logger.error(f"No payment_intent found for session {session_id}, booking {booking_id}")
                 messages.error(request, "Payment could not be verified. Please contact support.")
                 return redirect('bookings:booking_history')
 
-            # Update or create Payment object
+            if session.metadata.get('booking_id') != str(booking_id):
+                logger.error(f"Session {session_id} metadata mismatch for booking {booking_id}")
+                messages.error(request, "Invalid payment session. Please contact support.")
+                return redirect('bookings:booking_history')
+
             payment, created = Payment.objects.get_or_create(
                 booking=booking,
                 session_id=session.id,
@@ -1635,11 +1657,6 @@ def payment_success(request):
                 }
             )
 
-            if created:
-                logger.info(f"Created new Payment object for booking {booking.id}: session_id={session.id}")
-            else:
-                logger.info(f"Found existing Payment object for booking {booking.id}: session_id={session.id}")
-
             payment.payment_intent_id = session.payment_intent.id
             payment.transaction_id = session.payment_intent.id
             payment.amount = Decimal(session.payment_intent.amount) / 100
@@ -1649,295 +1666,157 @@ def payment_success(request):
                 booking.payment_intent_id = session.payment_intent.id
                 booking.stripe_session_id = session.id
                 booking.save()
-                logger.info(f"Payment confirmed for booking {booking.id}: payment_intent_id={session.payment_intent.id}")
+                logger.info(f"Payment confirmed for booking {booking.id}")
             else:
                 logger.warning(f"Payment not completed for booking {booking.id}: status={session.payment_intent.status}")
                 messages.error(request, f"Payment is not completed yet. Status: {session.payment_intent.status}")
                 return redirect('bookings:booking_history')
             payment.save()
 
-        # Synchronize passengers and tickets
-        existing_passengers = list(Passenger.objects.filter(booking=booking).order_by('id'))
-        total_existing = len(existing_passengers)
-        desired_passengers = (
-            [('adult', 30)] * booking.passenger_adults +
-            [('child', 10)] * booking.passenger_children +
-            [('infant', 1)] * booking.passenger_infants
-        )
+        # Check if tickets already exist
+        if Ticket.objects.filter(booking=booking).count() == booking.passengers.count():
+            logger.info(f"Tickets already generated for booking {booking.id}")
+            messages.success(request, f'Booking #{booking.id} confirmed! Tickets already generated.')
+        else:
+            # Verify passengers exist
+            if not booking.passengers.exists():
+                logger.error(f"No passengers found for booking {booking.id}")
+                messages.error(request, "No passengers associated with booking. Please contact support.")
+                return redirect('bookings:booking_history')
 
-        # Populate passengers list with existing passengers
-        passengers.extend(existing_passengers)
-
-        for i, (ptype, age) in enumerate(desired_passengers):
-            if i < total_existing:
-                p = existing_passengers[i]
-                p.passenger_type = ptype
-                p.age = age
-                p.first_name = f"{ptype.capitalize()}{i + 1}" if not p.first_name else p.first_name
-                p.last_name = "Passenger" if not p.last_name else p.last_name
-                p.save()
-            else:
-                # Create new passenger if needed
-                passenger = Passenger.objects.create(
-                    booking=booking,
-                    passenger_type=ptype,
-                    first_name=f"{ptype.capitalize()}{i + 1}",
-                    last_name="Passenger",
-                    age=age,
-                    verification_status='missing'
-                )
-                passengers.append(passenger)
-
-        # Delete extra passengers if any
-        if total_existing > len(desired_passengers):
-            for p in existing_passengers[len(desired_passengers):]:
-                p.delete()
-                if p in passengers:
-                    passengers.remove(p)
-
-        # Generate tickets for confirmed booking
-        for passenger in passengers:
-            if not Ticket.objects.filter(booking=booking, passenger=passenger).exists():
-                ticket = Ticket.objects.create(
-                    booking=booking,
-                    passenger=passenger,
-                    ticket_status='active',
-                    qr_token=str(uuid.uuid4())
-                )
-                qr_data = request.build_absolute_uri(reverse('bookings:view_ticket', args=[ticket.qr_token]))
-                qr = qrcode.make(qr_data)
-                buffer = BytesIO()
-                qr.save(buffer, format='PNG')
-                ticket.qr_code.save(f"ticket_{ticket.id}.png", ContentFile(buffer.getvalue()))
-
-        # Generate cargo QR if applicable
-        cargo = Cargo.objects.filter(booking=booking).first()
-        if cargo and not cargo.qr_code:
-            generate_cargo_qr(request, cargo)
+            # Generate tickets
+            logger.debug(f"Starting ticket generation for booking {booking.id}, passenger count: {booking.passengers.count()}")
+            for passenger in booking.passengers.all():
+                if not Ticket.objects.filter(booking=booking, passenger=passenger).exists():
+                    try:
+                        ticket = Ticket(
+                            booking=booking,
+                            passenger=passenger,
+                            ticket_status='active',
+                            qr_token=uuid.uuid4().hex
+                        )
+                        ticket.full_clean()  # Validate model before saving
+                        ticket.save()
+                        qr_data = request.build_absolute_uri(reverse('bookings:view_ticket', args=[ticket.qr_token]))
+                        qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_L)
+                        qr.add_data(qr_data)
+                        qr.make(fit=True)
+                        img = qr.make_image(fill_color="black", back_color="white")
+                        buffer = BytesIO()
+                        img.save(buffer, format='PNG')
+                        try:
+                            ticket.qr_code.save(f"ticket_{ticket.id}.png", ContentFile(buffer.getvalue()), save=True)
+                            logger.debug(f"Generated ticket {ticket.id} for passenger {passenger.id}")
+                        except Exception as e:
+                            logger.error(f"Error saving QR code for ticket {ticket.id}: {str(e)}")
+                            ticket.delete()
+                            messages.error(request, "Error saving ticket QR code. Please contact support.")
+                            return redirect('bookings:booking_history')
+                    except ValidationError as ve:
+                        logger.error(f"Validation error for ticket, passenger {passenger.id}: {str(ve)}")
+                        messages.error(request, "Error generating tickets: Invalid ticket data. Please contact support.")
+                        return redirect('bookings:booking_history')
+                    except Exception as e:
+                        logger.error(f"Error generating ticket for passenger {passenger.id}: {str(e)}")
+                        messages.error(request, "Error generating tickets. Please contact support.")
+                        return redirect('bookings:booking_history')
 
         # Send confirmation email
         try:
-            recipient = booking.user.email if booking.user else booking.guest_email
-            if recipient:
-                send_mail(
-                    subject=f'Booking Confirmation #{booking.id}',
-                    message=(
-                        f'Your booking #{booking.id} for {booking.schedule.route} on '
-                        f'{booking.schedule.departure_time.strftime("%Y-%m-%d %H:%M")} '
-                        f'has been confirmed.\n\n'
-                        f'Total Passengers: {booking.number_of_passengers}\n'
-                        f'Total Amount: FJD {booking.total_price}\n'
-                        f'View your tickets at: {request.build_absolute_uri(reverse("bookings:view_tickets", args=[booking.id]))}'
-                    ),
-                    from_email=settings.DEFAULT_FROM_EMAIL,
-                    recipient_list=[recipient],
-                    fail_silently=True
+            email_subject = f'Booking Confirmation #{booking.id}'
+            email_body = (
+                f'Your booking has been confirmed!\n\n'
+                f'Booking ID: {booking.id}\n'
+                f'Route: {booking.schedule.route.departure_port.name} to {booking.schedule.route.destination_port.name}\n'
+                f'Departure: {booking.schedule.departure_time.strftime("%a, %b %d, %H:%M")}\n'
+                f'Estimated Duration: {int(booking.schedule.route.estimated_duration.total_seconds() / 60) if booking.schedule.route.estimated_duration else "N/A"} minutes\n'
+                f'Passengers: {booking.passenger_adults} Adults, {booking.passenger_children} Children, {booking.passenger_infants} Infants\n'
+                f'Total Price: FJD {booking.total_price}\n'
+            )
+            if booking.cargo.exists():
+                cargo = booking.cargo.first()
+                email_body += (
+                    f'\nCargo Details:\n'
+                    f'Type: {cargo.cargo_type.capitalize()}\n'
+                    f'Weight: {cargo.weight_kg} kg\n'
+                    f'License Plate: {cargo.license_plate or "N/A"}\n'
+                    f'Price: FJD {cargo.price}\n'
                 )
-                logger.info(f"Confirmation email sent for booking {booking.id} to {recipient}")
-            else:
-                logger.warning(f"No recipient email for booking {booking.id}")
-        except Exception as e:
-            logger.error(f"Failed to send confirmation email for booking {booking.id}: {str(e)}")
+            if booking.addons.exists():
+                email_body += '\nAdd-ons:\n'
+                for addon in booking.addons.all():
+                    email_body += f'- {addon.get_add_on_type_display()}: FJD {addon.price}\n'
 
-        # Clear session data
+            email_body += (
+                f'\nView your tickets: {request.build_absolute_uri(reverse("bookings:view_tickets", args=[booking.id]))}\n'
+                'Thank you for choosing our ferry service!'
+            )
+
+            send_mail(
+                email_subject,
+                email_body,
+                settings.DEFAULT_FROM_EMAIL,
+                [booking.user.email if booking.user else booking.guest_email],
+                fail_silently=True
+            )
+            logger.info(f"Confirmation email sent for booking {booking.id}")
+        except Exception as e:
+            logger.error(f"Error sending confirmation email for booking {booking.id}: {str(e)}")
+            messages.warning(request, "Booking confirmed, but there was an issue sending the confirmation email. Please check your email later or contact support.")
+
+        messages.success(request, f'Booking #{booking.id} confirmed! Tickets have been generated and emailed.')
         request.session.pop('booking_id', None)
         request.session.pop('stripe_session_id', None)
-        request.session.pop('price_difference', None)
+        request.session.pop('guest_email', None)
 
-        messages.success(request, f"Payment successful! Booking #{booking.id} confirmed.")
         return redirect('bookings:view_tickets', booking_id=booking.id)
 
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe error for booking {booking_id}: {str(e)}")
+        messages.error(request, f"Payment verification failed: {str(e)}. Please contact support.")
+        return redirect('bookings:booking_history')
     except Exception as e:
-        logger.exception(f"Unexpected error in payment_success for booking {booking_id}: {str(e)}")
-        messages.error(request, "An error occurred while processing your payment. Please contact support.")
-        return redirect('bookings:booking_history')
-
-@login_required
-def cancel_booking(request, booking_id):
-    booking = get_object_or_404(Booking, id=booking_id, user=request.user)
-
-    # Check if booking is cancellable
-    if booking.status != 'pending':
-        messages.error(request, "Only pending bookings can be cancelled.")
-        return redirect('bookings:booking_history')
-
-    cutoff_time = booking.schedule.departure_time - timezone.timedelta(hours=6)
-    if timezone.now() > cutoff_time:
-        messages.error(request, "Cannot cancel booking within 6 hours of departure.")
-        return redirect('bookings:booking_history')
-
-    try:
-        # Refund payment if completed
-        payment = Payment.objects.filter(booking=booking, payment_status='completed').first()
-        if payment and payment.payment_intent_id:
-            try:
-                refund = stripe.Refund.create(
-                    payment_intent=payment.payment_intent_id,
-                    amount=int(payment.amount * 100)
-                )
-                payment.payment_status = 'refunded'
-                payment.save()
-                logger.info(f"Refund processed for booking {booking.id}: refund_id={refund.id}")
-            except stripe.error.StripeError as e:
-                logger.error(f"Stripe refund error for booking {booking.id}: {str(e)}")
-                messages.error(request, "Failed to process refund. Please contact support.")
-                return redirect('bookings:booking_history')
-
-        # Update booking status
-        booking.status = 'cancelled'
-        booking.save()
-
-        # Restore seats
-        schedule = booking.schedule
-        schedule.available_seats += booking.number_of_passengers
-        schedule.save()
-
-        # Notify user
-        send_mail(
-            subject=f'Booking Cancellation #{booking.id}',
-            message=(
-                f'Your booking #{booking.id} for {booking.schedule.route} on '
-                f'{booking.schedule.departure_time.strftime("%Y-%m-%d %H:%M")} '
-                f'has been cancelled.\n'
-                f'Refunded Amount: FJD {payment.amount if payment else 0}'
-            ),
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[request.user.email],
-            fail_silently=True
-        )
-
-        messages.success(request, f"Booking #{booking.id} has been cancelled.")
-        return redirect('bookings:booking_history')
-
-    except Exception as e:
-        logger.exception(f"Error cancelling booking {booking.id}: {str(e)}")
-        messages.error(request, "An error occurred while cancelling your booking. Please contact support.")
+        logger.error(f"Unexpected error for booking {booking_id}: {str(e)}")
+        messages.error(request, "An unexpected error occurred during payment processing. Please contact support.")
         return redirect('bookings:booking_history')
 
 
-@login_required
-def modify_booking(request, booking_id):
-    booking = get_object_or_404(Booking, id=booking_id, user=request.user)
 
-    # Check if booking can be modified
-    cutoff_time = booking.schedule.departure_time - timezone.timedelta(hours=6)
-    if timezone.now() > cutoff_time:
-        messages.error(request, "Cannot modify booking within 6 hours of departure.")
-        return redirect('bookings:booking_history')
+@login_required_allow_anonymous
+def payment_cancel(request):
+    booking_id = request.session.get('booking_id')
+    logger.debug(f"Payment cancelled: booking_id={booking_id}")
 
-    if booking.status != 'confirmed':
-        messages.error(request, "Only confirmed bookings can be modified.")
-        return redirect('bookings:booking_history')
-
-    form = ModifyBookingForm(request.POST or None, instance=booking)
-    if request.method == 'POST' and form.is_valid():
+    if booking_id:
         try:
-            # Calculate price difference
-            old_price = booking.total_price
-            new_schedule = form.cleaned_data['schedule']
-            adults = form.cleaned_data['passenger_adults']
-            children = form.cleaned_data['passenger_children']
-            infants = form.cleaned_data['passenger_infants']
+            booking = Booking.objects.get(id=booking_id)
+            if request.user.is_authenticated and booking.user != request.user:
+                logger.error(f"Authorization failed: User {request.user} not authorized for booking {booking_id}")
+                return HttpResponseForbidden("You are not authorized to view this booking.")
+            if not request.user.is_authenticated and booking.guest_email != request.session.get('guest_email'):
+                logger.error(f"Authorization failed: Guest email mismatch for booking {booking_id}")
+                return HttpResponseForbidden("You are not authorized to view this booking.")
 
-            # Map youths from form to children in model
-            youths = safe_int(request.POST.get('youths', '0'))
-            children += youths
-
-            new_price = calculate_total_price(
-                adults=adults,
-                youths=youths,
-                children=children - youths,
-                infants=infants,
-                schedule=new_schedule,
-                add_cargo=booking.cargo is not None,
-                cargo_type=booking.cargo.cargo_type if booking.cargo else '',
-                weight_kg=booking.cargo.weight_kg if booking.cargo else 0,
-                is_emergency=booking.is_emergency
+            booking.status = 'cancelled'
+            booking.schedule.available_seats += (
+                booking.passenger_adults + booking.passenger_children + booking.passenger_infants
             )
-
-            price_difference = new_price - old_price
-
-            # Update booking
-            booking.passenger_adults = adults
-            booking.passenger_children = children
-            booking.passenger_infants = infants
-            booking.schedule = new_schedule
-            booking.total_price = new_price
+            booking.schedule.save()
             booking.save()
 
-            # Adjust passenger records
-            existing_passengers = list(Passenger.objects.filter(booking=booking).order_by('id'))
-            total_existing = len(existing_passengers)
-            desired_passengers = (
-                    [('adult', 30)] * adults +
-                    [('child', 10)] * children +
-                    [('infant', 1)] * infants
-            )
+            messages.info(request, f'Booking #{booking.id} has been cancelled.')
+            request.session.pop('booking_id', None)
+            request.session.pop('stripe_session_id', None)
+            request.session.pop('price_difference', None)
 
-            for i, (ptype, age) in enumerate(desired_passengers):
-                if i < total_existing:
-                    p = existing_passengers[i]
-                    p.passenger_type = ptype
-                    p.age = age
-                    p.first_name = f"{ptype.capitalize()}{i + 1}" if not p.first_name else p.first_name
-                    p.last_name = "Passenger" if not p.last_name else p.last_name
-                    p.save()
-                else:
-                    Passenger.objects.create(
-                        booking=booking,
-                        passenger_type=ptype,
-                        first_name=f"{ptype.capitalize()}{i + 1}",
-                        last_name="Passenger",
-                        age=age,
-                        verification_status='missing'
-                    )
+        except Booking.DoesNotExist:
+            logger.error(f"Booking {booking_id} not found")
+            messages.error(request, "Booking not found. Please contact support.")
+    else:
+        logger.warning("No booking_id found in session for cancellation")
+        messages.error(request, "No booking found to cancel.")
 
-            if total_existing > len(desired_passengers):
-                for p in existing_passengers[len(desired_passengers):]:
-                    p.delete()
-
-            # Update schedule seats
-            old_schedule = Schedule.objects.get(id=booking.schedule_id)
-            old_schedule.available_seats += booking.number_of_passengers
-            old_schedule.save()
-
-            new_schedule.available_seats -= (adults + children + infants)
-            new_schedule.save()
-
-            # Store price difference for payment
-            if price_difference > 0:
-                request.session['price_difference'] = str(price_difference)
-                return redirect('bookings:process_payment', booking_id=booking.id)
-            else:
-                # If no additional payment needed, regenerate tickets
-                Ticket.objects.filter(booking=booking).delete()
-                for passenger in booking.passengers.all():
-                    ticket = Ticket.objects.create(
-                        booking=booking,
-                        passenger=passenger,
-                        ticket_status='active',
-                        qr_token=str(uuid.uuid4())
-                    )
-                    qr_data = request.build_absolute_uri(reverse('bookings:view_ticket', args=[ticket.qr_token]))
-                    qr = qrcode.make(qr_data)
-                    buffer = BytesIO()
-                    qr.save(buffer, format='PNG')
-                    ticket.qr_code.save(f"ticket_{ticket.id}.png", ContentFile(buffer.getvalue()))
-
-                messages.success(request, f"Booking #{booking.id} has been modified.")
-                return redirect('bookings:view_tickets', booking_id=booking.id)
-
-        except Exception as e:
-            logger.exception(f"Error modifying booking {booking.id}: {str(e)}")
-            messages.error(request, "An error occurred while modifying your booking. Please contact support.")
-            return redirect('bookings:booking_history')
-
-    return render(request, 'bookings/modify_booking.html', {
-        'form': form,
-        'booking': booking,
-        'schedules': Schedule.objects.filter(status='scheduled', departure_time__gt=timezone.now())
-    })
-
+    return redirect('bookings:booking_history')
 
 @require_POST
 @csrf_exempt
@@ -1950,70 +1829,281 @@ def stripe_webhook(request):
         event = stripe.Webhook.construct_event(payload, sig_header, endpoint_secret)
     except ValueError:
         logger.error("Invalid webhook payload")
-        return HttpResponse(status=400)
+        return JsonResponse({'status': 'invalid payload'}, status=400)
     except stripe.error.SignatureVerificationError:
         logger.error("Invalid webhook signature")
-        return HttpResponse(status=400)
-
-    logger.debug(f"Webhook event received: type={event['type']}, id={event['id']}")
+        return JsonResponse({'status': 'invalid signature'}, status=400)
 
     if event['type'] == 'checkout.session.completed':
         session = event['data']['object']
         booking_id = session.get('metadata', {}).get('booking_id')
+        session_id = session.get('id')
+        payment_intent_id = session.get('payment_intent')
+        guest_email = session.get('metadata', {}).get('guest_email')
+
         if not booking_id:
-            logger.error("No booking_id in webhook metadata")
-            return HttpResponse(status=400)
+            logger.error(f"No booking_id in session metadata: session_id={session_id}")
+            return JsonResponse({'status': 'missing booking_id'}, status=400)
 
         try:
             booking = Booking.objects.get(id=booking_id)
-            payment = Payment.objects.filter(booking=booking, session_id=session['id']).first()
-            if not payment:
-                logger.error(f"No Payment object found for session {session['id']}, booking {booking_id}")
-                return HttpResponse(status=400)
-
-            if session.get('payment_intent'):
-                payment.payment_intent_id = session['payment_intent']
-                payment.transaction_id = session['payment_intent']
-                payment.amount = Decimal(session['amount_total']) / 100
-                if session.get('payment_status') == 'paid':
-                    payment.payment_status = 'completed'
-                    booking.status = 'confirmed'
-                    booking.payment_intent_id = session['payment_intent']
-                    booking.stripe_session_id = session['id']
-                    booking.save()
-                    payment.save()
-                    logger.info(f"Webhook processed: booking {booking_id} confirmed")
-                else:
-                    logger.warning(f"Webhook payment not completed for booking {booking_id}: status={session['payment_status']}")
-            else:
-                logger.error(f"No payment_intent in webhook for session {session['id']}, booking {booking_id}")
         except Booking.DoesNotExist:
-            logger.error(f"Booking {booking_id} not found in webhook")
-            return HttpResponse(status=404)
+            logger.error(f"Booking {booking_id} not found for session {session_id}")
+            return JsonResponse({'status': 'booking not found'}, status=404)
 
-    return HttpResponse(status=200)
-
-
-def cancel_payment(request):
-    booking_id = request.session.get('booking_id')
-    if booking_id:
         try:
-            booking = Booking.objects.get(id=booking_id)
-            if booking.status == 'pending':
-                booking.status = 'cancelled'
-                booking.save()
-                schedule = booking.schedule
-                schedule.available_seats += booking.number_of_passengers
-                schedule.save()
-                logger.info(f"Payment cancelled for booking {booking.id}")
-                messages.success(request, f"Booking #{booking.id} has been cancelled.")
-        except Booking.DoesNotExist:
-            logger.error(f"Booking {booking_id} not found during cancel_payment")
-            messages.error(request, "Booking not found.")
+            payment, created = Payment.objects.get_or_create(
+                booking=booking,
+                session_id=session_id,
+                defaults={
+                    'payment_method': 'stripe',
+                    'amount': Decimal(session.get('amount_total', 0)) / 100,
+                    'payment_status': 'pending'
+                }
+            )
+            payment.payment_intent_id = payment_intent_id
+            payment.transaction_id = payment_intent_id
+            payment.amount = Decimal(session.get('amount_total', 0)) / 100
+            payment.payment_status = 'completed'
+            payment.save()
 
-        # Clear session
-        request.session.pop('booking_id', None)
-        request.session.pop('stripe_session_id', None)
-        request.session.pop('price_difference', None)
+            booking.status = 'confirmed'
+            booking.payment_intent_id = payment_intent_id
+            booking.stripe_session_id = session_id
+            booking.save()
 
-    return redirect('bookings:booking_history')
+            # Create tickets if missing
+            if Ticket.objects.filter(booking=booking).count() < booking.passengers.count():
+                logger.debug(f"Starting ticket generation for booking {booking.id}, passenger count: {booking.passengers.count()}")
+                for passenger in booking.passengers.all():
+                    if not Ticket.objects.filter(booking=booking, passenger=passenger).exists():
+                        try:
+                            ticket = Ticket(
+                                booking=booking,
+                                passenger=passenger,
+                                ticket_status='active',
+                                qr_token=uuid.uuid4().hex
+                            )
+                            ticket.full_clean()
+                            ticket.save()
+                            qr_data = request.build_absolute_uri(reverse('bookings:view_ticket', args=[ticket.qr_token]))
+                            qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_L)
+                            qr.add_data(qr_data)
+                            qr.make(fit=True)
+                            img = qr.make_image(fill_color="black", back_color="white")
+                            buffer = BytesIO()
+                            img.save(buffer, format='PNG')
+                            try:
+                                ticket.qr_code.save(f"ticket_{ticket.id}.png", ContentFile(buffer.getvalue()), save=True)
+                                logger.debug(f"Generated ticket {ticket.id} for passenger {passenger.id}")
+                            except Exception as e:
+                                logger.error(f"Error saving QR code for ticket {ticket.id}: {str(e)}")
+                                ticket.delete()
+                                return JsonResponse({'status': 'error', 'message': 'Error saving ticket QR code'}, status=500)
+                        except ValidationError as ve:
+                            logger.error(f"Validation error for ticket, passenger {passenger.id}: {str(ve)}")
+                            return JsonResponse({'status': 'error', 'message': 'Invalid ticket data'}, status=500)
+                        except Exception as e:
+                            logger.error(f"Error generating ticket for passenger {passenger.id}: {str(e)}")
+                            return JsonResponse({'status': 'error', 'message': 'Error generating tickets'}, status=500)
+
+            # Build confirmation email
+            email_subject = f'Booking Confirmation #{booking.id}'
+            email_body = (
+                f'Your booking has been confirmed!\n\n'
+                f'Booking ID: {booking.id}\n'
+                f'Route: {booking.schedule.route.departure_port.name} → {booking.schedule.route.destination_port.name}\n'
+                f'Departure: {booking.schedule.departure_time.strftime("%a, %b %d, %H:%M")}\n'
+                f'Estimated Duration: {int(booking.schedule.route.estimated_duration.total_seconds() / 60) if booking.schedule.route.estimated_duration else "N/A"} minutes\n'
+                f'Passengers: {booking.passenger_adults} Adults, {booking.passenger_children} Children, {booking.passenger_infants} Infants\n'
+                f'Total Price: FJD {booking.total_price}\n'
+            )
+
+            if booking.cargo.exists():
+                cargo = booking.cargo.first()
+                email_body += (
+                    f'\nCargo Details:\n'
+                    f'Type: {cargo.cargo_type.capitalize()}\n'
+                    f'Weight: {cargo.weight_kg} kg\n'
+                    f'License Plate: {cargo.license_plate}\n'
+                    f'Price: FJD {cargo.price}\n'
+                )
+
+            if booking.addons.exists():
+                email_body += '\nAdd-ons:\n'
+                for addon in booking.addons.all():
+                    email_body += f'- {addon.get_add_on_type_display()}: FJD {addon.price}\n'
+
+            email_body += (
+                f'\nView your tickets: {request.build_absolute_uri(reverse("bookings:view_tickets", args=[booking.id]))}\n'
+                'Thank you for choosing our ferry service!'
+            )
+
+            send_mail(
+                email_subject,
+                email_body,
+                settings.DEFAULT_FROM_EMAIL,
+                [booking.user.email if booking.user else booking.guest_email],
+                fail_silently=True
+            )
+
+            logger.info(f"Webhook processed: Payment confirmed for booking {booking.id}")
+            return JsonResponse({'status': 'success'})
+
+        except Payment.DoesNotExist:
+            logger.error(f"Payment not found for booking {booking_id}, session {session_id}")
+            return JsonResponse({'status': 'payment not found'}, status=404)
+
+        except Exception as e:
+            logger.error(f"Webhook error for booking {booking_id}: {str(e)}")
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+    return JsonResponse({'status': 'event not handled'})
+
+@login_required
+def modify_booking(request, booking_id):
+    booking = get_object_or_404(Booking, id=booking_id, user=request.user)
+    now = timezone.now()
+
+    if booking.status != 'confirmed' or booking.schedule.departure_time <= now + datetime.timedelta(hours=6):
+        messages.error(request, "This booking cannot be modified.")
+        return redirect('bookings:booking_history')
+
+    form = ModifyBookingForm(request.POST or None, instance=booking)
+    if request.method == 'POST' and form.is_valid():
+        new_schedule = form.cleaned_data['schedule']
+        new_adults = form.cleaned_data['passenger_adults']
+        new_children = form.cleaned_data['passenger_children']
+        new_infants = form.cleaned_data['passenger_infants']
+
+        total_passengers = new_adults + new_children + new_infants
+        if total_passengers == 0:
+            messages.error(request, "At least one passenger is required.")
+            return render(request, 'bookings/modify.html', {'form': form, 'booking': booking})
+
+        if new_schedule.available_seats < total_passengers:
+            messages.error(request, "Not enough seats available in the selected schedule.")
+            return render(request, 'bookings/modify.html', {'form': form, 'booking': booking})
+
+        old_total_price = booking.total_price
+        new_total_price = calculate_total_price(
+            new_adults, new_children, new_infants, new_schedule,
+            booking.cargo.exists(), booking.cargo.first().cargo_type if booking.cargo.exists() else None,
+            booking.cargo.first().weight_kg if booking.cargo.exists() else 0,
+            [{'type': addon.add_on_type, 'quantity': addon.quantity} for addon in booking.addons.all()]
+        )
+
+        booking.schedule.available_seats += (
+                    booking.passenger_adults + booking.passenger_children + booking.passenger_infants)
+        booking.schedule.save()
+
+        booking.schedule = new_schedule
+        booking.passenger_adults = new_adults
+        booking.passenger_children = new_children
+        booking.passenger_infants = new_infants
+        booking.total_price = new_total_price
+        booking.save()
+
+        new_schedule.available_seats -= total_passengers
+        new_schedule.save()
+
+        price_difference = new_total_price - old_total_price
+        if price_difference > 0:
+            request.session['price_difference'] = str(price_difference)
+            request.session['booking_id'] = booking.id
+            messages.info(request, f"Booking modified. Additional payment of FJD {price_difference} required.")
+            return redirect('bookings:process_payment', booking_id=booking.id)
+        elif price_difference < 0:
+            try:
+                refund = stripe.Refund.create(
+                    payment_intent=booking.payment_intent_id,
+                    amount=int(abs(price_difference) * 100)
+                )
+                Payment.objects.create(
+                    booking=booking,
+                    payment_method='stripe',
+                    amount=price_difference,
+                    payment_status='refunded',
+                    transaction_id=refund.id
+                )
+                logger.info(f"Refund processed for booking {booking.id}: amount={price_difference}")
+            except stripe.error.StripeError as e:
+                logger.error(f"Refund error for booking {booking.id}: {str(e)}")
+                messages.error(request, f"Refund processing failed: {str(e)}. Please contact support.")
+                return redirect('bookings:booking_history')
+
+        messages.success(request, "Booking modified successfully.")
+        return redirect('bookings:view_tickets', booking_id=booking.id)
+
+    return render(request, 'bookings/modify.html', {
+        'form': form,
+        'booking': booking,
+        'cutoff_time': now + datetime.timedelta(hours=6)
+    })
+
+@login_required
+def cancel_booking(request, booking_id):
+    booking = get_object_or_404(Booking, id=booking_id, user=request.user)
+    now = timezone.now()
+
+    if booking.status != 'confirmed' or booking.schedule.departure_time <= now + datetime.timedelta(hours=6):
+        messages.error(request, "This booking cannot be cancelled.")
+        return redirect('bookings:booking_history')
+
+    if request.method == 'POST':
+        try:
+            if booking.payment_intent_id:
+                refund = stripe.Refund.create(
+                    payment_intent=booking.payment_intent_id,
+                    amount=int(booking.total_price * 100)
+                )
+                Payment.objects.create(
+                    booking=booking,
+                    payment_method='stripe',
+                    amount=-booking.total_price,
+                    payment_status='refunded',
+                    transaction_id=refund.id
+                )
+
+            booking.status = 'cancelled'
+            booking.schedule.available_seats += (
+                        booking.passenger_adults + booking.passenger_children + booking.passenger_infants)
+            booking.schedule.save()
+            booking.save()
+
+            for ticket in booking.tickets.all():
+                ticket.ticket_status = 'cancelled'
+                ticket.save()
+
+            messages.success(request, f"Booking #{booking.id} has been cancelled and refunded.")
+            return redirect('bookings:booking_history')
+
+        except stripe.error.StripeError as e:
+            logger.error(f"Refund error for booking {booking.id}: {str(e)}")
+            messages.error(request, f"Refund processing failed: {str(e)}. Please contact support.")
+            return redirect('bookings:booking_history')
+        except Exception as e:
+            logger.error(f"Unexpected error cancelling booking {booking.id}: {str(e)}")
+            messages.error(request, "An unexpected error occurred. Please contact support.")
+            return redirect('bookings:booking_history')
+
+    return render(request, 'bookings/cancel.html', {
+        'booking': booking,
+        'cutoff_time': now + datetime.timedelta(hours=6)
+    })
+
+@login_required
+def download_ticket(request, ticket_id):
+    ticket = get_object_or_404(Ticket, id=ticket_id, booking__user=request.user)
+    if ticket.ticket_status != 'active':
+        messages.error(request, "This ticket is not valid for download.")
+        return redirect('bookings:booking_history')
+
+    buffer = BytesIO()
+    ticket.qr_code.seek(0)
+    buffer.write(ticket.qr_code.read())
+    buffer.seek(0)
+
+    response = HttpResponse(buffer, content_type='image/png')
+    response['Content-Disposition'] = f'attachment; filename=ticket_{ticket.id}.png'
+    return response
