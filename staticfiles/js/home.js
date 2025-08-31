@@ -5,18 +5,17 @@ document.addEventListener('DOMContentLoaded', function () {
         warn: (...args) => isDev && console.warn(...args),
         error: (...args) => console.error(...args)
     };
-    // Ensure SITE_URL is defined in your Django template (e.g., http://localhost:8000 or production domain)
-    const BASE_URL = SITE_URL || window.location.origin;
+    const BASE_URL = window.SITE_URL || window.location.origin;
 
     // ---- Utility Functions ----
     function sanitizeHTML(str) {
-        return DOMPurify.sanitize(str);
+        return DOMPurify?.sanitize(str) || str;
     }
 
     function formatDuration(seconds) {
         const hours = Math.floor(seconds / 3600);
         const minutes = Math.floor((seconds % 3600) / 60);
-        return `${hours}h ${minutes}m`;
+        return `${hours ? hours + 'h' : ''}${minutes ? ' ' + minutes + 'm' : ''}`.trim();
     }
 
     // ---- Preload Images for Slideshow ----
@@ -265,9 +264,9 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    function setupWeatherStream(retryCount = 3, delay = 5000) {
+    function setupWeatherStream(retryCount = 5, delay = 3000) {
         const streamUrl = `${BASE_URL}/bookings/api/weather/stream/`;
-        logger.log(`Attempting to connect to weather stream: ${streamUrl}`);
+        logger.log(`Connecting to weather stream: ${streamUrl}`);
         const source = new EventSource(streamUrl);
         source.onmessage = event => {
             const data = JSON.parse(event.data);
@@ -278,7 +277,7 @@ document.addEventListener('DOMContentLoaded', function () {
             source.close();
             if (navigator.onLine && retryCount > 0) {
                 logger.log(`Retrying weather stream (${retryCount} attempts left)...`);
-                setTimeout(() => setupWeatherStream(retryCount - 1, delay * 2), delay);
+                setTimeout(() => setupWeatherStream(retryCount - 1, Math.min(delay * 2, 30000)), delay);
             } else {
                 logger.error('Max retries reached for weather stream or offline');
                 document.querySelectorAll('.schedule-card').forEach(card => updateWeatherCard(card, null));
@@ -287,7 +286,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // ---- Schedule Polling ----
-    function pollScheduleUpdates(retryCount = 3, delay = 5000) {
+    function pollScheduleUpdates(retryCount = 5, delay = 3000) {
         const url = `${BASE_URL}/bookings/api/schedules/`;
         logger.log(`Polling schedules from: ${url}`);
         fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
@@ -340,7 +339,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 logger.error('Schedule polling error:', e);
                 if (retryCount > 0 && navigator.onLine) {
                     logger.log(`Retrying schedule poll (${retryCount} attempts left)...`);
-                    setTimeout(() => pollScheduleUpdates(retryCount - 1, delay * 2), delay);
+                    setTimeout(() => pollScheduleUpdates(retryCount - 1, Math.min(delay * 2, 30000)), delay);
                 } else {
                     logger.error('Max retries reached for schedule polling or offline');
                     document.getElementById('next-departure-time').textContent = 'Unable to load departures. Please try again later.';
@@ -366,154 +365,219 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // ---- Map Functions ----
-    function initializeMapAndRoutes(retryCount = 3, delay = 5000) {
-        const mapEl = document.getElementById('fiji-map');
-        if (!mapEl || typeof L === 'undefined') {
-            logger.warn('Map element or Leaflet not found');
-            if (mapEl) mapEl.innerHTML = '<p>Map failed to load. Please try again later.</p>';
+    function loadLeafletScript(callback, retryCount = 3, delay = 2000) {
+        if (typeof L !== 'undefined') {
+            callback();
             return;
         }
-        try {
-            const isMobile = window.matchMedia('(max-width: 768px)').matches;
-            const map = L.map('fiji-map', {
-                zoomControl: !isMobile,
-                preferCanvas: true,
-                maxBounds: [[-21.0, 176.0], [-16.0, 181.0]],
-                maxBoundsViscosity: 1.0
-            }).setView([-17.7, 178.0], 7);
-
-            const html = document.documentElement;
-            const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-                maxZoom: 10,
-                minZoom: 6,
-                tileSize: 256,
-                subdomains: 'abc',
-                errorTileUrl: window.TILE_ERROR_URL
-            }).addTo(map);
-
-            const clusterGroup = typeof L.MarkerClusterGroup !== 'undefined'
-                ? L.markerClusterGroup({
-                    disableClusteringAtZoom: 8,
-                    spiderfyOnMaxZoom: false,
-                    showCoverageOnHover: false
-                })
-                : L.layerGroup();
-
-            function getCurvedLineCoords(start, end, curvature = 0.2) {
-                const latOffset = (end[0] - start[0]) * curvature;
-                const lngOffset = (end[1] - start[1]) * curvature;
-                const midLat = (start[0] + end[0]) / 2 + latOffset;
-                const midLng = (start[1] + end[1]) / 2 + lngOffset;
-                return [start, [midLat, midLng], end];
+        const script = document.createElement('script');
+        script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+        script.integrity = 'sha512-Zcn6bjR/8+Za4nJuaMx6V4A4+glSkC/3k67utO2/7v9ql33dKuxP5B1+q2MJl7uEcaR1w8kB5N2x0Og/NGvC3vg==';
+        script.crossOrigin = 'anonymous';
+        script.onload = callback;
+        script.onerror = () => {
+            logger.error('Failed to load Leaflet script');
+            if (retryCount > 0) {
+                logger.log(`Retrying Leaflet script load (${retryCount} attempts left)...`);
+                setTimeout(() => loadLeafletScript(callback, retryCount - 1, Math.min(delay * 2, 30000)), delay);
+            } else {
+                const mapEl = document.getElementById('fiji-map');
+                if (mapEl) mapEl.innerHTML = '<p style="color: red; text-align: center;">Failed to load map. Please try again later.</p>';
             }
+        };
+        document.head.appendChild(script);
+    }
 
-            function getGradientColors(startColor, endColor, steps) {
-                const start = parseInt(startColor.slice(1), 16);
-                const end = parseInt(endColor.slice(1), 16);
-                const startR = (start >> 16) & 0xff, startG = (start >> 8) & 0xff, startB = start & 0xff;
-                const endR = (end >> 16) & 0xff, endG = (end >> 8) & 0xff, endB = end & 0xff;
-                const colors = [];
-                for (let i = 0; i <= steps; i++) {
-                    const t = i / steps;
-                    const r = Math.round(startR + t * (endR - startR));
-                    const g = Math.round(startG + t * (endG - startG));
-                    const b = Math.round(startB + t * (endB - startB));
-                    colors.push(`#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`);
-                }
-                return colors;
+    function colorForTier(tier) {
+        switch (tier) {
+            case 'major': return '#ff4500';
+            case 'regional': return '#1e90ff';
+            default: return '#32cd32';
+        }
+    }
+
+    function initializeMapAndRoutes(retryCount = 5, delay = 3000) {
+        const mapEl = document.getElementById('fiji-map');
+        if (!mapEl) {
+            logger.error('Map element with ID "fiji-map" not found in DOM');
+            return;
+        }
+
+        // Ensure map element is visible and has dimensions
+        if (mapEl.offsetWidth === 0 || mapEl.offsetHeight === 0) {
+            logger.warn('Map element has no dimensions, retrying...');
+            if (retryCount > 0) {
+                setTimeout(() => initializeMapAndRoutes(retryCount - 1, Math.min(delay * 2, 30000)), delay);
+            } else {
+                mapEl.innerHTML = '<p style="color: red; text-align: center;">Map container is not visible. Please check layout.</p>';
             }
+            return;
+        }
 
-            function colorForTier(tier) {
-                switch (tier) {
-                    case 'major': return ['#ff7f50', '#ff4500'];
-                    case 'regional': return ['#1e90ff', '#104e8b'];
-                    default: return ['#32cd32', '#228b22'];
-                }
-            }
+        mapEl.innerHTML = '<p style="text-align: center; color: #666;">Loading map...</p>';
 
-            const url = `${BASE_URL}/bookings/api/routes/`;
-            logger.log(`Fetching routes from: ${url}`);
-            fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-                .then(response => {
-                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                    return response.json();
-                })
-                .then(data => {
-                    requestAnimationFrame(() => {
-                        const routes = data.routes || [];
-                        const markers = {};
-                        const layers = {};
+        loadLeafletScript(() => {
+            try {
+                requestAnimationFrame(() => {
+                    const isMobile = window.matchMedia('(max-width: 768px)').matches;
+                    const map = L.map('fiji-map', {
+                        zoomControl: !isMobile,
+                        preferCanvas: true,
+                        maxBounds: [[-21.0, 176.0], [-16.0, 181.0]],
+                        maxBoundsViscosity: 1.0
+                    }).setView([-17.7, 178.0], 7);
 
-                        routes.forEach(route => {
-                            if (!route.schedule_id) return;
+                    const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                        maxZoom: 10,
+                        minZoom: 6,
+                        tileSize: 256,
+                        subdomains: 'abc',
+                        errorTileUrl: window.TILE_ERROR_URL || ''
+                    }).addTo(map);
 
-                            const dep = route.departure_port;
-                            const dest = route.destination_port;
-                            const tier = route.service_tier || 'remote';
+                    const clusterGroup = typeof L.MarkerClusterGroup !== 'undefined'
+                        ? L.markerClusterGroup({
+                            disableClusteringAtZoom: 8,
+                            spiderfyOnMaxZoom: false,
+                            showCoverageOnHover: false
+                        })
+                        : L.layerGroup();
 
-                            if (!layers[tier]) layers[tier] = L.layerGroup().addTo(map);
+                    const url = `${BASE_URL}/bookings/api/routes/`;
+                    logger.log(`Fetching routes from: ${url}`);
+                    fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                        .then(response => {
+                            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                            return response.json();
+                        })
+                        .then(data => {
+                            requestAnimationFrame(() => {
+                                mapEl.innerHTML = ''; // Clear loading message
+                                const routes = data.routes || [];
+                                logger.log('Routes received:', routes);
 
-                            if (!markers[dep.name]) markers[dep.name] = L.marker([dep.lat, dep.lng])
-                                .addTo(clusterGroup)
-                                .bindPopup(`<b>${sanitizeHTML(dep.name)}</b>`);
-                            if (!markers[dest.name]) markers[dest.name] = L.marker([dest.lat, dest.lng])
-                                .addTo(clusterGroup)
-                                .bindPopup(`<b>${sanitizeHTML(dest.name)}</b>`);
+                                if (!Array.isArray(routes) || routes.length === 0) {
+                                    logger.warn('No valid routes received from API');
+                                    mapEl.innerHTML = '<p style="text-align: center; color: #666;">No routes available at this time.</p>';
+                                    return;
+                                }
 
-                            const routeCoords = route.waypoints.length ? route.waypoints : getCurvedLineCoords([dep.lat, dep.lng], [dest.lat, dest.lng]);
-                            const gradientColors = getGradientColors(colorForTier(tier)[0], colorForTier(tier)[1], routeCoords.length - 1);
+                                const markers = {};
+                                routes.forEach((route, index) => {
+                                    // Validate route data
+                                    if (!route.schedule_id || !route.departure_port || !route.destination_port ||
+                                        !route.departure_port.lat || !route.departure_port.lng ||
+                                        !route.destination_port.lat || !route.destination_port.lng) {
+                                        logger.warn(`Invalid route data at index ${index}:`, route);
+                                        return;
+                                    }
 
-                            for (let i = 0; i < routeCoords.length - 1; i++) {
-                                L.polyline([routeCoords[i], routeCoords[i + 1]], {
-                                    color: gradientColors[i],
-                                    weight: 2,
-                                    opacity: 0.8
-                                }).addTo(layers[tier]);
-                            }
+                                    const dep = route.departure_port;
+                                    const dest = route.destination_port;
+                                    const tier = route.service_tier || 'remote';
+                                    const color = colorForTier(tier);
 
-                            const midIndex = Math.floor(routeCoords.length / 2);
-                            const popupContent = `
-                                <b>${sanitizeHTML(dep.name)} → ${sanitizeHTML(dest.name)}</b><br>
-                                Distance: ${sanitizeHTML(route.distance_km)} km<br>
-                                Duration: ${sanitizeHTML(formatDuration(route.estimated_duration))}<br>
-                                Fare: FJD ${sanitizeHTML(route.base_fare)}<br>
-                                <a href="/bookings/book/?schedule_id=${route.schedule_id}" aria-label="Book route from ${dep.name} to ${dest.name}">Book Now</a>
-                            `;
-                            L.polyline(routeCoords).on('click', () => {
-                                L.popup().setLatLng(routeCoords[midIndex]).setContent(popupContent).openOn(map);
+                                    // Custom icons for departure and destination
+                                    const depIcon = L.divIcon({
+                                        html: `<div style="background-color: ${color}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 4px rgba(0,0,0,0.3);"></div>`,
+                                        className: 'custom-marker',
+                                        iconSize: [12, 12],
+                                        iconAnchor: [6, 6]
+                                    });
+                                    const destIcon = L.divIcon({
+                                        html: `<div style="background-color: ${color}; width: 12px; height: 12px; border: 2px solid #fff; box-shadow: 0 0 4px rgba(0,0,0,0.3);"></div>`,
+                                        className: 'custom-marker',
+                                        iconSize: [12, 12],
+                                        iconAnchor: [6, 6]
+                                    });
+
+                                    const popupContent = `
+                                        <b>${sanitizeHTML(dep.name)} → ${sanitizeHTML(dest.name)}</b><br>
+                                        Distance: ${sanitizeHTML(route.distance_km || 'N/A')} km<br>
+                                        Duration: ${sanitizeHTML(formatDuration(route.estimated_duration || 0))}<br>
+                                        Fare: FJD ${sanitizeHTML(route.base_fare || 'N/A')}<br>
+                                        <a href="/bookings/book/?schedule_id=${route.schedule_id}" aria-label="Book route from ${dep.name} to ${dest.name}">Book Now</a>
+                                    `;
+
+                                    if (!markers[dep.name]) {
+                                        markers[dep.name] = L.marker([dep.lat, dep.lng], { icon: depIcon })
+                                            .addTo(clusterGroup)
+                                            .bindTooltip(popupContent, {
+                                                direction: 'top',
+                                                offset: [0, -10],
+                                                className: 'route-tooltip'
+                                            });
+                                        logger.log(`Added departure marker for ${dep.name} at [${dep.lat}, ${dep.lng}]`);
+                                    } else {
+                                        markers[dep.name].bindTooltip(popupContent, {
+                                            direction: 'top',
+                                            offset: [0, -10],
+                                            className: 'route-tooltip'
+                                        });
+                                    }
+
+                                    if (!markers[dest.name]) {
+                                        markers[dest.name] = L.marker([dest.lat, dest.lng], { icon: destIcon })
+                                            .addTo(clusterGroup)
+                                            .bindTooltip(popupContent, {
+                                                direction: 'top',
+                                                offset: [0, -10],
+                                                className: 'route-tooltip'
+                                            });
+                                        logger.log(`Added destination marker for ${dest.name} at [${dest.lat}, ${dest.lng}]`);
+                                    } else {
+                                        markers[dest.name].bindTooltip(popupContent, {
+                                            direction: 'top',
+                                            offset: [0, -10],
+                                            className: 'route-tooltip'
+                                        });
+                                    }
+                                });
+
+                                if (Object.keys(markers).length === 0) {
+                                    logger.warn('No markers created; check route data validity');
+                                    mapEl.innerHTML = '<p style="text-align: center; color: #666;">No valid routes to display.</p>';
+                                    return;
+                                }
+
+                                map.addLayer(clusterGroup);
+                                const markerGroup = L.featureGroup(Object.values(markers));
+                                map.fitBounds(markerGroup.getBounds().pad(0.2));
+                                logger.log('Map bounds set to:', markerGroup.getBounds());
+
+                                let resizeTimeout;
+                                window.addEventListener('resize', () => {
+                                    clearTimeout(resizeTimeout);
+                                    resizeTimeout = setTimeout(() => map.invalidateSize(), 200);
+                                });
+
+                                // Ensure map size is correct after initialization
+                                setTimeout(() => map.invalidateSize(), 100);
                             });
+                        })
+                        .catch(err => {
+                            logger.error('Error fetching routes:', err);
+                            if (retryCount > 0 && navigator.onLine) {
+                                logger.log(`Retrying routes fetch (${retryCount} attempts left)...`);
+                                setTimeout(() => initializeMapAndRoutes(retryCount - 1, Math.min(delay * 2, 30000)), delay);
+                            } else {
+                                logger.error('Max retries reached for routes fetch or offline');
+                                mapEl.innerHTML = '<p style="color: red; text-align: center;">Unable to load map routes. Please check your connection or try again later.</p>';
+                            }
                         });
 
-                        map.addLayer(clusterGroup);
-                        const markerGroup = L.featureGroup(Object.values(markers));
-                        map.fitBounds(markerGroup.getBounds().pad(0.2));
-
-                        L.control.layers(null, layers, { collapsed: false }).addTo(map);
+                    const observer = new MutationObserver(() => {
+                        const dark = document.documentElement.classList.contains('dark');
+                        tileLayer.setUrl('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png');
                     });
-                })
-                .catch(err => {
-                    logger.error('Error fetching routes:', err);
-                    if (retryCount > 0 && navigator.onLine) {
-                        logger.log(`Retrying routes fetch (${retryCount} attempts left)...`);
-                        setTimeout(() => initializeMapAndRoutes(retryCount - 1, delay * 2), delay);
-                    } else {
-                        logger.error('Max retries reached for routes fetch or offline');
-                        mapEl.innerHTML = '<p style="color: red;">Unable to load map routes. Please check your connection or try again later.</p>';
-                    }
+                    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
                 });
-
-            const observer = new MutationObserver(() => {
-                const dark = html.classList.contains('dark');
-                tileLayer.setUrl('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png');
-            });
-            observer.observe(html, { attributes: true, attributeFilter: ['class'] });
-
-            setTimeout(() => map.invalidateSize(), 100);
-        } catch (err) {
-            logger.error('Map initialization failed:', err);
-            mapEl.innerHTML = '<p>Map failed to load. Please try again later.</p>';
-        }
+            } catch (err) {
+                logger.error('Map initialization failed:', err);
+                mapEl.innerHTML = '<p style="color: red; text-align: center;">Map failed to load. Please try again later.</p>';
+            }
+        });
     }
 
     // ---- Check Cancellation Modal ----
@@ -533,5 +597,5 @@ document.addEventListener('DOMContentLoaded', function () {
         setupWeatherStream();
         pollScheduleUpdates();
         setInterval(() => pollScheduleUpdates(), 30000);
-    }, 500);
+    }, 1000);
 });

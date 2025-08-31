@@ -1,0 +1,196 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block extrastyle %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'admin/css/dashboard.css' %}">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="{% static 'admin/js/dashboard_charts.js' %}"></script>
+<style>
+    :root {
+        --primary-color: #2c5282;
+        --secondary-color: #edf2f7;
+        --text-color: #1a202c;
+        --border-color: #e2e8f0;
+        --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    }
+
+    /* === Dashboard Layout === */
+    .dashboard-container {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 24px;
+        max-width: 1440px;
+        margin: 0 auto;
+        padding: 24px;
+        min-height: 80vh;
+    }
+
+    #content-main {
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: var(--shadow);
+        padding: 24px;
+    }
+
+    /* === Typography === */
+    h1, h2, h3 {
+        color: var(--text-color);
+        font-weight: 600;
+        margin: 0 0 16px;
+    }
+
+    h1 { font-size: 1.875rem; }
+    h2 { font-size: 1.5rem; }
+    h3 { font-size: 1.25rem; }
+
+    /* === Analytics Section === */
+    .analytics-section {
+        margin-top: 24px;
+        padding-top: 24px;
+        border-top: 1px solid var(--border-color);
+    }
+
+    .analytics-section h2 {
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        transition: color 0.2s ease;
+    }
+
+    .analytics-section h2:hover {
+        color: var(--primary-color);
+    }
+
+    .analytics-section h2::after {
+        content: '▼';
+        font-size: 0.9rem;
+        transition: transform 0.3s ease;
+    }
+
+    .analytics-section.collapsed h2::after {
+        transform: rotate(180deg);
+    }
+
+    .analytics-section.collapsed .chart-container {
+        display: none;
+    }
+
+    /* === Chart Containers === */
+    .chart-container {
+        padding: 16px;
+        background: #fff;
+        border-radius: 8px;
+        margin-bottom: 16px;
+        box-shadow: var(--shadow);
+        transition: transform 0.2s ease;
+    }
+
+    .chart-container:hover {
+        transform: translateY(-2px);
+    }
+
+    .chart-container canvas {
+        max-width: 100%;
+        height: auto;
+    }
+
+    .chart-loading, .chart-error, .chart-empty {
+        text-align: center;
+        margin-top: 12px;
+        display: none;
+        font-size: 0.875rem;
+    }
+
+    .chart-loading { color: #718096; font-style: italic; }
+    .chart-error { color: #e53e3e; font-style: italic; }
+    .chart-empty { color: #718096; }
+
+    /* === Responsive Design === */
+    @media (max-width: 768px) {
+        .dashboard-container {
+            padding: 16px;
+        }
+
+        #content-main {
+            padding: 16px;
+        }
+
+        h1 { font-size: 1.5rem; }
+        h2 { font-size: 1.25rem; }
+        h3 { font-size: 1.125rem; }
+    }
+</style>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        console.log('Dashboard initialized at:', new Date().toLocaleString());
+        document.querySelectorAll('.chart-loading').forEach(el => el.style.display = 'block');
+
+        const analyticsHeader = document.querySelector('.analytics-section h2');
+        const analyticsSection = document.querySelector('.analytics-section');
+        if (analyticsHeader && analyticsSection) {
+            analyticsHeader.addEventListener('click', function () {
+                analyticsSection.classList.toggle('collapsed');
+                console.log('Analytics toggled:', analyticsSection.classList.contains('collapsed') ? 'Collapsed' : 'Expanded');
+            });
+            analyticsSection.classList.remove('collapsed');
+        }
+
+        if (typeof Chart === 'undefined') {
+            console.error('Chart.js failed to load');
+            document.querySelectorAll('.chart-container').forEach(container => {
+                const errorDiv = container.querySelector('.chart-error');
+                if (errorDiv) {
+                    errorDiv.textContent = 'Error: Chart.js failed to load.';
+                    errorDiv.style.display = 'block';
+                }
+                container.querySelector('.chart-loading').style.display = 'none';
+            });
+        } else {
+            console.log('Chart.js loaded successfully');
+        }
+    });
+</script>
+{% endblock %}
+
+{% block coltype %}colMS{% endblock %}
+{% block bodyclass %}{{ block.super }} dashboard{% endblock %}
+{% block nav-breadcrumbs %}{% endblock %}
+{% block nav-sidebar %}{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+    <div id="content-main">
+        {% include "admin/app_list.html" with app_list=app_list show_changelinks=True %}
+
+        <div class="analytics-section">
+            <h2>{% translate 'Analytics Dashboard' %}</h2>
+
+            <div class="chart-container">
+                <h3>{% translate 'Bookings per Route' %}</h3>
+                <canvas id="bookingsPerRouteChart"></canvas>
+                <div class="chart-loading">{% translate 'Loading chart...' %}</div>
+                <div class="chart-error">{% translate 'Error loading chart.' %}</div>
+                <div class="chart-empty">{% translate 'No booking data available.' %}</div>
+            </div>
+
+            <div class="chart-container">
+                <h3>{% translate 'Ferry Utilization' %}</h3>
+                <canvas id="ferryUtilizationChart"></canvas>
+                <div class="chart-loading">{% translate 'Loading chart...' %}</div>
+                <div class="chart-error">{% translate 'Error loading chart.' %}</div>
+                <div class="chart-empty">{% translate 'No ferry utilization data available.' %}</div>
+            </div>
+
+            <div class="chart-container">
+                <h3>{% translate 'Revenue Over Time' %}</h3>
+                <canvas id="revenueOverTimeChart"></canvas>
+                <div class="chart-loading">{% translate 'Loading chart...' %}</div>
+                <div class="chart-error">{% translate 'Error loading chart.' %}</div>
+                <div class="chart-empty">{% translate 'No revenue data available.' %}</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

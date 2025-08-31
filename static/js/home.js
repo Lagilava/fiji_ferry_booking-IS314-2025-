@@ -400,36 +400,15 @@ document.addEventListener('DOMContentLoaded', function () {
                 })
                 : L.layerGroup();
 
-            function getCurvedLineCoords(start, end, curvature = 0.2) {
-                const latOffset = (end[0] - start[0]) * curvature;
-                const lngOffset = (end[1] - start[1]) * curvature;
-                const midLat = (start[0] + end[0]) / 2 + latOffset;
-                const midLng = (start[1] + end[1]) / 2 + lngOffset;
-                return [start, [midLat, midLng], end];
-            }
-
-            function getGradientColors(startColor, endColor, steps) {
-                const start = parseInt(startColor.slice(1), 16);
-                const end = parseInt(endColor.slice(1), 16);
-                const startR = (start >> 16) & 0xff, startG = (start >> 8) & 0xff, startB = start & 0xff;
-                const endR = (end >> 16) & 0xff, endG = (end >> 8) & 0xff, endB = end & 0xff;
-                const colors = [];
-                for (let i = 0; i <= steps; i++) {
-                    const t = i / steps;
-                    const r = Math.round(startR + t * (endR - startR));
-                    const g = Math.round(startG + t * (endG - startG));
-                    const b = Math.round(startB + t * (endB - startB));
-                    colors.push(`#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`);
-                }
-                return colors;
-            }
-
-            function colorForTier(tier) {
-                switch (tier) {
-                    case 'major': return ['#ff7f50', '#ff4500'];
-                    case 'regional': return ['#1e90ff', '#104e8b'];
-                    default: return ['#32cd32', '#228b22'];
-                }
+            function getIconForTier(tier) {
+                const color = tier === 'major' ? '#ff4500' : tier === 'regional' ? '#104e8b' : '#228b22';
+                return L.divIcon({
+                    html: `<div style="background-color: ${color}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid #fff;"></div>`,
+                    className: 'custom-marker',
+                    iconSize: [12, 12],
+                    iconAnchor: [6, 6],
+                    popupAnchor: [0, -6]
+                });
             }
 
             const url = `${BASE_URL}/bookings/api/routes/`;
@@ -454,35 +433,30 @@ document.addEventListener('DOMContentLoaded', function () {
 
                             if (!layers[tier]) layers[tier] = L.layerGroup().addTo(map);
 
-                            if (!markers[dep.name]) markers[dep.name] = L.marker([dep.lat, dep.lng])
-                                .addTo(clusterGroup)
-                                .bindPopup(`<b>${sanitizeHTML(dep.name)}</b>`);
-                            if (!markers[dest.name]) markers[dest.name] = L.marker([dest.lat, dest.lng])
-                                .addTo(clusterGroup)
-                                .bindPopup(`<b>${sanitizeHTML(dest.name)}</b>`);
-
-                            const routeCoords = route.waypoints.length ? route.waypoints : getCurvedLineCoords([dep.lat, dep.lng], [dest.lat, dest.lng]);
-                            const gradientColors = getGradientColors(colorForTier(tier)[0], colorForTier(tier)[1], routeCoords.length - 1);
-
-                            for (let i = 0; i < routeCoords.length - 1; i++) {
-                                L.polyline([routeCoords[i], routeCoords[i + 1]], {
-                                    color: gradientColors[i],
-                                    weight: 2,
-                                    opacity: 0.8
-                                }).addTo(layers[tier]);
+                            if (!markers[dep.name]) {
+                                markers[dep.name] = L.marker([dep.lat, dep.lng], { icon: getIconForTier(tier) })
+                                    .addTo(clusterGroup)
+                                    .bindTooltip(`
+                                        <b>${sanitizeHTML(dep.name)}</b><br>
+                                        Route to ${sanitizeHTML(dest.name)}<br>
+                                        Distance: ${sanitizeHTML(route.distance_km)} km<br>
+                                        Duration: ${sanitizeHTML(formatDuration(route.estimated_duration))}<br>
+                                        Fare: FJD ${sanitizeHTML(route.base_fare)}<br>
+                                        <a href="/bookings/book/?schedule_id=${route.schedule_id}" aria-label="Book route from ${dep.name} to ${dest.name}">Book Now</a>
+                                    `, { direction: 'top', offset: [0, -10] });
                             }
-
-                            const midIndex = Math.floor(routeCoords.length / 2);
-                            const popupContent = `
-                                <b>${sanitizeHTML(dep.name)} → ${sanitizeHTML(dest.name)}</b><br>
-                                Distance: ${sanitizeHTML(route.distance_km)} km<br>
-                                Duration: ${sanitizeHTML(formatDuration(route.estimated_duration))}<br>
-                                Fare: FJD ${sanitizeHTML(route.base_fare)}<br>
-                                <a href="/bookings/book/?schedule_id=${route.schedule_id}" aria-label="Book route from ${dep.name} to ${dest.name}">Book Now</a>
-                            `;
-                            L.polyline(routeCoords).on('click', () => {
-                                L.popup().setLatLng(routeCoords[midIndex]).setContent(popupContent).openOn(map);
-                            });
+                            if (!markers[dest.name]) {
+                                markers[dest.name] = L.marker([dest.lat, dest.lng], { icon: getIconForTier(tier) })
+                                    .addTo(clusterGroup)
+                                    .bindTooltip(`
+                                        <b>${sanitizeHTML(dest.name)}</b><br>
+                                        Route from ${sanitizeHTML(dep.name)}<br>
+                                        Distance: ${sanitizeHTML(route.distance_km)} km<br>
+                                        Duration: ${sanitizeHTML(formatDuration(route.estimated_duration))}<br>
+                                        Fare: FJD ${sanitizeHTML(route.base_fare)}<br>
+                                        <a href="/bookings/book/?schedule_id=${route.schedule_id}" aria-label="Book route from ${dep.name} to ${dest.name}">Book Now</a>
+                                    `, { direction: 'top', offset: [0, -10] });
+                            }
                         });
 
                         map.addLayer(clusterGroup);

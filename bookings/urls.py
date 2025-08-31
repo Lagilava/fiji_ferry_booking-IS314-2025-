@@ -28,5 +28,5 @@ urlpatterns = [
     path('api/weather/', views.get_weather_conditions, name='get_weather_conditions'),  # Added
     path('create_checkout_session/', views.create_checkout_session, name='create_checkout_session'),
     path('check_session/', views.check_session, name='check_session'),
-
+    path('booking/<int:booking_id>/pdf/', views.booking_pdf, name='booking_pdf'),
 ]

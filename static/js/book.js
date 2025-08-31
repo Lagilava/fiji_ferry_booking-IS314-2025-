@@ -377,6 +377,7 @@ function updatePassengerFields() {
         return;
     }
     function createPassengerField(type, index) {
+        const isPassengerForm = true; // All forms (adult, child, infant) are open by default
         const isAdultOrChild = type === 'adult' || type === 'child';
         const isInfant = type === 'infant';
         const div = document.createElement('div');
@@ -401,11 +402,11 @@ function updatePassengerFields() {
                 </div>`;
         }
         div.innerHTML = `
-            <button type="button" id="${type}-header-${index}" class="passenger-card-header font-semibold text-var-text-color font-poppins" aria-expanded="${isAdultOrChild}" aria-controls="${type}-details-${index}">
+            <button type="button" id="${type}-header-${index}" class="passenger-card-header font-semibold text-var-text-color font-poppins" aria-expanded="${isPassengerForm}" aria-controls="${type}-details-${index}">
                 ${type.charAt(0).toUpperCase() + type.slice(1)} ${index + 1}
-                <span class="toggle-icon">${isAdultOrChild ? '−' : '+'}</span>
+                <span class="toggle-icon">${isPassengerForm ? '−' : '+'}</span>
             </button>
-            <div id="${type}-details-${index}" class="passenger-details mt-2" style="display: ${isAdultOrChild ? 'block' : 'none'};">
+            <div id="${type}-details-${index}" class="passenger-details mt-2" style="display: ${isPassengerForm ? 'block' : 'none'};">
                 <div class="form-group">
                     <label class="block text-sm font-semibold text-var-text-color font-poppins" for="${type}_first_name_${index}">First Name *</label>
                     <input type="text" id="${type}_first_name_${index}" name="${type}_first_name_${index}" class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-2-accent transition-all duration-300" required aria-required="true" aria-describedby="error-${type}_first_name_${index}">
@@ -459,18 +460,7 @@ function updatePassengerFields() {
     updateFields(childFields, 'child', children);
     updateFields(infantFields, 'infant', infants);
     updateChildLinkedAdultOptions();
-    document.querySelectorAll('.passenger-card-header').forEach(header => {
-        header.removeEventListener('click', togglePassengerDetails);
-        header.addEventListener('ascus', togglePassengerDetails);
-    });
-    function togglePassengerDetails() {
-        const details = this.nextElementSibling;
-        const icon = this.querySelector('.toggle-icon');
-        const isExpanded = this.getAttribute('aria-expanded') === 'true';
-        this.setAttribute('aria-expanded', !isExpanded);
-        details.style.display = isExpanded ? 'none' : 'block';
-        icon.textContent = isExpanded ? '+' : '−';
-    }
+    // Event delegation for passenger card headers
     document.querySelectorAll('input[type="file"]').forEach(fileInput => {
         fileInput.removeEventListener('change', handleFileChange);
         fileInput.addEventListener('change', handleFileChange);
@@ -779,18 +769,13 @@ const debouncedUpdateSummary = debounce(async function updateSummary() {
             summaryPassengers.textContent = `${adults} Adult${adults !== 1 ? 's' : ''}, ${children} Child${children !== 1 ? 'ren' : ''}, ${infants} Infant${infants !== 1 ? 's' : ''}`;
         }
 
-        // ------------------ PASSENGER BREAKDOWN ------------------
         let passengerBreakdown = '';
-
-        // Adults
         document.querySelectorAll('#adult-fields .passenger-card').forEach((card, i) => {
             const firstName = card.querySelector('[name^="adult_first_name"]')?.value || 'Unknown';
             const lastName = card.querySelector('[name^="adult_last_name"]')?.value || '';
             const age = card.querySelector('[name^="adult_age"]')?.value || '';
             passengerBreakdown += `<p class="text-xs md:text-sm text-var-text-color font-poppins">Adult ${i + 1}: ${firstName} ${lastName}${age ? ` (Age: ${age})` : ''}</p>`;
         });
-
-        // Children
         document.querySelectorAll('#child-fields .passenger-card').forEach((card, i) => {
             const firstName = card.querySelector('[name^="child_first_name"]')?.value || 'Unknown';
             const lastName = card.querySelector('[name^="child_last_name"]')?.value || '';
@@ -801,8 +786,6 @@ const debouncedUpdateSummary = debounce(async function updateSummary() {
                 : '';
             passengerBreakdown += `<p class="text-xs md:text-sm text-var-text-color font-poppins">Child ${i + 1}: ${firstName} ${lastName}${age ? ` (Age: ${age})` : ''}${linkedAdultName ? `, Linked Adult: ${linkedAdultName}` : ''}</p>`;
         });
-
-        // Infants
         document.querySelectorAll('#infant-fields .passenger-card').forEach((card, i) => {
             const firstName = card.querySelector('[name^="infant_first_name"]')?.value || 'Unknown';
             const lastName = card.querySelector('[name^="infant_last_name"]')?.value || '';
@@ -813,12 +796,10 @@ const debouncedUpdateSummary = debounce(async function updateSummary() {
                 : '';
             passengerBreakdown += `<p class="text-xs md:text-sm text-var-text-color font-poppins">Infant ${i + 1}: ${firstName} ${lastName}${dob ? ` (DOB: ${new Date(dob).toLocaleDateString('en-US')})` : ''}${linkedAdultName ? `, Linked Adult: ${linkedAdultName}` : ''}</p>`;
         });
-
         if (summaryPassengerBreakdown) {
             summaryPassengerBreakdown.innerHTML = passengerBreakdown;
         }
 
-        // ------------------ ADD-ONS ------------------
         const addOns = [];
         ['premium_seating', 'priority_boarding', 'cabin', 'meal_breakfast', 'meal_lunch', 'meal_dinner', 'meal_snack'].forEach(type => {
             const quantity = document.getElementById(`${type}_quantity`)?.value || '0';
@@ -830,7 +811,6 @@ const debouncedUpdateSummary = debounce(async function updateSummary() {
             summaryAddOns.innerHTML = addOns.length > 0 ? addOns.map(item => `<p class="text-xs md:text-sm text-var-text-color font-poppins">${item}</p>`).join('') : '<p class="text-xs md:text-sm text-var-text-color font-poppins">None</p>';
         }
 
-        // ------------------ VEHICLE ------------------
         if (summaryVehicle) {
             summaryVehicle.innerHTML = addVehicleCheckbox?.checked ? `
                 <p class="text-xs md:text-sm text-var-text-color font-poppins">Type: ${document.getElementById('vehicle_type')?.value || 'N/A'}</p>
@@ -839,7 +819,6 @@ const debouncedUpdateSummary = debounce(async function updateSummary() {
             ` : '<p class="text-xs md:text-sm text-var-text-color font-poppins">None</p>';
         }
 
-        // ------------------ CARGO ------------------
         if (summaryCargo) {
             summaryCargo.innerHTML = addCargoCheckbox?.checked ? `
                 <p class="text-xs md:text-sm text-var-text-color font-poppins">Type: ${document.getElementById('cargo_type')?.value || 'N/A'}</p>
@@ -849,17 +828,14 @@ const debouncedUpdateSummary = debounce(async function updateSummary() {
             ` : '<p class="text-xs md:text-sm text-var-text-color font-poppins">None</p>';
         }
 
-        // ------------------ TOTAL COST ------------------
         if (summaryCost) {
             summaryCost.textContent = parseFloat(latestTotalPrice).toFixed(2);
         }
 
-        // ------------------ WEATHER WARNING ------------------
         if (weatherWarning) {
             weatherWarning.innerHTML = weatherHtml;
         }
 
-        // ------------------ FINAL SUMMARY SECTION ------------------
         if (summarySection) {
             summarySection.innerHTML = `
                 <div class="bg-var-card-bg p-4 rounded-lg shadow-sm">
@@ -906,7 +882,6 @@ const debouncedUpdateSummary = debounce(async function updateSummary() {
         if (step4) step4.setAttribute('aria-busy', 'false');
     }
 }, 300);
-
 
 // Validate email format
 function isValidEmail(email) {
@@ -974,7 +949,6 @@ async function validateStep(step, button) {
             toggleButtonLoading(button, false);
             return;
         }
-
     }
     if (step === 2) {
         const adults = parseInt(adultsInput?.value || 0);
@@ -1005,14 +979,6 @@ async function validateStep(step, button) {
                     if (!age || isNaN(parseInt(age)) || (type === 'adult' && parseInt(age) < 18) || (type === 'child' && (parseInt(age) < 2 || parseInt(age) > 17))) {
                         errors.push({ field: `${type}_age_${i}`, message: `${type.charAt(0).toUpperCase() + type.slice(1)} ${i + 1}: Valid age is required (Adult: 18+, Child: 2-17).` });
                     }
-                }
-                if (type === 'adult') {
-                    const phone = document.querySelector(`[name="${type}_phone_${i}"]`)?.value?.trim();
-                    if (!phone || !/^\+?[\d\s-]{7,15}$/.test(phone)) {
-                        errors.push({ field: `${type}_phone_${i}`, message: `${type.charAt(0).toUpperCase() + type.slice(1)} ${i + 1}: Valid phone number is required.` });
-                    }
-                }
-                if (type !== 'infant') {
                     const fileInput = document.querySelector(`[name="${type}_id_document_${i}"]`);
                     const errorElement = document.getElementById(`error-${type}_id_document_${i}`);
                     if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
@@ -1032,14 +998,6 @@ async function validateStep(step, button) {
                         }
                     }
                 }
-                if (type !== 'adult') {
-                    const linkedAdult = document.querySelector(`[name="${type}_linked_adult_${i}"]`);
-                    if (!linkedAdult || !linkedAdult.value) {
-                        errors.push({ field: `${type}_linked_adult_${i}`, message: `${type.charAt(0).toUpperCase() + type.slice(1)} ${i + 1}: Must be linked to an adult.` });
-                    } else if (isNaN(parseInt(linkedAdult.value)) || parseInt(linkedAdult.value) >= adults) {
-                        errors.push({ field: `${type}_linked_adult_${i}`, message: `${type.charAt(0).toUpperCase() + type.slice(1)} ${i + 1}: Invalid linked adult.` });
-                    }
-                }
                 if (type === 'infant') {
                     const dobInput = document.querySelector(`[name="${type}_dob_${i}"]`);
                     if (!dobInput || !dobInput.value) {
@@ -1051,6 +1009,20 @@ async function validateStep(step, button) {
                         if (ageInMonths > 24) {
                             errors.push({ field: `${type}_dob_${i}`, message: `Infant ${i + 1}: Must be under 2 years old.` });
                         }
+                    }
+                }
+                if (type !== 'adult') {
+                    const linkedAdult = document.querySelector(`[name="${type}_linked_adult_${i}"]`);
+                    if (!linkedAdult || !linkedAdult.value) {
+                        errors.push({ field: `${type}_linked_adult_${i}`, message: `${type.charAt(0).toUpperCase() + type.slice(1)} ${i + 1}: Must be linked to an adult.` });
+                    } else if (isNaN(parseInt(linkedAdult.value)) || parseInt(linkedAdult.value) >= adults) {
+                        errors.push({ field: `${type}_linked_adult_${i}`, message: `${type.charAt(0).toUpperCase() + type.slice(1)} ${i + 1}: Invalid linked adult.` });
+                    }
+                }
+                if (type === 'adult') {
+                    const phone = document.querySelector(`[name="${type}_phone_${i}"]`)?.value?.trim();
+                    if (!phone || !/^\+?[\d\s-]{7,15}$/.test(phone)) {
+                        errors.push({ field: `${type}_phone_${i}`, message: `${type.charAt(0).toUpperCase() + type.slice(1)} ${i + 1}: Valid phone number is required.` });
                     }
                 }
             }
@@ -1288,6 +1260,18 @@ function initializeEventListeners() {
     });
     document.querySelectorAll('input[name*="adult_first_name_"], input[name*="adult_last_name_"]').forEach(input => {
         input.addEventListener('input', updateChildLinkedAdultOptions);
+    });
+    // Event delegation for passenger card headers
+    document.addEventListener('click', (e) => {
+        const header = e.target.closest('.passenger-card-header');
+        if (header) {
+            const details = header.nextElementSibling;
+            const icon = header.querySelector('.toggle-icon');
+            const isExpanded = header.getAttribute('aria-expanded') === 'true';
+            header.setAttribute('aria-expanded', !isExpanded);
+            details.style.display = isExpanded ? 'none' : 'block';
+            icon.textContent = isExpanded ? '+' : '−';
+        }
     });
 }
 

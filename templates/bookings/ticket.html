@@ -1,131 +1,78 @@
 {% extends 'base.html' %}
 {% load static %}
-{% load math_filters %}
-
-{% block title %}Tickets for Booking #{{ booking.id }} - Fiji Ferry Booking{% endblock %}
 
 {% block content %}
-<section class="container mx-auto px-4 sm:px-6 lg:px-8 py-12" data-aos="fade-up">
-    <h2 class="text-3xl font-bold text-center mb-8" style="font-family: 'Playfair Display', serif; color: var(--text-color);">🎟️ Tickets for Booking #{{ booking.id }}</h2>
+<h1 class="text-3xl font-bold text-center mb-8">⛴ Fiji Ferry Booking – Your Tickets</h1>
 
-    {% if messages %}
-        <div class="messages">
-            {% for message in messages %}
-                <div class="alert animate__animated animate__fadeIn {% if message.tags %}{{ message.tags }}{% endif %}">{{ message }}</div>
-            {% endfor %}
+<div class="grid gap-6 max-w-3xl mx-auto">
+    {% for ticket in booking.tickets.all %}
+    <div class="bg-white shadow-xl rounded-2xl border border-gray-200 p-6 relative overflow-hidden">
+
+        <!-- Ticket Header -->
+        <div class="flex justify-between items-center border-b border-dashed pb-4 mb-4">
+            <h2 class="text-xl font-bold">🎟 Boarding Pass</h2>
+            <span class="text-sm font-semibold px-3 py-1 rounded-full
+                         {% if ticket.ticket_status == 'confirmed' %}
+                             bg-green-100 text-green-800
+                         {% elif ticket.ticket_status == 'pending' %}
+                             bg-yellow-100 text-yellow-800
+                         {% else %}
+                             bg-red-100 text-red-800
+                         {% endif %}">
+                {{ ticket.ticket_status|title }}
+            </span>
         </div>
-    {% endif %}
 
-    <div class="max-w-2xl mx-auto bg-[var(--card-bg)] p-8 rounded-lg shadow-lg" data-aos="fade-up" data-aos-delay="100">
-        <div class="mb-6">
-            <h3 class="text-xl font-semibold mb-2" style="font-family: 'Playfair Display', serif; color: var(--text-color);">Schedule</h3>
-            <p class="text-[var(--text-color)]"><strong>{{ booking.schedule.route.departure_port }}</strong> → <strong>{{ booking.schedule.route.destination_port }}</strong></p>
-            <p class="text-[var(--text-color)]">Ferry: {{ booking.schedule.ferry.name }}</p>
-            <p class="text-[var(--text-color)]">Departure: {{ booking.schedule.departure_time|date:"F d, Y H:i" }}</p>
-            <p class="text-[var(--text-color)]">Total Price: FJD {{ booking.total_price|floatformat:2 }}</p>
-            <p class="text-[var(--text-color)]">Status: <span class="status-badge {{ booking.status|lower }}">{{ booking.status|capfirst }}</span></p>
+        <!-- Passenger -->
+        <div class="mb-4">
+            <h3 class="text-lg font-semibold mb-1">👤 Passenger</h3>
+            <p class="text-gray-700">Type: {{ ticket.passenger.passenger_type|title }}</p>
         </div>
 
-        {% if booking.status == 'pending' %}
-            <div class="mb-6 flex justify-center">
-                <form id="payment-form" class="w-full max-w-xs">
-                    {% csrf_token %}
-                    <button type="submit" id="pay-button" class="bg-[var(--button-bg)] bg-blue-500 text-white font-semibold px-6 py-3 rounded-lg hover:bg-[var(--button-hover)] hover:bg-blue-600 transition-colors duration-300 w-full disabled:opacity-50 disabled:cursor-not-allowed" aria-label="Pay now with Stripe" disabled>💳 Pay Now</button>
-                </form>
-            </div>
-        {% endif %}
+        <!-- Booking -->
+        <div class="mb-4">
+            <h3 class="text-lg font-semibold mb-1">📄 Booking</h3>
+            <p class="text-gray-700">Booking ID: <span class="font-mono">#{{ ticket.booking.id }}</span></p>
+            <p class="text-gray-700">Issued: {{ ticket.issued_at|date:"M d, Y H:i" }}</p>
+        </div>
 
-        <div class="mb-6">
-            <h3 class="text-xl font-semibold mb-2" style="font-family: 'Playfair Display', serif; color: var(--text-color);">Passengers & Tickets</h3>
-            {% if tickets %}
-                {% for ticket in tickets %}
-                    <div class="border-t border-[var(--border-color)] pt-4 mt-4" data-aos="fade-up" data-aos-delay="{{ forloop.counter0|multiply:100 }}">
-                        <p class="text-[var(--text-color)] font-semibold">{{ ticket.passenger.first_name }} {{ ticket.passenger.last_name }} ({{ ticket.passenger.passenger_type|capfirst }})</p>
-                        <p class="text-[var(--text-color)]">Ticket Status: {{ ticket.ticket_status|capfirst }}</p>
-                        <p class="text-[var(--text-color)]">Issued At: {{ ticket.issued_at|date:"F d, Y H:i" }}</p>
-                        {% if ticket.qr_code %}
-                            <p class="text-[var(--text-color)] font-semibold mt-2">Scan this QR code when boarding the ferry</p>
-                            <img src="{{ ticket.qr_code.url }}" alt="Boarding QR Code for {{ ticket.passenger.first_name }} {{ ticket.passenger.last_name }}" class="qr-code mx-auto">
-                        {% else %}
-                            <p class="text-[var(--text-color)]">No QR code available for this ticket. Please contact support if payment was completed.</p>
-                        {% endif %}
-                    </div>
-                {% endfor %}
+        <!-- Schedule -->
+        <div class="mb-4">
+            <h3 class="text-lg font-semibold mb-1">🛳 Schedule</h3>
+            <p class="text-gray-700">Ferry: {{ ticket.booking.schedule.ferry.name }}</p>
+            <p class="text-gray-700">Route: <strong>{{ ticket.booking.schedule.route.departure_port }}</strong> → <strong>{{ ticket.booking.schedule.route.destination_port }}</strong></p>
+            <p class="text-gray-700">Departure: {{ ticket.booking.schedule.departure_time|date:"M d, Y H:i" }}</p>
+            <p class="text-gray-700">Arrival: {{ ticket.booking.schedule.arrival_time|date:"M d, Y H:i" }}</p>
+        </div>
+
+        <!-- QR Code -->
+        <div class="flex flex-col items-center mt-6">
+            {% if ticket.qr_code %}
+                <p class="text-sm text-gray-600 mb-2">✅ Present this QR code at boarding</p>
+                <div class="bg-gray-100 p-3 rounded-xl">
+                    <img src="{{ ticket.qr_code.url }}" alt="QR Code" class="w-40 h-40 object-contain">
+                </div>
             {% else %}
-                <p class="text-[var(--text-color)]">No tickets found for this booking. {% if booking.status == 'confirmed' %}Tickets should have been generated. Please contact support.{% else %}Please complete the payment to generate tickets.{% endif %}</p>
+                <p class="text-red-600 font-semibold">⚠️ QR Code not available for this ticket.</p>
             {% endif %}
         </div>
 
-        {% if cargo %}
-            <div class="mb-6">
-                <h3 class="text-xl font-semibold mb-2" style="font-family: 'Playfair Display', serif; color: var(--text-color);">Cargo</h3>
-                <p class="text-[var(--text-color)]">Type: {{ cargo.cargo_type|capfirst }}</p>
-                <p class="text-[var(--text-color)]">Weight: {{ cargo.weight_kg }} kg</p>
-                <p class="text-[var(--text-color)]">Price: FJD {{ cargo.price|floatformat:2 }}</p>
-                {% if cargo.qr_code %}
-                    <p class="text-[var(--text-color)] font-semibold mt-2">Cargo QR Code</p>
-                    <img src="{{ cargo.qr_code.url }}" alt="QR Code for Cargo" class="qr-code mx-auto">
-                {% endif %}
-            </div>
-        {% endif %}
-
-        <div class="text-center">
-            <a href="{% url 'bookings:booking_history' %}" class="text-[var(--link-color)] hover:text-[var(--link-hover)] font-semibold" aria-label="Back to booking history">← Back to Booking History</a>
-        </div>
+        <!-- Decorative Perforation -->
+        <div class="absolute top-0 bottom-0 left-0 w-4 bg-gray-50 rounded-l-full border-r border-dashed border-gray-300"></div>
+        <div class="absolute top-0 bottom-0 right-0 w-4 bg-gray-50 rounded-r-full border-l border-dashed border-gray-300"></div>
     </div>
-</section>
-{% endblock %}
+    {% empty %}
+    <p class="text-center text-gray-600">No tickets found for this booking.</p>
+    {% endfor %}
+</div>
 
-{% block extra_css %}
-<style>
-    .qr-code {
-        width: 192px;
-        height: 192px;
-        margin: 0 auto;
-    }
-</style>
-{% endblock %}
-
-{% block extra_js %}
-<script src="https://js.stripe.com/v3/"></script>
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-    const stripe = Stripe('{{ stripe_publishable_key }}');
-    const payButton = document.getElementById('pay-button');
-    const form = document.getElementById('payment-form');
-
-    if (payButton && form) {
-        payButton.disabled = false;
-
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            payButton.disabled = true;
-
-            try {
-                const response = await fetch('/bookings/process_payment/{{ booking.id }}/', {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
-                        'Content-Type': 'application/json'
-                    }
-                });
-                const data = await response.json();
-                if (data.sessionId) {
-                    const result = await stripe.redirectToCheckout({ sessionId: data.sessionId });
-                    if (result.error) {
-                        throw new Error(result.error.message);
-                    }
-                } else {
-                    alert('Error creating payment session: ' + (data.error || 'Unknown error'));
-                    payButton.disabled = false;
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                alert('Payment initiation failed: ' + error.message);
-                payButton.disabled = false;
-            }
-        });
-    }
-});
-</script>
+<!-- Back / Download -->
+<div class="text-center mt-8 space-x-4">
+    <a href="{% url 'bookings:booking_history' %}"
+       class="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 transition">← Back</a>
+    <a href="{% url 'bookings:booking_pdf' booking.id %}"
+       class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+       ⬇ Download All Tickets (PDF)
+    </a>
+</div>
 {% endblock %}

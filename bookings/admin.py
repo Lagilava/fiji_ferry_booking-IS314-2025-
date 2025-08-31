@@ -1,8 +1,15 @@
 from django.contrib import admin
+from django.http import JsonResponse
+from django.urls import path
+from django.contrib.admin.views.decorators import staff_member_required
 from .models import (
     Port, Cargo, Ferry, Route, WeatherCondition, Schedule,
     Booking, Passenger, Vehicle, AddOn, Payment, Ticket, MaintenanceLog, ServicePattern
 )
+from django.db.models import Count, Sum, F
+from django.utils import timezone
+from datetime import timedelta
+from accounts.models import User
 
 @admin.register(Port)
 class PortAdmin(admin.ModelAdmin):
@@ -144,3 +151,86 @@ class ServicePatternAdmin(admin.ModelAdmin):
     raw_id_fields = ['route']
     list_per_page = 25
     ordering = ('route', 'weekday')
+
+# Custom Admin Site to add analytics view
+class CustomAdminSite(admin.AdminSite):
+    site_header = "Fiji Ferry Booking Admin"
+    site_title = "Fiji Ferry Admin"
+    index_title = "Dashboard"
+
+    def get_urls(self):
+        from django.urls import path
+        urls = super().get_urls()
+        custom_urls = [
+            path('analytics-data/', staff_member_required(self.analytics_data_view), name='analytics-data'),
+        ]
+        return custom_urls + urls
+
+    def analytics_data_view(self, request):
+        # Bookings per route
+        bookings_per_route = (
+            Booking.objects.values('schedule__route__id', 'schedule__route__departure_port__name', 'schedule__route__destination_port__name')
+            .annotate(total_bookings=Count('id'))
+            .order_by('-total_bookings')[:10]
+        )
+        bookings_data = [
+            {
+                'route': f"{item['schedule__route__departure_port__name']} to {item['schedule__route__destination_port__name']}",
+                'count': item['total_bookings']
+            }
+            for item in bookings_per_route
+        ]
+
+        # Ferry utilization
+        ferry_utilization = (
+            Schedule.objects.values('ferry__name', 'ferry__capacity')
+            .annotate(total_seats_sold=Sum(F('ferry__capacity') - F('available_seats')))
+            .filter(total_seats_sold__gt=0)
+        )
+        utilization_data = [
+            {
+                'ferry': item['ferry__name'],
+                'utilization': round((item['total_seats_sold'] / item['ferry__capacity']) * 100, 2) if item['ferry__capacity'] else 0
+            }
+            for item in ferry_utilization
+        ]
+
+        # Revenue over time (last 30 days)
+        end_date = timezone.now().date()
+        start_date = end_date - timedelta(days=30)
+        revenue_data = (
+            Booking.objects.filter(booking_date__date__gte=start_date, booking_date__date__lte=end_date)
+            .values('booking_date__date')
+            .annotate(total_revenue=Sum('total_price'))
+            .order_by('booking_date__date')
+        )
+        revenue_over_time = [
+            {
+                'date': item['booking_date__date'].strftime('%Y-%m-%d'),
+                'revenue': float(item['total_revenue'] or 0)
+            }
+            for item in revenue_data
+        ]
+
+        return JsonResponse({
+            'bookings_per_route': bookings_data,
+            'ferry_utilization': utilization_data,
+            'revenue_over_time': revenue_over_time
+        })
+
+admin_site = CustomAdminSite(name='custom_admin')
+admin_site.register(Port, PortAdmin)
+admin_site.register(Cargo, CargoAdmin)
+admin_site.register(Ferry, FerryAdmin)
+admin_site.register(Route, RouteAdmin)
+admin_site.register(WeatherCondition, WeatherConditionAdmin)
+admin_site.register(Schedule, ScheduleAdmin)
+admin_site.register(Booking, BookingAdmin)
+admin_site.register(Passenger, PassengerAdmin)
+admin_site.register(Vehicle, VehicleAdmin)
+admin_site.register(AddOn, AddOnAdmin)
+admin_site.register(Payment, PaymentAdmin)
+admin_site.register(Ticket, TicketAdmin)
+admin_site.register(MaintenanceLog, MaintenanceLogAdmin)
+admin_site.register(ServicePattern, ServicePatternAdmin)
+admin_site.register(User)

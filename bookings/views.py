@@ -1,5 +1,6 @@
 import datetime
 import hashlib
+import io, os
 import json
 import logging
 import re
@@ -7,10 +8,11 @@ import time
 import uuid
 from decimal import Decimal
 from io import BytesIO
-
+from reportlab.lib.pagesizes import A4
 import stripe
 import qrcode
 import requests
+from reportlab.pdfgen import canvas
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -20,7 +22,7 @@ from django.core.files.base import ContentFile, File
 from django.core.mail import send_mail
 from django.core.validators import FileExtensionValidator
 from django.db.models import Subquery, Max, OuterRef
-from django.http import JsonResponse, HttpResponseForbidden, StreamingHttpResponse, HttpResponse
+from django.http import JsonResponse, HttpResponseForbidden, StreamingHttpResponse, HttpResponse, FileResponse
 from django.shortcuts import render, get_object_or_404, redirect
 from django.urls import reverse
 from django.utils import timezone
@@ -30,7 +32,7 @@ from django.views.decorators.http import require_POST, require_GET
 
 from .decorators import login_required_allow_anonymous
 from .forms import CargoBookingForm, ModifyBookingForm
-from .models import Schedule, Booking, Passenger, Payment, Ticket, Cargo, Route, WeatherCondition, AddOn
+from .models import Schedule, Booking, Passenger, Payment, Ticket, Cargo, Route, WeatherCondition, AddOn, Vehicle
 
 logger = logging.getLogger(__name__)
 stripe.api_key = settings.STRIPE_SECRET_KEY
@@ -356,11 +358,44 @@ def calculate_passenger_price(adults, children, infants, schedule):
         Decimal(infants) * base_fare * Decimal('0.1')
     )
 
-def calculate_total_price(adults, children, infants, schedule, add_cargo, cargo_type, weight_kg, addons):
+
+def calculate_vehicle_price(vehicle_type, dimensions):
+    try:
+        # Example pricing logic based on vehicle type and dimensions
+        base_price = Decimal('50.00')  # Base price for vehicles
+        type_multiplier = {
+            'car': Decimal('1.0'),
+            'sedan': Decimal('1.0'),
+            'truck': Decimal('1.5'),
+            'van': Decimal('1.5'),
+            'motorcycle': Decimal('0.5')
+        }
+        multiplier = type_multiplier.get(vehicle_type.lower(), Decimal('1.0'))
+
+        # Optional: Adjust price based on dimensions (e.g., LxWxH in cm)
+        if dimensions and re.match(r'^\d+x\d+x\d+$', dimensions):
+            length, width, height = map(int, dimensions.split('x'))
+            volume = length * width * height / 1_000_000  # Convert to cubic meters
+            volume_surcharge = Decimal(volume) * Decimal('10.00')  # $10 per cubic meter
+        else:
+            volume_surcharge = Decimal('0.00')
+
+        return base_price * multiplier + volume_surcharge
+    except (ValueError, TypeError) as e:
+        logger.error(f"Invalid vehicle data: vehicle_type={vehicle_type}, dimensions={dimensions}, error={str(e)}")
+        raise ValueError("Invalid vehicle type or dimensions")
+
+
+def calculate_total_price(adults, children, infants, schedule, add_cargo, cargo_type, weight_kg, addons,
+                          add_vehicle=False, vehicle_type=None, vehicle_dimensions=None):
     passenger_price = calculate_passenger_price(adults, children, infants, schedule)
-    cargo_price = calculate_cargo_price(weight_kg, cargo_type) if add_cargo and cargo_type and weight_kg else Decimal('0.00')
+    cargo_price = calculate_cargo_price(weight_kg, cargo_type) if add_cargo and cargo_type and weight_kg else Decimal(
+        '0.00')
+    vehicle_price = calculate_vehicle_price(vehicle_type,
+                                            vehicle_dimensions) if add_vehicle and vehicle_type and vehicle_dimensions else Decimal(
+        '0.00')
     addon_price = sum(calculate_addon_price(addon['type'], addon['quantity']) for addon in addons)
-    return passenger_price + cargo_price + addon_price
+    return passenger_price + cargo_price + vehicle_price + addon_price
 
 def routes_api(request):
     try:
@@ -526,7 +561,7 @@ def booking_history(request):
         'is_guest': not request.user.is_authenticated
     })
 
-@login_required
+
 def generate_ticket(request, booking_id):
     booking = get_object_or_404(Booking, id=booking_id, user=request.user)
     if booking.status != 'confirmed':
@@ -771,11 +806,23 @@ def validate_step(request):
                 validate_passenger_data(request, p_type, i, adults, errors)
 
     elif step == '3':
+        add_vehicle = request.POST.get('add_vehicle') == 'true'
         add_cargo = request.POST.get('add_cargo') == 'true'
+
+        # Validate vehicle fields
+        if add_vehicle:
+            vehicle_type = request.POST.get('vehicles[0][vehicle_type]', '').strip()
+            vehicle_dimensions = request.POST.get('vehicles[0][dimensions]', '').strip()
+            if not vehicle_type:
+                errors.append({'field': 'vehicle_type', 'message': 'Vehicle type is required.'})
+            if not vehicle_dimensions or not re.match(r'^\d+x\d+x\d+$', vehicle_dimensions):
+                errors.append({'field': 'vehicle_dimensions', 'message': 'Vehicle dimensions must be in format LxWxH (e.g., 400x180x150).'})
+
+        # Validate cargo fields
         if add_cargo:
-            cargo_type = request.POST.get('cargo_type', '').strip()
-            cargo_weight = request.POST.get('cargo_weight_kg', '').strip()
-            cargo_dimensions = request.POST.get('cargo_dimensions_cm', '').strip()
+            cargo_type = request.POST.get('cargo[0][cargo_type]', '').strip()
+            cargo_weight = request.POST.get('cargo[0][weight_kg]', '').strip()
+            cargo_dimensions = request.POST.get('cargo[0][dimensions_cm]', '').strip()
             if not cargo_type:
                 errors.append({'field': 'cargo_type', 'message': 'Cargo type is required.'})
             try:
@@ -1074,7 +1121,11 @@ def book_ticket(request):
         'children': 0,
         'infants': 0,
         'guest_email': request.session.get('guest_email', ''),
+        'add_vehicle': False,
         'add_cargo': False,
+        'vehicle_type': '',
+        'vehicle_dimensions': '',
+        'vehicle_license_plate': '',
         'cargo_type': '',
         'weight_kg': '',
         'dimensions_cm': '',
@@ -1108,11 +1159,15 @@ def book_ticket(request):
         infants = safe_int(request.POST.get('infants', '0'))
         schedule_id = request.POST.get('schedule_id')
         guest_email = request.POST.get('guest_email')
+        add_vehicle = request.POST.get('add_vehicle') == 'true'
         add_cargo = request.POST.get('add_cargo') == 'true'
-        cargo_type = request.POST.get('cargo_type')
-        weight_kg = request.POST.get('weight_kg')
-        dimensions_cm = request.POST.get('dimensions_cm')
-        license_plate = request.POST.get('license_plate')
+        vehicle_type = request.POST.get('vehicles[0][vehicle_type]')
+        vehicle_dimensions = request.POST.get('vehicles[0][dimensions]')
+        vehicle_license_plate = request.POST.get('vehicles[0][license_plate]')
+        cargo_type = request.POST.get('cargo[0][cargo_type]')
+        weight_kg = request.POST.get('cargo[0][weight_kg]')
+        dimensions_cm = request.POST.get('cargo[0][dimensions_cm]')
+        license_plate = request.POST.get('cargo[0][license_plate]')
         privacy_consent = request.POST.get('privacy_consent') == 'true'
         addons = []
         for addon_type in dict(AddOn.ADD_ON_TYPE_CHOICES).keys():
@@ -1136,7 +1191,11 @@ def book_ticket(request):
             'children': children,
             'infants': infants,
             'guest_email': guest_email,
+            'add_vehicle': add_vehicle,
             'add_cargo': add_cargo,
+            'vehicle_type': vehicle_type,
+            'vehicle_dimensions': vehicle_dimensions,
+            'vehicle_license_plate': vehicle_license_plate,
             'cargo_type': cargo_type,
             'weight_kg': weight_kg,
             'dimensions_cm': dimensions_cm,
@@ -1179,12 +1238,15 @@ def book_ticket(request):
         if not request.user.is_authenticated and not guest_email:
             errors.append({'field': 'guest_email', 'message': 'Guest email is required.', 'step': 1})
 
-        if add_cargo and not (cargo_type and weight_kg and license_plate):
-            errors.append({'field': 'cargo', 'message': 'Cargo type, weight, and license plate are required.', 'step': 3})
+        if add_vehicle and not (vehicle_type and vehicle_dimensions):
+            errors.append({'field': 'vehicle', 'message': 'Vehicle type and dimensions are required.', 'step': 3})
+
+        if add_cargo and not (cargo_type and weight_kg):
+            errors.append({'field': 'cargo', 'message': 'Cargo type and weight are required.', 'step': 3})
         if add_cargo and weight_kg:
             try:
-                weight_kg = float(weight_kg)
-                if weight_kg <= 0:
+                weight_kg_float = float(weight_kg)
+                if weight_kg_float <= 0:
                     errors.append({'field': 'weight_kg', 'message': 'Cargo weight must be a positive number.', 'step': 3})
             except ValueError:
                 errors.append({'field': 'weight_kg', 'message': 'Cargo weight must be a valid number.', 'step': 3})
@@ -1201,7 +1263,7 @@ def book_ticket(request):
             return JsonResponse({'success': False, 'errors': errors})
 
         total_price = calculate_total_price(
-            adults, children, infants, schedule, add_cargo, cargo_type, float(weight_kg) if weight_kg else 0, addons
+            adults, children, infants, schedule, add_cargo, cargo_type, weight_kg, addons, add_vehicle, vehicle_type, vehicle_dimensions
         )
 
         if request.POST.get('step') == '4':
@@ -1213,11 +1275,17 @@ def book_ticket(request):
                     'estimated_duration': int(schedule.route.estimated_duration.total_seconds() / 60) if schedule.route.estimated_duration else "N/A"
                 },
                 'passengers': passenger_data,
+                'vehicle': {
+                    'type': vehicle_type,
+                    'dimensions': vehicle_dimensions,
+                    'license_plate': vehicle_license_plate,
+                    'price': str(calculate_vehicle_price(vehicle_type, vehicle_dimensions)) if add_vehicle else None
+                } if add_vehicle else None,
                 'cargo': {
                     'type': cargo_type,
                     'weight_kg': weight_kg,
                     'license_plate': license_plate,
-                    'price': str(calculate_cargo_price(Decimal(weight_kg), cargo_type)) if add_cargo else None
+                    'price': str(calculate_cargo_price(Decimal(weight_kg), cargo_type)) if add_cargo and weight_kg else None
                 } if add_cargo else None,
                 'addons': [
                     {'type': addon['type'], 'quantity': addon['quantity'], 'price': str(calculate_addon_price(addon['type'], addon['quantity']))}
@@ -1227,8 +1295,9 @@ def book_ticket(request):
                     'adults': str(Decimal(adults) * base_fare),
                     'children': str(Decimal(children) * base_fare * Decimal('0.5')),
                     'infants': str(Decimal(infants) * base_fare * Decimal('0.1')),
-                    'cargo': str(calculate_cargo_price(Decimal(weight_kg), cargo_type)) if add_cargo else "0.00",
-                    'addons': sum(calculate_addon_price(addon['type'], addon['quantity']) for addon in addons),
+                    'vehicle': str(calculate_vehicle_price(vehicle_type, vehicle_dimensions)) if add_vehicle else "0.00",
+                    'cargo': str(calculate_cargo_price(Decimal(weight_kg), cargo_type)) if add_cargo and weight_kg else "0.00",
+                    'addons': str(sum(calculate_addon_price(addon['type'], addon['quantity']) for addon in addons)),
                     'total': str(total_price)
                 }
             }
@@ -1293,24 +1362,40 @@ def book_ticket(request):
                     errors.append({'field': f'{p_type}_{i}', 'message': f'{p_type.capitalize()} {i + 1}: {str(e)}', 'step': 2})
                     return JsonResponse({'success': False, 'errors': errors})
 
+        if add_vehicle and vehicle_type and vehicle_dimensions:
+            try:
+                Vehicle.objects.create(
+                    booking=booking,
+                    vehicle_type=vehicle_type,
+                    dimensions=vehicle_dimensions,
+                    license_plate=vehicle_license_plate or '',
+                    price=calculate_vehicle_price(vehicle_type, vehicle_dimensions)
+                )
+            except ValueError as e:
+                logger.error(f"Vehicle creation error: {str(e)}")
+                booking.delete()
+                errors.append({'field': 'vehicle', 'message': f'Invalid vehicle data: {str(e)}', 'step': 3})
+                return JsonResponse({'success': False, 'errors': errors})
+
         if add_cargo and cargo_type and weight_kg:
             try:
-                weight_kg = float(weight_kg)
-                if weight_kg <= 0:
+                weight_kg_float = float(weight_kg)
+                if weight_kg_float <= 0:
                     errors.append({'field': 'weight_kg', 'message': 'Cargo weight must be greater than zero.', 'step': 3})
                     booking.delete()
                     return JsonResponse({'success': False, 'errors': errors})
                 Cargo.objects.create(
                     booking=booking,
                     cargo_type=cargo_type,
-                    weight_kg=Decimal(weight_kg),
+                    weight_kg=Decimal(weight_kg_float),
                     dimensions_cm=dimensions_cm or '',
-                    license_plate=license_plate,
-                    price=calculate_cargo_price(Decimal(weight_kg), cargo_type)
+                    license_plate=license_plate or '',
+                    price=calculate_cargo_price(Decimal(weight_kg_float), cargo_type)
                 )
-            except ValueError:
-                errors.append({'field': 'weight_kg', 'message': 'Cargo weight must be a valid number.', 'step': 3})
+            except ValueError as e:
+                logger.error(f"Cargo creation error: {str(e)}")
                 booking.delete()
+                errors.append({'field': 'cargo', 'message': f'Invalid cargo data: {str(e)}', 'step': 3})
                 return JsonResponse({'success': False, 'errors': errors})
 
         for addon in addons:
@@ -1349,7 +1434,11 @@ def book_ticket(request):
             adults = safe_int(form_data['adults'])
             children = safe_int(form_data['children'])
             infants = safe_int(form_data['infants'])
+            add_vehicle = form_data['add_vehicle']
             add_cargo = form_data['add_cargo']
+            vehicle_type = form_data['vehicle_type']
+            vehicle_dimensions = form_data['vehicle_dimensions']
+            vehicle_license_plate = form_data['vehicle_license_plate']
             cargo_type = form_data['cargo_type']
             weight_kg = safe_float(form_data['weight_kg'])
             license_plate = form_data['license_plate']
@@ -1371,7 +1460,7 @@ def book_ticket(request):
                     passenger_data.append(passenger)
 
             total_price = calculate_total_price(
-                adults, children, infants, schedule, add_cargo, cargo_type, weight_kg, addons
+                adults, children, infants, schedule, add_cargo, cargo_type, weight_kg, addons, add_vehicle, vehicle_type, vehicle_dimensions
             )
             base_fare = schedule.route.base_fare or Decimal('35.50')
             summary = {
@@ -1381,11 +1470,17 @@ def book_ticket(request):
                     'estimated_duration': int(schedule.route.estimated_duration.total_seconds() / 60) if schedule.route.estimated_duration else "N/A"
                 },
                 'passengers': passenger_data,
+                'vehicle': {
+                    'type': vehicle_type,
+                    'dimensions': vehicle_dimensions,
+                    'license_plate': vehicle_license_plate,
+                    'price': str(calculate_vehicle_price(vehicle_type, vehicle_dimensions)) if add_vehicle else None
+                } if add_vehicle else None,
                 'cargo': {
                     'type': cargo_type,
                     'weight_kg': weight_kg,
                     'license_plate': license_plate,
-                    'price': str(calculate_cargo_price(Decimal(weight_kg), cargo_type)) if add_cargo else None
+                    'price': str(calculate_cargo_price(Decimal(weight_kg), cargo_type)) if add_cargo and weight_kg else None
                 } if add_cargo else None,
                 'addons': [
                     {'type': addon['type'], 'quantity': addon['quantity'], 'price': str(calculate_addon_price(addon['type'], addon['quantity']))}
@@ -1395,8 +1490,9 @@ def book_ticket(request):
                     'adults': str(Decimal(adults) * base_fare),
                     'children': str(Decimal(children) * base_fare * Decimal('0.5')),
                     'infants': str(Decimal(infants) * base_fare * Decimal('0.1')),
-                    'cargo': str(calculate_cargo_price(Decimal(weight_kg), cargo_type)) if add_cargo else "0.00",
-                    'addons': sum(calculate_addon_price(addon['type'], addon['quantity']) for addon in addons),
+                    'vehicle': str(calculate_vehicle_price(vehicle_type, vehicle_dimensions)) if add_vehicle else "0.00",
+                    'cargo': str(calculate_cargo_price(Decimal(weight_kg), cargo_type)) if add_cargo and weight_kg else "0.00",
+                    'addons': str(sum(calculate_addon_price(addon['type'], addon['quantity']) for addon in addons)),
                     'total': str(total_price)
                 }
             }
@@ -1411,6 +1507,12 @@ def book_ticket(request):
         'stripe_publishable_key': settings.STRIPE_PUBLISHABLE_KEY,
         'summary': summary
     })
+
+def ticket_detail(request, ticket_id):
+    ticket = get_object_or_404(Ticket, id=ticket_id)
+    return render(request, "ticket.html", {"ticket": ticket})
+
+
 
 @login_required_allow_anonymous
 def view_tickets(request, booking_id):
@@ -1450,6 +1552,73 @@ def view_tickets(request, booking_id):
         'estimated_duration': int(booking.schedule.route.estimated_duration.total_seconds() / 60) if booking.schedule.route.estimated_duration else None,
         'stripe_publishable_key': settings.STRIPE_PUBLISHABLE_KEY
     })
+
+def booking_pdf(request, booking_id):
+    booking = get_object_or_404(Booking, id=booking_id)
+    tickets = booking.tickets.all()
+
+    buffer = io.BytesIO()
+    p = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+
+    # Path to logo
+    logo_path = os.path.join(settings.BASE_DIR, "static/logo.png")
+
+    # Loop through each ticket in the booking
+    for ticket in tickets:
+        # Add Logo
+        if os.path.exists(logo_path):
+            p.drawImage(logo_path, 40, height - 120, width=120, height=60, mask='auto')
+
+        # Header Title
+        p.setFont("Helvetica-Bold", 20)
+        p.drawString(180, height - 80, "Fiji Ferry Boarding Pass")
+
+        # Passenger Info
+        p.setFont("Times-Roman", 12)  # more professional than plain Helvetica
+        y = height - 150
+        passenger_name = getattr(ticket.passenger, "first_name", "") + " " + getattr(ticket.passenger, "last_name", "")
+        if passenger_name.strip():
+            p.drawString(40, y, f"Passenger: {passenger_name} ({ticket.passenger.passenger_type.title()})")
+        else:
+            p.drawString(40, y, f"Passenger Type: {ticket.passenger.passenger_type.title()}")
+        y -= 20
+        p.drawString(40, y, f"Booking ID: #{ticket.booking.id}")
+        y -= 20
+        p.drawString(40, y, f"Ticket Status: {ticket.ticket_status.title()}")
+        y -= 20
+        p.drawString(40, y, f"Issued: {ticket.issued_at.strftime('%b %d, %Y %H:%M')}")
+
+        # Schedule Section
+        y -= 40
+        p.setFont("Helvetica-Bold", 14)
+        p.drawString(40, y, "Schedule")
+        p.setFont("Times-Roman", 12)
+        y -= 20
+        p.drawString(40, y, f"Ferry: {ticket.booking.schedule.ferry.name}")
+        y -= 20
+        p.drawString(40, y, f"Route: {ticket.booking.schedule.route.departure_port} → {ticket.booking.schedule.route.destination_port}")
+        y -= 20
+        p.drawString(40, y, f"Departure: {ticket.booking.schedule.departure_time.strftime('%b %d, %Y %H:%M')}")
+        y -= 20
+        p.drawString(40, y, f"Arrival: {ticket.booking.schedule.arrival_time.strftime('%b %d, %Y %H:%M')}")
+
+        # QR Code (bigger)
+        if ticket.qr_code:
+            qr_path = ticket.qr_code.path
+            p.drawImage(qr_path, width - 220, height - 320, width=180, height=180)
+
+        # Footer
+        p.setFont("Helvetica-Oblique", 10)
+        p.drawString(40, 40, "⚓ Please present this boarding pass with a valid ID when boarding.")
+
+        # New page for next ticket
+        p.showPage()
+
+    p.save()
+    buffer.seek(0)
+
+    return FileResponse(buffer, as_attachment=True, filename=f"Booking_{booking.id}_Tickets.pdf")
 
 @login_required
 def process_payment(request, booking_id):

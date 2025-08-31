@@ -19,8 +19,8 @@ ALLOWED_HOSTS = [
     'localhost',
     '.ngrok-free.app',
     '.tunnelmole.net',
-    'dq2rwn-ip-45-117-242-240.tunnelmole.net',  # From error logs
-    'jlcnng-ip-45-117-242-240.tunnelmole.net',  # From .env
+    'dq2rwn-ip-45-117-242-240.tunnelmole.net',
+    'jlcnng-ip-45-117-242-240.tunnelmole.net',
 ]
 
 CSRF_TRUSTED_ORIGINS = [
@@ -40,20 +40,20 @@ SITE_URL = config('SITE_URL', default='http://localhost:8000')
 CELERY_BEAT_SCHEDULE = {
     'update-schedules-every-minute': {
         'task': 'bookings.tasks.update_schedules_status',
-        'schedule': crontab(minute='*'),  # every minute
+        'schedule': crontab(minute='*'),
     },
 }
 
 # Application definition
 INSTALLED_APPS = [
+    'accounts.apps.AccountsConfig',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'accounts',
-    'bookings',
+    'bookings.apps.BookingsConfig',
     'django_celery_beat',
 ]
 

@@ -28,51 +28,51 @@
         </div>
     </div>
 
-    <div class="booking-form-container bg-var-card-bg rounded-lg shadow-lg p-4 md:p-6 max-w-full md:max-w-2xl mx-auto" data-aos="fade-up">
+    <div class="booking-form-container bg-var-card-bg rounded-lg shadow-lg p-6 md:p-8 max-w-full md:max-w-3xl mx-auto" data-aos="fade-up">
         <form id="booking-form" action="{% url 'bookings:book_ticket' %}" method="post" enctype="multipart/form-data" aria-label="Ferry booking form">
             {% csrf_token %}
             <input type="hidden" name="step" value="{{ form_data.step|default:1 }}">
 
             <!-- Step 1: Select Schedule -->
             <div class="form-step step-1 active" data-step="1" aria-busy="false">
-                <div class="step-description bg-var-step-1-bg p-4 rounded-lg mb-4 text-var-text-color font-poppins">
-                    <p class="text-xs md:text-sm">Choose your ferry schedule. All fields are required.</p>
+                <div class="step-description bg-var-step-1-bg p-4 rounded-lg mb-6 text-var-text-color font-poppins">
+                    <p class="text-sm md:text-base">Choose your ferry schedule. All fields are required.</p>
                 </div>
-                <div class="form-group">
-                    <label for="schedule_id" class="block text-sm font-semibold text-var-text-color font-poppins">Select Schedule *</label>
+                <div class="form-group mb-6">
+                    <label for="schedule_id" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">Select Schedule *</label>
                     <div class="relative">
                         <svg class="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-var-text-color" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 1 00-2 2v12a2 2 0 002 2z"/>
                         </svg>
-                        <select id="schedule_id" name="schedule_id" required class="w-full pl-10 p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-1-accent transition-all duration-300" aria-required="true" aria-describedby="error-schedule_id">
+                        <select id="schedule_id" name="schedule_id" required class="w-full pl-10 p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-1-accent transition-all duration-300" aria-required="true" aria-describedby="error-schedule_id">
                             <option value="">Select a schedule</option>
                             {% for schedule in schedules %}
                                 <option value="{{ schedule.id }}" {% if form_data.schedule_id == schedule.id %}selected{% endif %}>
-                                    {{ schedule.route.departure_port.name }} to {{ schedule.route.destination_port.name }} - {{ schedule.departure_time|date:"D, M d, H:i" }} ({{ schedule.estimated_duration }})
+                                    {{ schedule.route.departure_port.name }} to {{ schedule.route.destination_port.name }} - {{ schedule.departure_time|date:"D, M d, H:i" }} ({{ schedule.route.estimated_duration }})
                                 </option>
                             {% endfor %}
                         </select>
-                        <p id="error-schedule_id" class="error-message hidden mt-1 text-xs md:text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                        <p id="error-schedule_id" class="error-message hidden mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
                     </div>
                 </div>
                 {% if not user.is_authenticated %}
-                <div class="form-group mt-4">
-                    <label for="guest_email" class="block text-sm font-semibold text-var-text-color font-poppins">Guest Email *</label>
+                <div class="form-group mb-6">
+                    <label for="guest_email" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">Guest Email *</label>
                     <div class="relative">
                         <svg class="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-var-text-color" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
                         </svg>
-                        <input type="email" id="guest_email" name="guest_email" value="{{ form_data.guest_email|default:"" }}" required class="w-full pl-10 p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-1-accent transition-all duration-300" placeholder="Enter your email" aria-required="true" aria-describedby="error-guest_email">
-                        <p id="error-guest_email" class="error-message hidden mt-1 text-xs md:text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                        <input type="email" id="guest_email" name="guest_email" value="{{ form_data.guest_email|default:"" }}" required class="w-full pl-10 p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-1-accent transition-all duration-300" placeholder="Enter your email" aria-required="true" aria-describedby="error-guest_email">
+                        <p id="error-guest_email" class="error-message hidden mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
                     </div>
                 </div>
                 {% endif %}
-                <div class="form-group mt-4" id="schedule-error-reset" style="display: none;">
+                <div class="form-group mb-6" id="schedule-error-reset" style="display: none;">
                     <p class="text-sm text-var-alert-error-text font-poppins">The selected schedule is no longer available. Please choose a new one.</p>
-                    <button type="button" id="reset-schedule" class="cta-button bg-var-button-bg text-white py-2 px-4 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-bg transition-all duration-300">Reset and Choose New Schedule</button>
+                    <button type="button" id="reset-schedule" class="cta-button bg-var-button-bg text-white py-2 px-4 rounded-lg hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-bg transition-all duration-300 mt-2">Reset and Choose New Schedule</button>
                 </div>
-                <div class="form-actions mt-6 flex justify-end">
-                    <button type="button" class="next-step cta-button bg-var-button-bg text-white py-2 px-4 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-bg flex items-center transition-all duration-300" data-next="2" aria-busy="false">
+                <div class="form-actions mt-6 flex justify-end sticky bottom-0 bg-var-card-bg py-4 z-10">
+                    <button type="button" class="next-step cta-button bg-var-button-bg text-white py-2 px-6 rounded-lg hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-bg flex items-center transition-all duration-300" data-next="2" aria-busy="false">
                         <span class="spinner hidden w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></span>
                         Next
                     </button>
@@ -81,35 +81,37 @@
 
             <!-- Step 2: Passenger Details -->
             <div class="form-step step-2" data-step="2" aria-busy="false">
-                <div class="step-description bg-var-step-2-bg p-4 rounded-lg mb-4 text-var-text-color font-poppins">
-                    <p class="text-xs md:text-sm">Enter details for each passenger. Fields marked with <span class="italic">* are required</span>. Children and infants must be accompanied by at least one adult.</p>
+                <div class="step-description bg-var-step-2-bg p-4 rounded-lg mb-6 text-var-text-color font-poppins">
+                    <p class="text-sm md:text-base">Enter details for each passenger. Fields marked with <span class="italic">* are required</span>. Children and infants must be accompanied by at least one adult.</p>
                 </div>
-                <div class="form-group">
-                    <label for="adults" class="block text-sm font-semibold text-var-text-color font-poppins">Adults (18+)</label>
-                    <input type="number" id="adults" name="adults" min="0" value="{{ form_data.adults|default:1 }}" required class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-2-accent transition-all duration-300" aria-required="true" aria-describedby="error-adults">
-                    <p id="error-adults" class="error-message hidden mt-1 text-xs md:text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <div class="form-group">
+                        <label for="adults" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">Adults (18+)</label>
+                        <input type="number" id="adults" name="adults" min="0" value="{{ form_data.adults|default:1 }}" required class="w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-2-accent transition-all duration-300" aria-required="true" aria-describedby="error-adults">
+                        <p id="error-adults" class="error-message hidden mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                    </div>
+                    <div class="form-group">
+                        <label for="children" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">Children (2-17)</label>
+                        <input type="number" id="children" name="children" min="0" value="{{ form_data.children|default:0 }}" class="w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-2-accent transition-all duration-300" aria-describedby="error-children">
+                        <p id="error-children" class="error-message hidden mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                    </div>
+                    <div class="form-group">
+                        <label for="infants" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">Infants (0-2)</label>
+                        <input type="number" id="infants" name="infants" min="0" value="{{ form_data.infants|default:0 }}" class="w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-2-accent transition-all duration-300" aria-describedby="error-infants">
+                        <p id="error-infants" class="error-message hidden mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                    </div>
                 </div>
-                <div class="form-group mt-4">
-                    <label for="children" class="block text-sm font-semibold text-var-text-color font-poppins">Children (2-17)</label>
-                    <input type="number" id="children" name="children" min="0" value="{{ form_data.children|default:0 }}" class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-2-accent transition-all duration-300" aria-describedby="error-children">
-                    <p id="error-children" class="error-message hidden mt-1 text-xs md:text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
-                </div>
-                <div class="form-group mt-4">
-                    <label for="infants" class="block text-sm font-semibold text-var-text-color font-poppins">Infants (0-2)</label>
-                    <input type="number" id="infants" name="infants" min="0" value="{{ form_data.infants|default:0 }}" class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-2-accent transition-all duration-300" aria-describedby="error-infants">
-                    <p id="error-infants" class="error-message hidden mt-1 text-xs md:text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
-                </div>
-                <div id="passenger-details" class="space-y-4 mt-4">
-                    <p id="passenger-details-error" class="error-message hidden mt-1 text-xs md:text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                <div id="passenger-details" class="space-y-4 mb-6">
+                    <p id="passenger-details-error" class="error-message hidden mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
                     <div id="adult-fields"></div>
                     <div id="child-fields"></div>
                     <div id="infant-fields"></div>
                 </div>
-                <div class="form-actions mt-6 flex flex-wrap justify-between gap-2">
-                    <button type="button" class="prev-step cta-button bg-var-button-bg text-white py-2 px-4 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-bg flex items-center transition-all duration-300" data-prev="1" aria-busy="false">
+                <div class="form-actions mt-6 flex flex-wrap justify-between gap-2 sticky bottom-0 bg-var-card-bg py-4 z-10">
+                    <button type="button" class="prev-step cta-button bg-var-button-bg text-white py-2 px-6 rounded-lg hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-bg flex items-center transition-all duration-300" data-prev="1" aria-busy="false">
                         Previous
                     </button>
-                    <button type="button" class="next-step cta-button bg-var-button-bg text-white py-2 px-4 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-bg flex items-center transition-all duration-300" data-next="3" aria-busy="false">
+                    <button type="button" class="next-step cta-button bg-var-button-bg text-white py-2 px-6 rounded-lg hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-bg flex items-center transition-all duration-300" data-next="3" aria-busy="false">
                         <span class="spinner hidden w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></span>
                         Next
                     </button>
@@ -118,123 +120,123 @@
 
             <!-- Step 3: Add-Ons -->
             <div class="form-step step-3" data-step="3" aria-busy="false">
-                <div class="step-description bg-var-step-3-bg p-4 rounded-lg mb-4 text-var-text-color font-poppins">
-                    <p class="text-xs md:text-sm">Add optional services like premium seating, vehicle or cargo transport, or meals.</p>
+                <div class="step-description bg-var-step-3-bg p-4 rounded-lg mb-6 text-var-text-color font-poppins">
+                    <p class="text-sm md:text-base">Add optional services like premium seating, vehicle or cargo transport, or meals. Prices are per unit.</p>
                 </div>
-                <div class="bg-var-card-bg p-4 rounded-lg shadow-sm mb-4">
-                    <h3 class="text-lg font-semibold text-var-text-color font-poppins">Seat Upgrades</h3>
-                    <div class="form-group mt-2">
-                        <label for="premium_seating_quantity" class="block text-sm font-semibold text-var-text-color font-poppins">Premium Seating</label>
-                        <input type="number" id="premium_seating_quantity" name="premium_seating_quantity" min="0" value="{{ form_data.premium_seating_quantity|default:0 }}" class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300" aria-describedby="error-premium_seating_quantity">
-                        <p id="error-premium_seating_quantity" class="error-message hidden mt-1 text-xs md:text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
-                    </div>
-                    <div class="form-group mt-2">
-                        <label for="priority_boarding_quantity" class="block text-sm font-semibold text-var-text-color font-poppins">Priority Boarding</label>
-                        <input type="number" id="priority_boarding_quantity" name="priority_boarding_quantity" min="0" value="{{ form_data.priority_boarding_quantity|default:0 }}" class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300" aria-describedby="error-priority_boarding_quantity">
-                        <p id="error-priority_boarding_quantity" class="error-message hidden mt-1 text-xs md:text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
-                    </div>
-                    <div class="form-group mt-2">
-                        <label for="cabin_quantity" class="block text-sm font-semibold text-var-text-color font-poppins">Cabin</label>
-                        <input type="number" id="cabin_quantity" name="cabin_quantity" min="0" value="{{ form_data.cabin_quantity|default:0 }}" class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300" aria-describedby="error-cabin_quantity">
-                        <p id="error-cabin_quantity" class="error-message hidden mt-1 text-xs md:text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
-                    </div>
-                </div>
-                <div class="bg-var-card-bg p-4 rounded-lg shadow-sm mb-4">
-                    <h3 class="text-lg font-semibold text-var-text-color font-poppins">Vehicle Transport</h3>
-                    <label class="flex items-center">
-                        <input type="checkbox" id="add_vehicle" name="add_vehicle" {% if form_data.add_vehicle %}checked{% endif %} class="mr-2 h-5 w-5 text-var-step-3-accent focus:ring-var-step-3-accent border-var-border-color">
-                        <span class="text-sm font-semibold text-var-text-color font-poppins">Add Vehicle</span>
-                    </label>
-                    <div id="vehicle-fields" class="hidden space-y-4 mt-4">
+                <div class="bg-var-card-bg p-6 rounded-lg shadow-sm mb-6">
+                    <h3 class="text-lg font-semibold text-var-text-color font-poppins mb-4">Seat Upgrades</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div class="form-group">
-                            <label for="vehicle_type" class="block text-sm font-semibold text-var-text-color font-poppins">Vehicle Type *</label>
-                            <select id="vehicle_type" name="vehicle_type" class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300" required aria-required="true" aria-describedby="error-vehicle_type">
+                            <label for="premium_seating_quantity" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">Premium Seating (FJD 20.00)</label>
+                            <input type="number" id="premium_seating_quantity" name="premium_seating_quantity" min="0" value="{{ form_data.premium_seating_quantity|default:0 }}" class="w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300" aria-describedby="error-premium_seating_quantity">
+                            <p id="error-premium_seating_quantity" class="error-message hidden mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                        </div>
+                        <div class="form-group">
+                            <label for="priority_boarding_quantity" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">Priority Boarding (FJD 10.00)</label>
+                            <input type="number" id="priority_boarding_quantity" name="priority_boarding_quantity" min="0" value="{{ form_data.priority_boarding_quantity|default:0 }}" class="w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300" aria-describedby="error-priority_boarding_quantity">
+                            <p id="error-priority_boarding_quantity" class="error-message hidden mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                        </div>
+                        <div class="form-group">
+                            <label for="cabin_quantity" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">Cabin (FJD 50.00)</label>
+                            <input type="number" id="cabin_quantity" name="cabin_quantity" min="0" value="{{ form_data.cabin_quantity|default:0 }}" class="w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300" aria-describedby="error-cabin_quantity">
+                            <p id="error-cabin_quantity" class="error-message hidden mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-var-card-bg p-6 rounded-lg shadow-sm mb-6">
+                    <h3 class="text-lg font-semibold text-var-text-color font-poppins mb-4">Vehicle Transport</h3>
+                    <label class="flex items-center mb-4">
+                        <input type="checkbox" id="add_vehicle" name="add_vehicle" {% if form_data.add_vehicle %}checked{% endif %} class="mr-2 h-5 w-5 text-var-step-3-accent focus:ring-var-step-3-accent border-var-border-color">
+                        <span class="text-sm font-semibold text-var-text-color font-poppins">Add Vehicle (FJD 150.00 base fee)</span>
+                    </label>
+                    <div id="vehicle-fields" class="hidden space-y-4">
+                        <div class="form-group">
+                            <label for="vehicle_type" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">Vehicle Type *</label>
+                            <select id="vehicle_type" name="vehicle_type" class="w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300" required aria-required="true" aria-describedby="error-vehicle_type">
                                 <option value="" {% if not form_data.vehicle_type %}selected{% endif %}>Select vehicle type</option>
                                 <option value="car" {% if form_data.vehicle_type == "car" %}selected{% endif %}>Car</option>
                                 <option value="motorcycle" {% if form_data.vehicle_type == "motorcycle" %}selected{% endif %}>Motorcycle</option>
                                 <option value="bicycle" {% if form_data.vehicle_type == "bicycle" %}selected{% endif %}>Bicycle</option>
                             </select>
-                            <p id="error-vehicle_type" class="error-message hidden mt-1 text-xs md:text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                            <p id="error-vehicle_type" class="error-message hidden mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
                         </div>
                         <div class="form-group">
-                            <label for="vehicle_dimensions" class="block text-sm font-semibold text-var-text-color font-poppins">Dimensions (cm) *</label>
-                            <input type="text" id="vehicle_dimensions" name="vehicle_dimensions" value="{{ form_data.vehicle_dimensions|default:"" }}" class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300" placeholder="e.g., 480x180x150" required aria-required="true" aria-describedby="error-vehicle_dimensions">
-                            <p id="error-vehicle_dimensions" class="error-message hidden mt-1 text-xs md:text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                            <label for="vehicle_dimensions" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">Dimensions (cm) *</label>
+                            <input type="text" id="vehicle_dimensions" name="vehicle_dimensions" value="{{ form_data.vehicle_dimensions|default:"" }}" class="w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300" placeholder="e.g., 480x180x150" required aria-required="true" aria-describedby="error-vehicle_dimensions">
+                            <p id="error-vehicle_dimensions" class="error-message hidden mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
                         </div>
                         <div class="form-group">
-                            <label for="vehicle_license_plate" class="block text-sm font-semibold text-var-text-color font-poppins">License Plate (Optional)</label>
-                            <input type="text" id="vehicle_license_plate" name="vehicle_license_plate" value="{{ form_data.vehicle_license_plate|default:"" }}" class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300" aria-describedby="error-vehicle_license_plate">
-                            <p id="error-vehicle_license_plate" class="error-message hidden mt-1 text-xs md:text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                            <label for="vehicle_license_plate" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">License Plate (Optional)</label>
+                            <input type="text" id="vehicle_license_plate" name="vehicle_license_plate" value="{{ form_data.vehicle_license_plate|default:"" }}" class="w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300" aria-describedby="error-vehicle_license_plate">
+                            <p id="error-vehicle_license_plate" class="error-message hidden mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
                         </div>
                     </div>
                 </div>
-                <div class="bg-var-card-bg p-4 rounded-lg shadow-sm mb-4">
-                    <h3 class="text-lg font-semibold text-var-text-color font-poppins">Cargo Transport</h3>
-                    <label class="flex items-center">
+                <div class="bg-var-card-bg p-6 rounded-lg shadow-sm mb-6">
+                    <h3 class="text-lg font-semibold text-var-text-color font-poppins mb-4">Cargo Transport</h3>
+                    <label class="flex items-center mb-4">
                         <input type="checkbox" id="add_cargo" name="add_cargo" {% if form_data.add_cargo %}checked{% endif %} class="mr-2 h-5 w-5 text-var-step-3-accent focus:ring-var-step-3-accent border-var-border-color">
-                        <span class="text-sm font-semibold text-var-text-color font-poppins">Add Cargo</span>
+                        <span class="text-sm font-semibold text-var-text-color font-poppins">Add Cargo (FJD 5.00/kg, varies by type)</span>
                     </label>
-                    <div id="cargo-fields" class="hidden space-y-4 mt-4">
+                    <div id="cargo-fields" class="hidden space-y-4">
                         <div class="form-group">
-                            <label for="cargo_type" class="block text-sm font-semibold text-var-text-color font-poppins">Cargo Type *</label>
-                            <select id="cargo_type" name="cargo_type"
-                                class="w-full p-2 border rounded bg-var-input-bg text-var-text-color
-                                       focus:outline-none focus:ring-2 focus:ring-var-step-3-accent
-                                       transition-all duration-300"
-                                required aria-required="true" aria-describedby="error-cargo_type">
+                            <label for="cargo_type" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">Cargo Type * (Light: 6.00/kg, Heavy: 10.00/kg, Bulk: 7.50/kg, Livestock: 12.50/kg)</label>
+                            <select id="cargo_type" name="cargo_type" class="w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300" required aria-required="true" aria-describedby="error-cargo_type">
                                 <option value="" {% if not form_data.cargo_type %}selected{% endif %}>Select cargo type</option>
-                                <option value="Light Cargo" {% if form_data.cargo_type == "Light Cargo" %}selected{% endif %}>Light Cargo (parcels, boxes)</option>
-                                <option value="Heavy Cargo" {% if form_data.cargo_type == "Heavy Cargo" %}selected{% endif %}>Heavy Cargo (machinery, materials)</option>
-                                <option value="Bulk Cargo" {% if form_data.cargo_type == "Bulk Cargo" %}selected{% endif %}>Bulk Cargo (fuel, sand, produce)</option>
-                                <option value="Livestock" {% if form_data.cargo_type == "Livestock" %}selected{% endif %}>Livestock (cows, pigs, goats)</option>
+                                <option value="Light Cargo" {% if form_data.cargo_type == "Light Cargo" %}selected{% endif %}>Light Cargo (parcels, boxes, 6.00/kg)</option>
+                                <option value="Heavy Cargo" {% if form_data.cargo_type == "Heavy Cargo" %}selected{% endif %}>Heavy Cargo (machinery, materials, 10.00/kg)</option>
+                                <option value="Bulk Cargo" {% if form_data.cargo_type == "Bulk Cargo" %}selected{% endif %}>Bulk Cargo (fuel, sand, produce, 7.50/kg)</option>
+                                <option value="Livestock" {% if form_data.cargo_type == "Livestock" %}selected{% endif %}>Livestock (cows, pigs, goats, 12.50/kg)</option>
                             </select>
-                            <p id="error-cargo_type" class="error-message hidden mt-1 text-xs md:text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                            <p id="error-cargo_type" class="error-message hidden mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
                         </div>
                         <div class="form-group">
-                            <label for="cargo_weight_kg" class="block text-sm font-semibold text-var-text-color font-poppins">Weight (kg) *</label>
-                            <input type="number" id="cargo_weight_kg" name="cargo_weight_kg" step="0.01" min="0" value="{{ form_data.cargo_weight_kg|default:"" }}" class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300" required aria-required="true" aria-describedby="error-cargo_weight_kg">
-                            <p id="error-cargo_weight_kg" class="error-message hidden mt-1 text-xs md:text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                            <label for="cargo_weight_kg" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">Weight (kg) *</label>
+                            <input type="number" id="cargo_weight_kg" name="cargo_weight_kg" step="0.01" min="0" value="{{ form_data.cargo_weight_kg|default:"" }}" class="w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300" required aria-required="true" aria-describedby="error-cargo_weight_kg">
+                            <p id="error-cargo_weight_kg" class="error-message hidden mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
                         </div>
                         <div class="form-group">
-                            <label for="cargo_dimensions_cm" class="block text-sm font-semibold text-var-text-color font-poppins">Dimensions (LxWxH in cm) *</label>
-                            <input type="text" id="cargo_dimensions_cm" name="cargo_dimensions_cm" value="{{ form_data.cargo_dimensions_cm|default:"" }}" class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300" placeholder="e.g., 400x180x150" required aria-required="true" aria-describedby="error-cargo_dimensions_cm">
-                            <p id="error-cargo_dimensions_cm" class="error-message hidden mt-1 text-xs md:text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                            <label for="cargo_dimensions_cm" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">Dimensions (LxWxH in cm) *</label>
+                            <input type="text" id="cargo_dimensions_cm" name="cargo_dimensions_cm" value="{{ form_data.cargo_dimensions_cm|default:"" }}" class="w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300" placeholder="e.g., 400x180x150" required aria-required="true" aria-describedby="error-cargo_dimensions_cm">
+                            <p id="error-cargo_dimensions_cm" class="error-message hidden mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
                         </div>
                         <div class="form-group">
-                            <label for="cargo_license_plate" class="block text-sm font-semibold text-var-text-color font-poppins">License Plate (Optional)</label>
-                            <input type="text" id="cargo_license_plate" name="cargo_license_plate" value="{{ form_data.cargo_license_plate|default:"" }}" class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300" aria-describedby="error-cargo_license_plate">
-                            <p id="error-cargo_license_plate" class="error-message hidden mt-1 text-xs md:text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                            <label for="cargo_license_plate" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">License Plate (Optional)</label>
+                            <input type="text" id="cargo_license_plate" name="cargo_license_plate" value="{{ form_data.cargo_license_plate|default:"" }}" class="w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300" aria-describedby="error-cargo_license_plate">
+                            <p id="error-cargo_license_plate" class="error-message hidden mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
                         </div>
                     </div>
                 </div>
-                <div class="bg-var-card-bg p-4 rounded-lg shadow-sm mb-4">
-                    <h3 class="text-lg font-semibold text-var-text-color font-poppins">Meals & Refreshments</h3>
-                    <div class="form-group mt-2">
-                        <label for="meal_breakfast_quantity" class="block text-sm font-semibold text-var-text-color font-poppins">Breakfast</label>
-                        <input type="number" id="meal_breakfast_quantity" name="meal_breakfast_quantity" min="0" value="{{ form_data.meal_breakfast_quantity|default:0 }}" class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300" aria-describedby="error-meal_breakfast_quantity">
-                        <p id="error-meal_breakfast_quantity" class="error-message hidden mt-1 text-xs md:text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
-                    </div>
-                    <div class="form-group mt-2">
-                        <label for="meal_lunch_quantity" class="block text-sm font-semibold text-var-text-color font-poppins">Lunch</label>
-                        <input type="number" id="meal_lunch_quantity" name="meal_lunch_quantity" min="0" value="{{ form_data.meal_lunch_quantity|default:0 }}" class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300" aria-describedby="error-meal_lunch_quantity">
-                        <p id="error-meal_lunch_quantity" class="error-message hidden mt-1 text-xs md:text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
-                    </div>
-                    <div class="form-group mt-2">
-                        <label for="meal_dinner_quantity" class="block text-sm font-semibold text-var-text-color font-poppins">Dinner</label>
-                        <input type="number" id="meal_dinner_quantity" name="meal_dinner_quantity" min="0" value="{{ form_data.meal_dinner_quantity|default:0 }}" class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300" aria-describedby="error-meal_dinner_quantity">
-                        <p id="error-meal_dinner_quantity" class="error-message hidden mt-1 text-xs md:text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
-                    </div>
-                    <div class="form-group mt-2">
-                        <label for="meal_snack_quantity" class="block text-sm font-semibold text-var-text-color font-poppins">Snack</label>
-                        <input type="number" id="meal_snack_quantity" name="meal_snack_quantity" min="0" value="{{ form_data.meal_snack_quantity|default:0 }}" class="w-full p-2 border rounded bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300" aria-describedby="error-meal_snack_quantity">
-                        <p id="error-meal_snack_quantity" class="error-message hidden mt-1 text-xs md:text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                <div class="bg-var-card-bg p-6 rounded-lg shadow-sm mb-6">
+                    <h3 class="text-lg font-semibold text-var-text-color font-poppins mb-4">Meals & Refreshments</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="form-group">
+                            <label for="meal_breakfast_quantity" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">Breakfast (FJD 15.00)</label>
+                            <input type="number" id="meal_breakfast_quantity" name="meal_breakfast_quantity" min="0" value="{{ form_data.meal_breakfast_quantity|default:0 }}" class="w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300" aria-describedby="error-meal_breakfast_quantity">
+                            <p id="error-meal_breakfast_quantity" class="error-message hidden mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                        </div>
+                        <div class="form-group">
+                            <label for="meal_lunch_quantity" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">Lunch (FJD 15.00)</label>
+                            <input type="number" id="meal_lunch_quantity" name="meal_lunch_quantity" min="0" value="{{ form_data.meal_lunch_quantity|default:0 }}" class="w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300" aria-describedby="error-meal_lunch_quantity">
+                            <p id="error-meal_lunch_quantity" class="error-message hidden mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                        </div>
+                        <div class="form-group">
+                            <label for="meal_dinner_quantity" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">Dinner (FJD 15.00)</label>
+                            <input type="number" id="meal_dinner_quantity" name="meal_dinner_quantity" min="0" value="{{ form_data.meal_dinner_quantity|default:0 }}" class="w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300" aria-describedby="error-meal_dinner_quantity">
+                            <p id="error-meal_dinner_quantity" class="error-message hidden mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                        </div>
+                        <div class="form-group">
+                            <label for="meal_snack_quantity" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">Snack (FJD 5.00)</label>
+                            <input type="number" id="meal_snack_quantity" name="meal_snack_quantity" min="0" value="{{ form_data.meal_snack_quantity|default:0 }}" class="w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300" aria-describedby="error-meal_snack_quantity">
+                            <p id="error-meal_snack_quantity" class="error-message hidden mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                        </div>
                     </div>
                 </div>
-                <div class="form-actions mt-6 flex flex-wrap justify-between gap-2">
-                    <button type="button" class="prev-step cta-button bg-var-button-bg text-white py-2 px-4 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-bg flex items-center transition-all duration-300" data-prev="2" aria-busy="false">
+                <div class="form-actions mt-6 flex flex-wrap justify-between gap-2 sticky bottom-0 bg-var-card-bg py-4 z-10">
+                    <button type="button" class="prev-step cta-button bg-var-button-bg text-white py-2 px-6 rounded-lg hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-bg flex items-center transition-all duration-300" data-prev="2" aria-busy="false">
                         Previous
                     </button>
-                    <button type="button" class="next-step cta-button bg-var-button-bg text-white py-2 px-4 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-bg flex items-center transition-all duration-300" data-next="4" aria-busy="false">
+                    <button type="button" class="next-step cta-button bg-var-button-bg text-white py-2 px-6 rounded-lg hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-bg flex items-center transition-all duration-300" data-next="4" aria-busy="false">
                         <span class="spinner hidden w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></span>
                         Next
                     </button>
@@ -243,39 +245,41 @@
 
             <!-- Step 4: Summary -->
             <div class="form-step step-4" data-step="4" aria-busy="false">
-                <div class="step-description bg-var-step-4-bg p-4 rounded-lg mb-4 text-var-text-color font-poppins">
-                    <p class="text-xs md:text-sm">Review your booking details and proceed to payment.</p>
+                <div class="step-description bg-var-step-4-bg p-4 rounded-lg mb-6 text-var-text-color font-poppins">
+                    <p class="text-sm md:text-base">Review your booking details and proceed to payment.</p>
                 </div>
-                <div id="weather-warning" class="mb-4"></div>
-                <div id="summary-section" class="space-y-4" aria-live="polite">
-                    <div class="bg-var-card-bg p-4 rounded-lg shadow-sm">
-                        <h3 class="text-lg font-semibold text-var-text-color font-poppins">Schedule</h3>
-                        <p class="text-xs md:text-sm text-var-text-color font-poppins"><strong>Route:</strong> <span id="summary-schedule">Not selected</span></p>
-                        <p class="text-xs md:text-sm text-var-text-color font-poppins"><strong>Duration:</strong> <span id="summary-duration">Not available</span></p>
+                <div id="weather-warning" class="mb-6"></div>
+                <div id="summary-section" class="space-y-6" aria-live="polite">
+                    <div class="bg-var-card-bg p-6 rounded-lg shadow-sm">
+                        <h3 class="text-lg font-semibold text-var-text-color font-poppins mb-4">Schedule</h3>
+                        <p class="text-sm text-var-text-color font-poppins"><strong>Route:</strong> <span id="summary-schedule">Not selected</span></p>
+                        <p class="text-sm text-var-text-color font-poppins"><strong>Departure:</strong> <span id="summary-departure">Not available</span></p>
+                        <p class="text-sm text-var-text-color font-poppins"><strong>Duration:</strong> <span id="summary-duration">Not available</span></p>
                     </div>
-                    <div class="bg-var-card-bg p-4 rounded-lg shadow-sm">
-                        <h3 class="text-lg font-semibold text-var-text-color font-poppins">Passengers</h3>
-                        <p class="text-xs md:text-sm text-var-text-color font-poppins"><span id="summary-passengers">0 Adults, 0 Children, 0 Infants</span></p>
-                        <div id="summary-passenger-breakdown"></div>
+                    <div class="bg-var-card-bg p-6 rounded-lg shadow-sm">
+                        <h3 class="text-lg font-semibold text-var-text-color font-poppins mb-4">Passengers</h3>
+                        <p class="text-sm text-var-text-color font-poppins"><span id="summary-passengers">0 Adults, 0 Children, 0 Infants</span></p>
+                        <p class="text-sm text-var-text-color font-poppins"><strong>Cost:</strong> Adults (FJD <span id="summary-adult-price">0.00</span>), Children (FJD <span id="summary-child-price">0.00</span>), Infants (FJD <span id="summary-infant-price">0.00</span>)</p>
+                        <div id="summary-passenger-breakdown" class="mt-4"></div>
                     </div>
-                    <div id="summary-add-ons" class="bg-var-card-bg p-4 rounded-lg shadow-sm">
-                        <h3 class="text-lg font-semibold text-var-text-color font-poppins">Add-Ons</h3>
-                        <p class="text-xs md:text-sm text-var-text-color font-poppins">None</p>
+                    <div id="summary-add-ons" class="bg-var-card-bg p-6 rounded-lg shadow-sm">
+                        <h3 class="text-lg font-semibold text-var-text-color font-poppins mb-4">Add-Ons</h3>
+                        <p class="text-sm text-var-text-color font-poppins"><span id="summary-add-ons-text">None</span> (FJD <span id="summary-add-ons-price">0.00</span>)</p>
                     </div>
-                    <div id="summary-vehicle" class="bg-var-card-bg p-4 rounded-lg shadow-sm">
-                        <h3 class="text-lg font-semibold text-var-text-color font-poppins">Vehicle</h3>
-                        <p class="text-xs md:text-sm text-var-text-color font-poppins">None</p>
+                    <div id="summary-vehicle" class="bg-var-card-bg p-6 rounded-lg shadow-sm">
+                        <h3 class="text-lg font-semibold text-var-text-color font-poppins mb-4">Vehicle</h3>
+                        <p class="text-sm text-var-text-color font-poppins">None</p>
                     </div>
-                    <div id="summary-cargo" class="bg-var-card-bg p-4 rounded-lg shadow-sm">
-                        <h3 class="text-lg font-semibold text-var-text-color font-poppins">Cargo</h3>
-                        <p class="text-xs md:text-sm text-var-text-color font-poppins">None</p>
+                    <div id="summary-cargo" class="bg-var-card-bg p-6 rounded-lg shadow-sm">
+                        <h3 class="text-lg font-semibold text-var-text-color font-poppins mb-4">Cargo</h3>
+                        <p class="text-sm text-var-text-color font-poppins"><span id="summary-cargo-text">None</span> (FJD <span id="summary-cargo-price">0.00</span>)</p>
                     </div>
-                    <div class="bg-var-card-bg p-4 rounded-lg shadow-sm">
-                        <h3 class="text-lg font-semibold text-var-text-color font-poppins">Total Cost</h3>
-                        <p class="text-base md:text-lg font-bold text-var-step-4-accent font-poppins">FJD <span id="summary-cost">0.00</span></p>
+                    <div class="bg-var-card-bg p-6 rounded-lg shadow-sm">
+                        <h3 class="text-lg font-semibold text-var-text-color font-poppins mb-4">Total Cost</h3>
+                        <p class="text-lg md:text-xl font-bold text-var-step-4-accent font-poppins">FJD <span id="summary-cost">0.00</span></p>
                     </div>
                 </div>
-                <div class="form-group mt-4">
+                <div class="form-group mt-6">
                     <label class="flex items-center">
                         <input type="checkbox" id="privacy-consent" name="privacy_consent" {% if form_data.privacy_consent %}checked{% endif %} required class="mr-2 h-5 w-5 text-var-step-4-accent focus:ring-var-step-4-accent border-var-border-color" aria-required="true" aria-describedby="error-privacy-consent">
                         <span class="text-sm font-semibold text-var-text-color font-poppins">
@@ -284,13 +288,13 @@
                             and Terms of Service
                         </span>
                     </label>
-                    <p id="error-privacy-consent" class="error-message hidden mt-1 text-xs md:text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                    <p id="error-privacy-consent" class="error-message hidden mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
                 </div>
-                <div class="form-actions mt-6 flex flex-wrap justify-between gap-2">
-                    <button type="button" class="prev-step cta-button bg-var-button-bg text-white py-2 px-4 rounded hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-bg flex items-center transition-all duration-300" data-prev="3" aria-busy="false">
+                <div class="form-actions mt-6 flex flex-wrap justify-between gap-2 sticky bottom-0 bg-var-card-bg py-4 z-10">
+                    <button type="button" class="prev-step cta-button bg-var-button-bg text-white py-2 px-6 rounded-lg hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-bg flex items-center transition-all duration-300" data-prev="3" aria-busy="false">
                         Previous
                     </button>
-                    <button type="button" id="proceed-to-payment" class="cta-button bg-var-step-4-accent text-white py-2 px-4 rounded hover:bg-var-step-4-accent-hover focus:outline-none focus:ring-2 focus:ring-var-step-4-accent flex items-center transition-all duration-300" aria-busy="false">
+                    <button type="button" id="proceed-to-payment" class="cta-button bg-var-step-4-accent text-white py-2 px-6 rounded-lg hover:bg-var-step-4-accent-hover focus:outline-none focus:ring-2 focus:ring-var-step-4-accent flex items-center transition-all duration-300" aria-busy="false">
                         <span class="spinner hidden w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></span>
                         Proceed to Payment
                     </button>
@@ -305,24 +309,24 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/aos/2.3.4/aos.css" integrity="sha512-1cK78a1o+ht2JcaW6g8OXYwqpev9+6GqOkz9xmBN9iUUhIndKtxwILGWYOSibOKjLsEdjyjZvYDq/cZwNeak0w==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 <style>
 :root {
-    --bg-color: #f5f5f5;
+    --bg-color: #f8fafc;
     --card-bg: #ffffff;
-    --text-color: #333333;
-    --border-color: #d1d5db;
-    --button-bg: #f25f5c;
-    --button-hover: #e63946;
-    --step-1-accent: #f25f5c;
-    --step-2-accent: #457b9d;
-    --step-3-accent: #2a9d8f;
-    --step-4-accent: #e76f51;
-    --step-4-accent-hover: #d65f43;
+    --text-color: #1f2937;
+    --border-color: #e5e7eb;
+    --button-bg: #3b82f6;
+    --button-hover: #2563eb;
+    --step-1-accent: #f43f5e;
+    --step-2-accent: #3b82f6;
+    --step-3-accent: #10b981;
+    --step-4-accent: #f59e0b;
+    --step-4-accent-hover: #d97706;
     --alert-error-bg: #fee2e2;
     --alert-error-text: #dc2626;
     --step-1-bg: #fef2f2;
     --step-2-bg: #eff6ff;
     --step-3-bg: #ecfdf5;
-    --step-4-bg: #fff7ed;
-    --input-bg: #ffffff;
+    --step-4-bg: #fefce8;
+    --input-bg: #f9fafb;
 }
 
 body {
@@ -338,6 +342,9 @@ body {
 
 .booking-form-container {
     background-color: var(--card-bg);
+    position: relative;
+    border-radius: 0.75rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
 .form-step {
@@ -379,8 +386,8 @@ body {
 
 .passenger-card {
     border: 1px solid var(--border-color);
-    border-radius: 0.375rem;
-    padding: 0.75rem;
+    border-radius: 0.5rem;
+    padding: 1rem;
     margin-top: 1rem;
     background-color: var(--card-bg);
     transition: all 0.3s ease;
@@ -421,8 +428,8 @@ body {
     color: white;
     font-size: 0.875rem;
     font-weight: 600;
-    padding: 0.5rem 1rem;
-    border-radius: 0.375rem;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
     transition: all 0.2s ease;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
@@ -435,7 +442,7 @@ body {
 
 .cta-button:focus {
     outline: none;
-    box-shadow: 0 0 0 3px rgba(242, 95, 92, 0.3);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
 }
 
 .cta-button[aria-busy="true"] {
@@ -445,7 +452,7 @@ body {
 
 .file-preview img {
     max-width: 100%;
-    max-height: 6rem;
+    max-height: 8rem;
     object-fit: contain;
     transition: opacity 0.3s ease;
 }
@@ -454,7 +461,7 @@ body {
     display: inline-block;
     padding: 0.5rem 1rem;
     background-color: var(--step-2-bg);
-    border-radius: 0.375rem;
+    border-radius: 0.5rem;
     color: var(--text-color);
     transition: background-color 0.2s ease;
 }
@@ -464,6 +471,9 @@ body {
     border: 1px solid var(--alert-error-text);
     color: var(--alert-error-text);
     transition: opacity 0.3s ease;
+    margin-bottom: 1rem;
+    padding: 1rem;
+    border-radius: 0.5rem;
 }
 
 .alert.error ul li {
@@ -492,7 +502,7 @@ body {
     }
 
     .booking-form-container {
-        padding: 1rem;
+        padding: 1.5rem;
     }
 
     .steps {
@@ -512,7 +522,7 @@ body {
     }
 
     .form-group {
-        margin-bottom: 1rem;
+        margin-bottom: 1.5rem;
     }
 
     .form-actions {
@@ -535,6 +545,15 @@ body {
 
     .alert.error ul li {
         font-size: 0.75rem;
+    }
+
+    .form-actions.sticky {
+        position: sticky;
+        bottom: 0;
+        z-index: 10;
+        background-color: var(--card-bg);
+        padding: 1rem;
+        box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.1);
     }
 
     input, select {
