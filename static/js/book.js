@@ -138,9 +138,7 @@ function saveFormData() {
             { add_on_type: 'meal_dinner', quantity: document.getElementById('meal_dinner_quantity')?.value || '0' },
             { add_on_type: 'meal_snack', quantity: document.getElementById('meal_snack_quantity')?.value || '0' }
         ],
-        passengers: [],
-        vehicle: null,
-        cargo: null
+        passengers: []
     };
     ['adult', 'child', 'infant'].forEach(type => {
         const count = parseInt(document.getElementById(`${type}s`)?.value || 0);
@@ -160,16 +158,16 @@ function saveFormData() {
     if (data.add_vehicle) {
         data.vehicle = {
             vehicle_type: document.getElementById('vehicle_type')?.value || '',
-            vehicle_dimensions: document.getElementById('vehicle_dimensions')?.value || '',
-            vehicle_license_plate: document.getElementById('vehicle_license_plate')?.value || ''
+            dimensions: document.getElementById('vehicle_dimensions')?.value || '',
+            license_plate: document.getElementById('vehicle_license_plate')?.value || ''
         };
     }
     if (data.add_cargo) {
         data.cargo = {
             cargo_type: document.getElementById('cargo_type')?.value || '',
-            cargo_weight_kg: document.getElementById('cargo_weight_kg')?.value || '',
-            cargo_dimensions_cm: document.getElementById('cargo_dimensions_cm')?.value || '',
-            cargo_license_plate: document.getElementById('cargo_license_plate')?.value || ''
+            weight_kg: document.getElementById('cargo_weight_kg')?.value || '',
+            dimensions_cm: document.getElementById('cargo_dimensions_cm')?.value || '',
+            license_plate: document.getElementById('cargo_license_plate')?.value || ''
         };
     }
     try {
@@ -313,8 +311,8 @@ async function loadFormData() {
             const vehicleDimensions = document.getElementById('vehicle_dimensions');
             const vehicleLicensePlate = document.getElementById('vehicle_license_plate');
             if (vehicleType) vehicleType.value = savedData.vehicle.vehicle_type;
-            if (vehicleDimensions) vehicleDimensions.value = savedData.vehicle.vehicle_dimensions;
-            if (vehicleLicensePlate) vehicleLicensePlate.value = savedData.vehicle.vehicle_license_plate;
+            if (vehicleDimensions) vehicleDimensions.value = savedData.vehicle.dimensions;
+            if (vehicleLicensePlate) vehicleLicensePlate.value = savedData.vehicle.license_plate;
         }
         if (savedData.cargo && addCargoCheckbox?.checked) {
             const cargoType = document.getElementById('cargo_type');
@@ -322,9 +320,9 @@ async function loadFormData() {
             const cargoDimensionsCm = document.getElementById('cargo_dimensions_cm');
             const cargoLicensePlate = document.getElementById('cargo_license_plate');
             if (cargoType) cargoType.value = savedData.cargo.cargo_type;
-            if (cargoWeightKg) cargoWeightKg.value = savedData.cargo.cargo_weight_kg;
-            if (cargoDimensionsCm) cargoDimensionsCm.value = savedData.cargo.cargo_dimensions_cm;
-            if (cargoLicensePlate) cargoLicensePlate.value = savedData.cargo.cargo_license_plate;
+            if (cargoWeightKg) cargoWeightKg.value = savedData.cargo.weight_kg;
+            if (cargoDimensionsCm) cargoDimensionsCm.value = savedData.cargo.dimensions_cm;
+            if (cargoLicensePlate) cargoLicensePlate.value = savedData.cargo.license_plate;
         }
         updateStep(currentStep);
         updatePassengerFields();
