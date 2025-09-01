@@ -3,13 +3,11 @@
  * Dependencies: Stripe.js, AOS.js
  * Uses window.urls for API endpoints and window.isAuthenticated for user status
  */
-
 let currentStep = 1;
 let eventListenersAdded = false;
 let scheduleCache = null;
 let pricingCache = null;
 let latestTotalPrice = '0.00';
-
 // DOM elements
 const bookingForm = document.getElementById('booking-form');
 const scheduleInput = document.getElementById('schedule_id');
@@ -39,14 +37,12 @@ const steps = document.querySelectorAll('.step');
 const progressBarFill = document.querySelector('.progress-bar-fill');
 const resetScheduleButton = document.getElementById('reset-schedule');
 const scheduleErrorReset = document.getElementById('schedule-error-reset');
-
 // Logger for debugging
 const logger = {
     log: (...args) => console.log('[Booking]', ...args),
     warn: (...args) => console.warn('[Booking]', ...args),
     error: (...args) => console.error('[Booking]', ...args)
 };
-
 // Debounce utility
 function debounce(func, wait) {
     let timeout;
@@ -59,7 +55,6 @@ function debounce(func, wait) {
         timeout = setTimeout(later, wait);
     };
 }
-
 // Get CSRF token
 function getCsrfToken() {
     const tokenElement = document.querySelector('input[name=csrfmiddlewaretoken]');
@@ -67,7 +62,6 @@ function getCsrfToken() {
     if (!token) logger.warn('CSRF token not found');
     return token;
 }
-
 // Toggle button loading state
 function toggleButtonLoading(button, isLoading) {
     if (!button) return;
@@ -77,7 +71,6 @@ function toggleButtonLoading(button, isLoading) {
     }
     button.setAttribute('aria-busy', isLoading);
 }
-
 // Update progress bar
 function updateProgressBar(step) {
     if (!progressBarFill || !steps.length) {
@@ -103,7 +96,6 @@ function updateProgressBar(step) {
         }
     });
 }
-
 // Update form steps
 function updateStep(step) {
     currentStep = step;
@@ -125,7 +117,6 @@ function updateStep(step) {
         debouncedUpdateSummary();
     }
 }
-
 // Save form data
 function saveFormData() {
     if (!bookingForm) return;
@@ -147,7 +138,9 @@ function saveFormData() {
             { add_on_type: 'meal_dinner', quantity: document.getElementById('meal_dinner_quantity')?.value || '0' },
             { add_on_type: 'meal_snack', quantity: document.getElementById('meal_snack_quantity')?.value || '0' }
         ],
-        passengers: []
+        passengers: [],
+        vehicle: null,
+        cargo: null
     };
     ['adult', 'child', 'infant'].forEach(type => {
         const count = parseInt(document.getElementById(`${type}s`)?.value || 0);
@@ -164,6 +157,21 @@ function saveFormData() {
             data.passengers.push(passenger);
         }
     });
+    if (data.add_vehicle) {
+        data.vehicle = {
+            vehicle_type: document.getElementById('vehicle_type')?.value || '',
+            vehicle_dimensions: document.getElementById('vehicle_dimensions')?.value || '',
+            vehicle_license_plate: document.getElementById('vehicle_license_plate')?.value || ''
+        };
+    }
+    if (data.add_cargo) {
+        data.cargo = {
+            cargo_type: document.getElementById('cargo_type')?.value || '',
+            cargo_weight_kg: document.getElementById('cargo_weight_kg')?.value || '',
+            cargo_dimensions_cm: document.getElementById('cargo_dimensions_cm')?.value || '',
+            cargo_license_plate: document.getElementById('cargo_license_plate')?.value || ''
+        };
+    }
     try {
         sessionStorage.setItem('bookingFormData', JSON.stringify(data));
         logger.log('Form data saved to sessionStorage:', data);
@@ -171,7 +179,6 @@ function saveFormData() {
         logger.warn('sessionStorage unavailable:', e);
     }
 }
-
 // Clear form data
 function clearFormData() {
     try {
@@ -201,7 +208,6 @@ function clearFormData() {
         toggleCargoFields();
     }
 }
-
 // Load form data
 async function loadFormData() {
     try {
@@ -302,6 +308,24 @@ async function loadFormData() {
                 }
             });
         }
+        if (savedData.vehicle && addVehicleCheckbox?.checked) {
+            const vehicleType = document.getElementById('vehicle_type');
+            const vehicleDimensions = document.getElementById('vehicle_dimensions');
+            const vehicleLicensePlate = document.getElementById('vehicle_license_plate');
+            if (vehicleType) vehicleType.value = savedData.vehicle.vehicle_type;
+            if (vehicleDimensions) vehicleDimensions.value = savedData.vehicle.vehicle_dimensions;
+            if (vehicleLicensePlate) vehicleLicensePlate.value = savedData.vehicle.vehicle_license_plate;
+        }
+        if (savedData.cargo && addCargoCheckbox?.checked) {
+            const cargoType = document.getElementById('cargo_type');
+            const cargoWeightKg = document.getElementById('cargo_weight_kg');
+            const cargoDimensionsCm = document.getElementById('cargo_dimensions_cm');
+            const cargoLicensePlate = document.getElementById('cargo_license_plate');
+            if (cargoType) cargoType.value = savedData.cargo.cargo_type;
+            if (cargoWeightKg) cargoWeightKg.value = savedData.cargo.cargo_weight_kg;
+            if (cargoDimensionsCm) cargoDimensionsCm.value = savedData.cargo.cargo_dimensions_cm;
+            if (cargoLicensePlate) cargoLicensePlate.value = savedData.cargo.cargo_license_plate;
+        }
         updateStep(currentStep);
         updatePassengerFields();
         toggleVehicleFields();
@@ -312,7 +336,6 @@ async function loadFormData() {
         updateStep(1);
     }
 }
-
 // Display backend errors
 function displayBackendErrors(errors, button) {
     if (!button) return;
@@ -363,7 +386,6 @@ function displayBackendErrors(errors, button) {
     errorContainer.appendChild(ul);
     button.insertAdjacentElement('afterend', errorContainer);
 }
-
 // Update passenger fields
 function updatePassengerFields() {
     const adults = parseInt(adultsInput?.value || 0);
@@ -580,7 +602,6 @@ function updatePassengerFields() {
         }
     }
 }
-
 // Update child and infant linked adult dropdowns
 function updateChildLinkedAdultOptions() {
     const adultsCount = parseInt(adultsInput?.value || 0);
@@ -606,7 +627,6 @@ function updateChildLinkedAdultOptions() {
         });
     });
 }
-
 // Toggle vehicle fields
 function toggleVehicleFields() {
     if (addVehicleCheckbox && vehicleFields) {
@@ -616,7 +636,6 @@ function toggleVehicleFields() {
         });
     }
 }
-
 // Toggle cargo fields
 function toggleCargoFields() {
     if (addCargoCheckbox && cargoFields) {
@@ -626,14 +645,12 @@ function toggleCargoFields() {
         });
     }
 }
-
 // Update booking summary
 const debouncedUpdateSummary = debounce(async function updateSummary() {
     if (currentStep !== 4) {
         logger.log('Not on Step 4, skipping summary update');
         return;
     }
-
     if (!summarySection || !summarySchedule || !summaryDuration || !summaryPassengers || !summaryPassengerBreakdown || !summaryAddOns || !summaryVehicle || !summaryCargo || !summaryCost || !weatherWarning) {
         logger.warn('Summary elements missing');
         if (summarySection) {
@@ -644,14 +661,11 @@ const debouncedUpdateSummary = debounce(async function updateSummary() {
         if (weatherWarning) weatherWarning.innerHTML = '';
         return;
     }
-
     const step4 = document.querySelector('.form-step[data-step="4"]');
     if (step4) step4.setAttribute('aria-busy', 'true');
-
     if (summarySection) {
         summarySection.innerHTML = '<div class="spinner w-8 h-8 border-2 border-var-text-color border-t-transparent rounded-full animate-spin mx-auto" aria-live="polite"></div>';
     }
-
     const scheduleId = scheduleInput?.value?.trim() || '';
     if (!scheduleId || isNaN(parseInt(scheduleId))) {
         if (summarySection) {
@@ -666,7 +680,6 @@ const debouncedUpdateSummary = debounce(async function updateSummary() {
         if (step4) step4.setAttribute('aria-busy', 'false');
         return;
     }
-
     try {
         if (!scheduleCache) {
             const response = await fetch(window.urls.getScheduleUpdates, {
@@ -675,7 +688,6 @@ const debouncedUpdateSummary = debounce(async function updateSummary() {
             if (!response.ok) throw new Error('Schedule fetch failed');
             scheduleCache = await response.json();
         }
-
         const schedule = scheduleCache.schedules.find(s => String(s.id) === String(scheduleId));
         if (!schedule || schedule.status !== 'scheduled' || new Date(schedule.departure_time) <= new Date()) {
             if (summarySection) {
@@ -691,10 +703,8 @@ const debouncedUpdateSummary = debounce(async function updateSummary() {
             if (step4) step4.setAttribute('aria-busy', 'false');
             return;
         }
-
         const formData = new FormData(bookingForm);
         formData.append('step', currentStep);
-
         ['premium_seating', 'priority_boarding', 'cabin', 'meal_breakfast', 'meal_lunch', 'meal_dinner', 'meal_snack'].forEach((type, index) => {
             const quantity = document.getElementById(`${type}_quantity`)?.value || '0';
             if (parseInt(quantity) > 0) {
@@ -702,7 +712,6 @@ const debouncedUpdateSummary = debounce(async function updateSummary() {
                 formData.append(`add_ons[${index}][quantity]`, quantity);
             }
         });
-
         const pricingResponse = await fetch(window.urls.getPricing, {
             method: 'POST',
             body: formData,
@@ -711,7 +720,6 @@ const debouncedUpdateSummary = debounce(async function updateSummary() {
         if (!pricingResponse.ok) throw new Error('Pricing fetch failed');
         pricingCache = await pricingResponse.json();
         latestTotalPrice = pricingCache.total_price || '0.00';
-
         let backendSummary = window.backendSummary || null;
         if (!backendSummary) {
             const summaryResponse = await fetch(window.urls.bookings, {
@@ -727,7 +735,6 @@ const debouncedUpdateSummary = debounce(async function updateSummary() {
                 }
             }
         }
-
         let weatherHtml = '';
         try {
             const weatherResponse = await fetch(`${window.urls.getWeatherConditions}?schedule_id=${scheduleId}`, {
@@ -745,7 +752,6 @@ const debouncedUpdateSummary = debounce(async function updateSummary() {
         } catch (e) {
             logger.warn('Weather fetch failed:', e);
         }
-
         if (summarySchedule) {
             summarySchedule.textContent = backendSummary?.schedule?.route || `${schedule.route.departure_port} to ${schedule.route.destination_port} - ${new Date(schedule.departure_time).toLocaleString('en-US', {
                 weekday: 'short',
@@ -756,19 +762,15 @@ const debouncedUpdateSummary = debounce(async function updateSummary() {
                 hour12: true
             })}`;
         }
-
         if (summaryDuration) {
             summaryDuration.textContent = backendSummary?.schedule?.estimated_duration || schedule.estimated_duration;
         }
-
         const adults = parseInt(adultsInput?.value || 0);
         const children = parseInt(childrenInput?.value || 0);
         const infants = parseInt(infantsInput?.value || 0);
-
         if (summaryPassengers) {
             summaryPassengers.textContent = `${adults} Adult${adults !== 1 ? 's' : ''}, ${children} Child${children !== 1 ? 'ren' : ''}, ${infants} Infant${infants !== 1 ? 's' : ''}`;
         }
-
         let passengerBreakdown = '';
         document.querySelectorAll('#adult-fields .passenger-card').forEach((card, i) => {
             const firstName = card.querySelector('[name^="adult_first_name"]')?.value || 'Unknown';
@@ -799,7 +801,6 @@ const debouncedUpdateSummary = debounce(async function updateSummary() {
         if (summaryPassengerBreakdown) {
             summaryPassengerBreakdown.innerHTML = passengerBreakdown;
         }
-
         const addOns = [];
         ['premium_seating', 'priority_boarding', 'cabin', 'meal_breakfast', 'meal_lunch', 'meal_dinner', 'meal_snack'].forEach(type => {
             const quantity = document.getElementById(`${type}_quantity`)?.value || '0';
@@ -810,7 +811,6 @@ const debouncedUpdateSummary = debounce(async function updateSummary() {
         if (summaryAddOns) {
             summaryAddOns.innerHTML = addOns.length > 0 ? addOns.map(item => `<p class="text-xs md:text-sm text-var-text-color font-poppins">${item}</p>`).join('') : '<p class="text-xs md:text-sm text-var-text-color font-poppins">None</p>';
         }
-
         if (summaryVehicle) {
             summaryVehicle.innerHTML = addVehicleCheckbox?.checked ? `
                 <p class="text-xs md:text-sm text-var-text-color font-poppins">Type: ${document.getElementById('vehicle_type')?.value || 'N/A'}</p>
@@ -818,7 +818,6 @@ const debouncedUpdateSummary = debounce(async function updateSummary() {
                 <p class="text-xs md:text-sm text-var-text-color font-poppins">License Plate: ${document.getElementById('vehicle_license_plate')?.value || 'N/A'}</p>
             ` : '<p class="text-xs md:text-sm text-var-text-color font-poppins">None</p>';
         }
-
         if (summaryCargo) {
             summaryCargo.innerHTML = addCargoCheckbox?.checked ? `
                 <p class="text-xs md:text-sm text-var-text-color font-poppins">Type: ${document.getElementById('cargo_type')?.value || 'N/A'}</p>
@@ -827,15 +826,12 @@ const debouncedUpdateSummary = debounce(async function updateSummary() {
                 <p class="text-xs md:text-sm text-var-text-color font-poppins">License Plate: ${document.getElementById('cargo_license_plate')?.value || 'N/A'}</p>
             ` : '<p class="text-xs md:text-sm text-var-text-color font-poppins">None</p>';
         }
-
         if (summaryCost) {
             summaryCost.textContent = parseFloat(latestTotalPrice).toFixed(2);
         }
-
         if (weatherWarning) {
             weatherWarning.innerHTML = weatherHtml;
         }
-
         if (summarySection) {
             summarySection.innerHTML = `
                 <div class="bg-var-card-bg p-4 rounded-lg shadow-sm">
@@ -866,7 +862,6 @@ const debouncedUpdateSummary = debounce(async function updateSummary() {
                 </div>
             `;
         }
-
     } catch (e) {
         logger.error('Summary update failed:', e);
         if (summarySection) {
@@ -882,13 +877,11 @@ const debouncedUpdateSummary = debounce(async function updateSummary() {
         if (step4) step4.setAttribute('aria-busy', 'false');
     }
 }, 300);
-
 // Validate email format
 function isValidEmail(email) {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
 }
-
 // Validate step and proceed
 async function validateStep(step, button) {
     if (!bookingForm || !button) {
@@ -927,10 +920,8 @@ async function validateStep(step, button) {
                 headers: { 'X-Requested-With': 'XMLHttpRequest' }
             });
             if (!response.ok) throw new Error('Schedule fetch failed');
-
             scheduleCache = await response.json();
             const schedule = scheduleCache.schedules.find(s => String(s.id) === String(scheduleId));
-
             if (!schedule || schedule.status !== 'scheduled' || new Date(schedule.departure_time) <= new Date()) {
                 displayBackendErrors(
                     [{ field: 'schedule_id', message: 'Selected schedule is no longer available. Please choose a new schedule.' }],
@@ -1172,7 +1163,6 @@ async function validateStep(step, button) {
         toggleButtonLoading(button, false);
     }
 }
-
 // Initialize event listeners
 function initializeEventListeners() {
     if (eventListenersAdded) return;
@@ -1274,7 +1264,6 @@ function initializeEventListeners() {
         }
     });
 }
-
 // Initialize AOS and load form data
 document.addEventListener('DOMContentLoaded', () => {
     AOS.init({ duration: 600, once: true });

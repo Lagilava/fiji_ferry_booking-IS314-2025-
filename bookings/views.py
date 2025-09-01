@@ -896,10 +896,15 @@ def create_checkout_session(request):
         adults = safe_int(request.POST.get('adults', '0'))
         children = safe_int(request.POST.get('children', '0'))
         infants = safe_int(request.POST.get('infants', '0'))
+        add_vehicle = request.POST.get('add_vehicle') == 'true'
+        vehicle_type = get_post_field(request, ['vehicles[0][vehicle_type]', 'vehicle_type'])
+        vehicle_dimensions = get_post_field(request, ['vehicles[0][dimensions]', 'vehicle_dimensions'])
+        vehicle_license_plate = get_post_field(request, ['vehicles[0][license_plate]', 'vehicle_license_plate'])
         add_cargo = request.POST.get('add_cargo') == 'true'
-        cargo_type = request.POST.get('cargo_type', '')
-        weight_kg = request.POST.get('cargo_weight_kg', '')
-        license_plate = request.POST.get('cargo_license_plate', '')
+        cargo_type = get_post_field(request, ['cargo[0][cargo_type]', 'cargo_type'])
+        weight_kg = get_post_field(request, ['cargo[0][weight_kg]', 'cargo_weight_kg', 'weight_kg'])
+        dimensions_cm = get_post_field(request, ['cargo[0][dimensions_cm]', 'cargo_dimensions_cm', 'dimensions_cm'])
+        cargo_license_plate = get_post_field(request, ['cargo[0][license_plate]', 'cargo_license_plate', 'license_plate'])
         guest_email = request.POST.get('guest_email', '')
         addons = []
         for addon_type in dict(AddOn.ADD_ON_TYPE_CHOICES).keys():
@@ -917,6 +922,13 @@ def create_checkout_session(request):
         if total_passengers <= 0:
             errors.append({'field': 'passengers', 'message': 'At least one passenger is required.'})
 
+        # Validate vehicle fields
+        if add_vehicle:
+            if not vehicle_type:
+                errors.append({'field': 'vehicle_type', 'message': 'Vehicle type is required when adding vehicle.'})
+            if not vehicle_dimensions:
+                errors.append({'field': 'vehicle_dimensions', 'message': 'Vehicle dimensions are required when adding vehicle.'})
+
         # Validate cargo fields
         if add_cargo:
             if not cargo_type:
@@ -925,8 +937,8 @@ def create_checkout_session(request):
                 errors.append({'field': 'cargo_weight_kg', 'message': 'Cargo weight is required when adding cargo.'})
             else:
                 try:
-                    weight_kg = float(weight_kg)
-                    if weight_kg <= 0:
+                    weight_kg_float = float(weight_kg)
+                    if weight_kg_float <= 0:
                         errors.append({'field': 'cargo_weight_kg', 'message': 'Cargo weight must be greater than zero.'})
                 except (ValueError, TypeError):
                     errors.append({'field': 'cargo_weight_kg', 'message': 'Cargo weight must be a valid number.'})
@@ -951,7 +963,8 @@ def create_checkout_session(request):
 
         try:
             calculated_price = calculate_total_price(
-                adults, children, infants, schedule, add_cargo, cargo_type, float(weight_kg) if weight_kg and add_cargo else 0, addons
+                adults, children, infants, schedule, add_cargo, cargo_type, float(weight_kg) if weight_kg and add_cargo else 0, addons,
+                add_vehicle, vehicle_type, vehicle_dimensions
             )
             if not total_price:
                 total_price = calculated_price
@@ -1030,21 +1043,37 @@ def create_checkout_session(request):
                     errors.append({'field': f'{p_type}_{i}', 'message': f'{p_type.capitalize()} {i + 1}: {str(e)}'})
                     return JsonResponse({'success': False, 'errors': errors}, status=400)
 
+        # Create Vehicle
+        if add_vehicle and vehicle_type and vehicle_dimensions:
+            try:
+                Vehicle.objects.create(
+                    booking=booking,
+                    vehicle_type=vehicle_type,
+                    dimensions=vehicle_dimensions,
+                    license_plate=vehicle_license_plate or '',
+                    price=calculate_vehicle_price(vehicle_type, vehicle_dimensions)
+                )
+            except ValueError as e:
+                logger.error(f"Vehicle creation error: {str(e)}")
+                booking.delete()
+                errors.append({'field': 'vehicle', 'message': f'Invalid vehicle data: {str(e)}'})
+                return JsonResponse({'success': False, 'errors': errors}, status=400)
+
         # Create Cargo
         if add_cargo and cargo_type and weight_kg:
             try:
-                weight_kg = float(weight_kg)
-                if weight_kg <= 0:
+                weight_kg_float = float(weight_kg)
+                if weight_kg_float <= 0:
                     errors.append({'field': 'cargo_weight_kg', 'message': 'Cargo weight must be greater than zero.'})
                     booking.delete()
                     return JsonResponse({'success': False, 'errors': errors}, status=400)
                 Cargo.objects.create(
                     booking=booking,
                     cargo_type=cargo_type,
-                    weight_kg=Decimal(weight_kg),
-                    dimensions_cm=request.POST.get('dimensions_cm', ''),
-                    license_plate=license_plate,
-                    price=calculate_cargo_price(Decimal(weight_kg), cargo_type)
+                    weight_kg=Decimal(weight_kg_float),
+                    dimensions_cm=dimensions_cm or '',
+                    license_plate=cargo_license_plate or '',
+                    price=calculate_cargo_price(Decimal(weight_kg_float), cargo_type)
                 )
             except (ValueError, TypeError) as e:
                 logger.error(f"Cargo creation error: {str(e)}")
@@ -1182,13 +1211,13 @@ def book_ticket(request):
         add_vehicle = request.POST.get('add_vehicle') == 'true'
         add_cargo = request.POST.get('add_cargo') == 'true'
         # Support both array-like names and simple names from the frontend
-        vehicle_type = get_post_field(request, ['vehicles[0][vehicle_type]', 'vehicle_type'], '')
-        vehicle_dimensions = get_post_field(request, ['vehicles[0][dimensions]', 'vehicle_dimensions'], '')
-        vehicle_license_plate = get_post_field(request, ['vehicles[0][license_plate]', 'vehicle_license_plate'], '')
-        cargo_type = get_post_field(request, ['cargo[0][cargo_type]', 'cargo_type'], '')
-        weight_kg = get_post_field(request, ['cargo[0][weight_kg]', 'cargo_weight_kg', 'weight_kg'], '')
-        dimensions_cm = get_post_field(request, ['cargo[0][dimensions_cm]', 'cargo_dimensions_cm', 'dimensions_cm'], '')
-        license_plate = get_post_field(request, ['cargo[0][license_plate]', 'cargo_license_plate', 'license_plate'], '')
+        vehicle_type = get_post_field(request, ['vehicles[0][vehicle_type]', 'vehicle_type'])
+        vehicle_dimensions = get_post_field(request, ['vehicles[0][dimensions]', 'vehicle_dimensions'])
+        vehicle_license_plate = get_post_field(request, ['vehicles[0][license_plate]', 'vehicle_license_plate'])
+        cargo_type = get_post_field(request, ['cargo[0][cargo_type]', 'cargo_type'])
+        weight_kg = get_post_field(request, ['cargo[0][weight_kg]', 'cargo_weight_kg', 'weight_kg'])
+        dimensions_cm = get_post_field(request, ['cargo[0][dimensions_cm]', 'cargo_dimensions_cm', 'dimensions_cm'])
+        license_plate = get_post_field(request, ['cargo[0][license_plate]', 'cargo_license_plate', 'license_plate'])
         privacy_consent = request.POST.get('privacy_consent') == 'true'
         addons = []
         for addon_type in dict(AddOn.ADD_ON_TYPE_CHOICES).keys():
@@ -1287,164 +1316,47 @@ def book_ticket(request):
             adults, children, infants, schedule, add_cargo, cargo_type, weight_kg, addons, add_vehicle, vehicle_type, vehicle_dimensions
         )
 
-        if request.POST.get('step') == '4':
-            base_fare = schedule.route.base_fare or Decimal('35.50')
-            summary = {
-                'schedule': {
-                    'route': f"{schedule.route.departure_port.name} to {schedule.route.destination_port.name}",
-                    'departure_time': schedule.departure_time.strftime("%a, %b %d, %H:%M"),
-                    'estimated_duration': int(schedule.route.estimated_duration.total_seconds() / 60) if schedule.route.estimated_duration else "N/A"
-                },
-                'passengers': passenger_data,
-                'vehicle': {
-                    'type': vehicle_type,
-                    'dimensions': vehicle_dimensions,
-                    'license_plate': vehicle_license_plate,
-                    'price': str(calculate_vehicle_price(vehicle_type, vehicle_dimensions)) if add_vehicle else None
-                } if add_vehicle else None,
-                'cargo': {
-                    'type': cargo_type,
-                    'weight_kg': weight_kg,
-                    'license_plate': license_plate,
-                    'price': str(calculate_cargo_price(Decimal(weight_kg), cargo_type)) if add_cargo and weight_kg else None
-                } if add_cargo else None,
-                'addons': [
-                    {'type': addon['type'], 'quantity': addon['quantity'], 'price': str(calculate_addon_price(addon['type'], addon['quantity']))}
-                    for addon in addons
-                ],
-                'pricing': {
-                    'adults': str(Decimal(adults) * base_fare),
-                    'children': str(Decimal(children) * base_fare * Decimal('0.5')),
-                    'infants': str(Decimal(infants) * base_fare * Decimal('0.1')),
-                    'vehicle': str(calculate_vehicle_price(vehicle_type, vehicle_dimensions)) if add_vehicle else "0.00",
-                    'cargo': str(calculate_cargo_price(Decimal(weight_kg), cargo_type)) if add_cargo and weight_kg else "0.00",
-                    'addons': str(sum(calculate_addon_price(addon['type'], addon['quantity']) for addon in addons)),
-                    'total': str(total_price)
-                }
+        base_fare = schedule.route.base_fare or Decimal('35.50')
+        summary = {
+            'schedule': {
+                'route': f"{schedule.route.departure_port.name} to {schedule.route.destination_port.name}",
+                'departure_time': schedule.departure_time.strftime("%a, %b %d, %H:%M"),
+                'estimated_duration': int(schedule.route.estimated_duration.total_seconds() / 60) if schedule.route.estimated_duration else "N/A"
+            },
+            'passengers': passenger_data,
+            'vehicle': {
+                'type': vehicle_type,
+                'dimensions': vehicle_dimensions,
+                'license_plate': vehicle_license_plate,
+                'price': str(calculate_vehicle_price(vehicle_type, vehicle_dimensions)) if add_vehicle else None
+            } if add_vehicle else None,
+            'cargo': {
+                'type': cargo_type,
+                'weight_kg': weight_kg,
+                'license_plate': license_plate,
+                'price': str(calculate_cargo_price(Decimal(weight_kg), cargo_type)) if add_cargo and weight_kg else None
+            } if add_cargo else None,
+            'addons': [
+                {'type': addon['type'], 'quantity': addon['quantity'], 'price': str(calculate_addon_price(addon['type'], addon['quantity']))}
+                for addon in addons
+            ],
+            'pricing': {
+                'adults': str(Decimal(adults) * base_fare),
+                'children': str(Decimal(children) * base_fare * Decimal('0.5')),
+                'infants': str(Decimal(infants) * base_fare * Decimal('0.1')),
+                'vehicle': str(calculate_vehicle_price(vehicle_type, vehicle_dimensions)) if add_vehicle else "0.00",
+                'cargo': str(calculate_cargo_price(Decimal(weight_kg), cargo_type)) if add_cargo and weight_kg else "0.00",
+                'addons': str(sum(calculate_addon_price(addon['type'], addon['quantity']) for addon in addons)),
+                'total': str(total_price)
             }
-        else:
-            summary = None
-
-        booking_kwargs = {
-            'user': request.user if request.user.is_authenticated else None,
-            'schedule': schedule,
-            'guest_email': guest_email if not request.user.is_authenticated else None,
-            'passenger_adults': adults,
-            'passenger_children': children,
-            'passenger_infants': infants,
-            'total_price': total_price,
-            'status': 'pending'
         }
 
-        try:
-            booking = Booking.objects.create(**booking_kwargs)
-            booking.clean()
-        except ValidationError as e:
-            logger.error(f"Booking creation error: {str(e)}")
-            return JsonResponse({'errors': [{'field': 'general', 'message': f'Failed to create booking: {str(e)}'}]}, status=400)
-
-        adult_passengers = []
-        for p_type in ['adult', 'child', 'infant']:
-            count = adults if p_type == 'adult' else children if p_type == 'child' else infants
-            for i in range(count):
-                passenger_data = validate_passenger_data(request, p_type, i, adults, [])
-                passenger_kwargs = {
-                    'booking': booking,
-                    'first_name': passenger_data['first_name'],
-                    'last_name': passenger_data['last_name'],
-                    'passenger_type': p_type,
-                    'document': passenger_data['document']
-                }
-                if p_type in ['adult', 'child'] and passenger_data['age']:
-                    passenger_kwargs['age'] = int(passenger_data['age'])
-                if p_type == 'infant' and passenger_data['dob']:
-                    passenger_kwargs['date_of_birth'] = datetime.datetime.strptime(passenger_data['dob'], '%Y-%m-%d').date()
-
-                try:
-                    passenger = Passenger.objects.create(**passenger_kwargs)
-                    passenger.clean()
-                    if p_type in ['child', 'infant'] and passenger_data['linked_adult_index']:
-                        try:
-                            linked_adult = adult_passengers[int(passenger_data['linked_adult_index'])]
-                            passenger.linked_adult = linked_adult
-                            passenger.save()
-                        except (IndexError, ValueError):
-                            passenger.delete()
-                            booking.delete()
-                            errors.append({'field': f'{p_type}_linked_adult_{i}', 'message': f'{p_type.capitalize()} {i + 1}: Invalid linked adult.'})
-                            return JsonResponse({'success': False, 'errors': errors}, status=400)
-                    if p_type == 'adult':
-                        adult_passengers.append(passenger)
-                except ValidationError as e:
-                    logger.error(f"Passenger creation error: {str(e)}")
-                    passenger.delete()
-                    booking.delete()
-                    errors.append({'field': f'{p_type}_{i}', 'message': f'{p_type.capitalize()} {i + 1}: {str(e)}'})
-                    return JsonResponse({'success': False, 'errors': errors}, status=400)
-
-        if add_vehicle and vehicle_type and vehicle_dimensions:
-            try:
-                Vehicle.objects.create(
-                    booking=booking,
-                    vehicle_type=vehicle_type,
-                    dimensions=vehicle_dimensions,
-                    license_plate=vehicle_license_plate or '',
-                    price=calculate_vehicle_price(vehicle_type, vehicle_dimensions)
-                )
-            except ValueError as e:
-                logger.error(f"Vehicle creation error: {str(e)}")
-                booking.delete()
-                errors.append({'field': 'vehicle', 'message': f'Invalid vehicle data: {str(e)}', 'step': 3})
-                return JsonResponse({'success': False, 'errors': errors}, status=400)
-
-        if add_cargo and cargo_type and weight_kg:
-            try:
-                weight_kg_float = float(weight_kg)
-                if weight_kg_float <= 0:
-                    errors.append({'field': 'weight_kg', 'message': 'Cargo weight must be greater than zero.', 'step': 3})
-                    booking.delete()
-                    return JsonResponse({'success': False, 'errors': errors}, status=400)
-                Cargo.objects.create(
-                    booking=booking,
-                    cargo_type=cargo_type,
-                    weight_kg=Decimal(weight_kg_float),
-                    dimensions_cm=dimensions_cm or '',
-                    license_plate=license_plate or '',
-                    price=calculate_cargo_price(Decimal(weight_kg_float), cargo_type)
-                )
-            except ValueError as e:
-                logger.error(f"Cargo creation error: {str(e)}")
-                booking.delete()
-                errors.append({'field': 'cargo', 'message': f'Invalid cargo data: {str(e)}', 'step': 3})
-                return JsonResponse({'success': False, 'errors': errors}, status=400)
-
-        for addon in addons:
-            try:
-                AddOn.objects.create(
-                    booking=booking,
-                    add_on_type=addon['type'],
-                    description=addon['description'],
-                    quantity=addon['quantity'],
-                    price=calculate_addon_price(addon['type'], addon['quantity'])
-                )
-            except ValueError as e:
-                logger.error(f"Add-on creation error: {str(e)}")
-                booking.delete()
-                errors.append({'field': 'addons', 'message': f'Invalid add-on: {str(e)}', 'step': 4})
-                return JsonResponse({'success': False, 'errors': errors}, status=400)
-
-        schedule.available_seats -= total_passengers
-        schedule.save()
-
-        request.session['booking_id'] = booking.id
-        if not request.user.is_authenticated and guest_email:
-            request.session['guest_email'] = guest_email
         request.session['passenger_data'] = passenger_data
         request.session.modified = True
 
         return JsonResponse({
             'success': True,
-            'booking_id': booking.id
+            'summary': summary
         })
 
     summary = None
