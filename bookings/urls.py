@@ -29,4 +29,6 @@ urlpatterns = [
     path('create_checkout_session/', views.create_checkout_session, name='create_checkout_session'),
     path('check_session/', views.check_session, name='check_session'),
     path('booking/<int:booking_id>/pdf/', views.booking_pdf, name='booking_pdf'),
+    path('profile/', views.profile, name='profile'),
+    path("terms-of-service/", views.terms_of_service, name="terms_of_service"),
 ]

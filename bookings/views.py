@@ -429,6 +429,13 @@ def routes_api(request):
         logger.error(f"Routes API error: {str(e)}")
         return JsonResponse({'error': str(e)}, status=500)
 
+@login_required
+def profile(request):
+    return render(request, "bookings/profile.html")
+
+def terms_of_service(request):
+    return render(request, "terms_of_service.html")
+
 @require_GET
 def homepage(request):
     now = timezone.now()
@@ -439,8 +446,9 @@ def homepage(request):
 
     route_input = request.GET.get('route', '').strip().lower()
     travel_date = request.GET.get('date', '').strip()
+    passengers = request.GET.get('passengers', '1')
 
-    logger.debug(f"Search parameters: route={route_input}, travel_date={travel_date}")
+    logger.debug(f"Search parameters: route={route_input}, travel_date={travel_date}, passengers={passengers}")
 
     if route_input:
         try:
@@ -472,65 +480,194 @@ def homepage(request):
             'time': next_departure.departure_time.strftime('%a, %b %d, %H:%M'),
             'route': f"{next_departure.route.departure_port.name} to {next_departure.route.destination_port.name}",
             'schedule_id': next_departure.id,
-            'estimated_duration': int(next_departure.route.estimated_duration.total_seconds() / 60) if next_departure.route.estimated_duration else None
+            'estimated_duration': int(
+                next_departure.route.estimated_duration.total_seconds() / 60) if next_departure.route.estimated_duration else None
         }
 
-    weather_data = []
+    # Complete weather data structure
+    weather_data = {
+        'current': {
+            'temp': 28,  # Default values
+            'condition': 'Sunny',
+            'humidity': 65,
+            'wind': 12
+        },
+        'forecast': [
+            {
+                'date': 'Tomorrow',
+                'temp': 29,
+                'condition': 'Partly Cloudy'
+            },
+            {
+                'date': 'Friday',
+                'temp': 27,
+                'condition': 'Sunny'
+            }
+        ],
+        'ports': {
+            'nadi': {
+                'temp': 28,
+                'condition': 'Sunny',
+                'wind': 10,
+                'precip': 0
+            },
+            'suva': {
+                'temp': 26,
+                'condition': 'Partly Cloudy',
+                'wind': 8,
+                'precip': 5
+            }
+        }
+    }
+
+    # Override with real weather data if available
+    try:
+        # Get current weather conditions
+        current_conditions = WeatherCondition.objects.filter(
+            expires_at__gt=now
+        ).order_by('-updated_at').first()
+
+        if current_conditions:
+            weather_data['current'] = {
+                'temp': float(current_conditions.temperature) if current_conditions.temperature else 28,
+                'condition': current_conditions.condition or 'Sunny',
+                'humidity': int(current_conditions.humidity) if current_conditions.humidity else 65,
+                'wind': float(current_conditions.wind_speed) if current_conditions.wind_speed else 12
+            }
+
+        # Get port-specific weather
+        port_weather = WeatherCondition.objects.filter(
+            port__name__in=['Nadi', 'Suva'],
+            expires_at__gt=now
+        ).select_related('port').order_by('port__name', '-updated_at')
+
+        port_data = {}
+        for pw in port_weather:
+            port_key = pw.port.name.lower()
+            port_data[port_key] = {
+                'temp': float(pw.temperature) if pw.temperature else 28,
+                'condition': pw.condition or 'Sunny',
+                'wind': float(pw.wind_speed) if pw.wind_speed else 10,
+                'precip': int(pw.precipitation_probability) if pw.precipitation_probability else 0
+            }
+
+        # Update specific ports
+        if 'nadi' in port_data:
+            weather_data['ports']['nadi'].update(port_data['nadi'])
+        if 'suva' in port_data:
+            weather_data['ports']['suva'].update(port_data['suva'])
+
+        # Get forecast (mock data - replace with real forecast API)
+        forecast_data = [
+            {
+                'date': 'Tomorrow',
+                'temp': 29,
+                'condition': 'Partly Cloudy'
+            },
+            {
+                'date': 'Friday',
+                'temp': 27,
+                'condition': 'Sunny'
+            }
+        ]
+        weather_data['forecast'] = forecast_data
+
+    except Exception as e:
+        logger.error(f"Weather data fetch error: {e}")
+        # Keep default data
+
+    # Schedule-specific weather data
+    schedule_weather_data = []
     schedule_route_ids = schedules.values_list('route_id', flat=True).distinct()
-    latest_conditions_subquery = WeatherCondition.objects.filter(
-        route_id=OuterRef('route_id'),
-        expires_at__gt=now
-    ).values('route_id').annotate(
-        latest_updated=Max('updated_at')
-    ).values('latest_updated')
 
-    latest_conditions = WeatherCondition.objects.filter(
-        route_id__in=schedule_route_ids,
-        expires_at__gt=now,
-        updated_at__in=Subquery(latest_conditions_subquery)
-    ).select_related('route', 'port')
+    if schedule_route_ids:
+        try:
+            latest_conditions_subquery = WeatherCondition.objects.filter(
+                route_id=OuterRef('route_id'),
+                expires_at__gt=now
+            ).values('route_id').annotate(
+                latest_updated=Max('updated_at')
+            ).values('latest_updated')
 
-    latest_per_route = {wc.route_id: wc for wc in latest_conditions}
+            latest_conditions = WeatherCondition.objects.filter(
+                route_id__in=schedule_route_ids,
+                expires_at__gt=now,
+                updated_at__in=Subquery(latest_conditions_subquery)
+            ).select_related('route', 'port')
 
-    for schedule in schedules:
-        wc = latest_per_route.get(schedule.route_id)
-        if wc and not wc.is_expired():
-            weather_data.append({
-                'route_id': schedule.route_id,
-                'port': wc.port.name,
-                'condition': wc.condition,
-                'temperature': float(wc.temperature) if wc.temperature is not None else None,
-                'wind_speed': float(wc.wind_speed) if wc.wind_speed is not None else None,
-                'precipitation_probability': float(wc.precipitation_probability) if wc.precipitation_probability is not None else None,
-                'expires_at': wc.expires_at.isoformat() if wc.expires_at else None,
-                'updated_at': wc.updated_at.isoformat() if wc.updated_at else None,
-                'is_expired': False,
-                'error': None
-            })
-        else:
-            weather_data.append({
-                'route_id': schedule.route_id,
-                'port': schedule.route.departure_port.name,
-                'condition': None,
-                'temperature': None,
-                'wind_speed': None,
-                'precipitation_probability': None,
-                'expires_at': None,
-                'updated_at': None,
-                'is_expired': True,
-                'error': 'No valid weather data available'
-            })
+            latest_per_route = {wc.route_id: wc for wc in latest_conditions}
+
+            for schedule in schedules:
+                wc = latest_per_route.get(schedule.route_id)
+                if wc and not wc.is_expired():
+                    schedule_weather_data.append({
+                        'route_id': schedule.route_id,
+                        'schedule_id': schedule.id,
+                        'port': wc.port.name,
+                        'condition': wc.condition,
+                        'temperature': float(wc.temperature) if wc.temperature is not None else None,
+                        'wind_speed': float(wc.wind_speed) if wc.wind_speed is not None else None,
+                        'precipitation_probability': float(
+                            wc.precipitation_probability) if wc.precipitation_probability is not None else None,
+                        'expires_at': wc.expires_at.isoformat() if wc.expires_at else None,
+                        'updated_at': wc.updated_at.isoformat() if wc.updated_at else None,
+                        'is_expired': False,
+                        'error': None
+                    })
+                else:
+                    schedule_weather_data.append({
+                        'route_id': schedule.route_id,
+                        'schedule_id': schedule.id,
+                        'port': schedule.route.departure_port.name,
+                        'condition': None,
+                        'temperature': None,
+                        'wind_speed': None,
+                        'precipitation_probability': None,
+                        'expires_at': None,
+                        'updated_at': None,
+                        'is_expired': True,
+                        'error': 'No valid weather data available'
+                    })
+        except Exception as e:
+            logger.error(f"Schedule weather data error: {e}")
+            # Use fallback data
+            for schedule in schedules:
+                schedule_weather_data.append({
+                    'route_id': schedule.route_id,
+                    'schedule_id': schedule.id,
+                    'port': schedule.route.departure_port.name,
+                    'condition': 'Partly Cloudy',
+                    'temperature': 28,
+                    'wind_speed': 12,
+                    'precipitation_probability': 5,
+                    'is_expired': False,
+                    'error': None
+                })
+
+    # Calculate pagination data
+    total_schedules_count = schedules.count()
+    displayed_schedules = schedules[:12]  # Limit for initial load
+    remaining_schedules = max(0, total_schedules_count - len(displayed_schedules))
 
     context = {
-        'schedules': schedules,
-        'routes': routes,
-        'form_data': {'route': route_input, 'date': travel_date},
-        'weather_data': weather_data,
+        'schedules': displayed_schedules,  # Limited for performance
+        'total_schedules': total_schedules_count,  # Total available count
+        'remaining_schedules': remaining_schedules,  # Pre-calculated for template
+        'routes': routes[:10],
+        'form_data': {
+            'route': route_input,
+            'date': travel_date or now.date().strftime('%Y-%m-%d'),
+            'passengers': passengers
+        },
+        'weather_data': weather_data,  # Complete structure for JSON
+        'schedule_weather_data': schedule_weather_data,  # For schedule-specific updates
         'next_departure': next_departure_info,
         'today': now.date(),
         'tile_error_url': '/static/images/tile-error.png'
     }
+
     return render(request, 'home.html', context)
+
 
 @login_required_allow_anonymous
 def booking_history(request):
@@ -639,9 +776,13 @@ def get_pricing(request):
         children = safe_int(request.POST.get('children'))
         infants = safe_int(request.POST.get('infants'))
         add_cargo = request.POST.get('add_cargo') == 'true'
-        cargo_type = request.POST.get('cargo_type', '')
-        weight_kg = safe_float(request.POST.get('weight_kg', 0))
-        license_plate = request.POST.get('license_plate', '')
+        cargo_type = request.POST.get('cargo[0][cargo_type]', '')
+        weight_kg = request.POST.get('cargo[0][weight_kg]', '')
+        license_plate = request.POST.get('cargo[0][license_plate]', '')  # Assuming this is required per your validation
+        add_vehicle = request.POST.get('add_vehicle') == 'true'
+        vehicle_type = request.POST.get('vehicles[0][vehicle_type]', '')
+        vehicle_dimensions = request.POST.get('vehicles[0][dimensions]', '')
+
         addons = []
         for addon_type in dict(AddOn.ADD_ON_TYPE_CHOICES).keys():
             quantity = safe_int(request.POST.get(f'{addon_type}_quantity', 0))
@@ -651,16 +792,20 @@ def get_pricing(request):
         if not schedule_id:
             return JsonResponse({'error': 'Schedule ID is required.'}, status=400)
 
-        if any(n < 0 for n in [adults, children, infants, weight_kg]):
-            return JsonResponse({'error': 'Passenger counts and weight cannot be negative.'}, status=400)
+        if any(n < 0 for n in [adults, children, infants]):
+            return JsonResponse({'error': 'Passenger counts cannot be negative.'}, status=400)
 
         if add_cargo and not (cargo_type and weight_kg and license_plate):
             return JsonResponse({'error': 'Cargo type, weight, and license plate are required when adding cargo.'}, status=400)
 
+        if add_vehicle and not (vehicle_type and vehicle_dimensions):
+            return JsonResponse({'error': 'Vehicle type and dimensions are required when adding vehicle.'}, status=400)
+
         schedule = get_object_or_404(Schedule, id=schedule_id)
 
         total_price = calculate_total_price(
-            adults, children, infants, schedule, add_cargo, cargo_type, weight_kg, addons
+            adults, children, infants, schedule, add_cargo, cargo_type, float(weight_kg) if weight_kg else 0, addons,
+            add_vehicle, vehicle_type, vehicle_dimensions
         )
 
         breakdown = {
@@ -668,6 +813,7 @@ def get_pricing(request):
             'children': str(Decimal(children) * (schedule.route.base_fare or Decimal('35.50')) * Decimal('0.5')),
             'infants': str(Decimal(infants) * (schedule.route.base_fare or Decimal('35.50')) * Decimal('0.1')),
             'cargo': str(calculate_cargo_price(Decimal(weight_kg), cargo_type) if add_cargo else Decimal('0.00')),
+            'vehicle': str(calculate_vehicle_price(vehicle_type, vehicle_dimensions) if add_vehicle else Decimal('0.00')),
             'addons': {addon['type']: str(calculate_addon_price(addon['type'], addon['quantity'])) for addon in addons}
         }
 
@@ -877,9 +1023,13 @@ def create_checkout_session(request):
         children = safe_int(request.POST.get('children', '0'))
         infants = safe_int(request.POST.get('infants', '0'))
         add_cargo = request.POST.get('add_cargo') == 'true'
-        cargo_type = request.POST.get('cargo_type', '')
-        weight_kg = request.POST.get('cargo_weight_kg', '')
-        license_plate = request.POST.get('cargo_license_plate', '')
+        cargo_type = request.POST.get('cargo[0][cargo_type]', '')
+        weight_kg = request.POST.get('cargo[0][weight_kg]', '')
+        license_plate = request.POST.get('cargo[0][license_plate]', '')
+        add_vehicle = request.POST.get('add_vehicle') == 'true'
+        vehicle_type = request.POST.get('vehicles[0][vehicle_type]', '')
+        vehicle_dimensions = request.POST.get('vehicles[0][dimensions]', '')
+        vehicle_license_plate = request.POST.get('vehicles[0][license_plate]', '')
         guest_email = request.POST.get('guest_email', '')
         addons = []
         for addon_type in dict(AddOn.ADD_ON_TYPE_CHOICES).keys():
@@ -911,6 +1061,13 @@ def create_checkout_session(request):
                 except (ValueError, TypeError):
                     errors.append({'field': 'cargo_weight_kg', 'message': 'Cargo weight must be a valid number.'})
 
+        # Validate vehicle fields
+        if add_vehicle:
+            if not vehicle_type:
+                errors.append({'field': 'vehicle_type', 'message': 'Vehicle type is required when adding vehicle.'})
+            if not vehicle_dimensions or not re.match(r'^\d+x\d+x\d+$', vehicle_dimensions):
+                errors.append({'field': 'vehicle_dimensions', 'message': 'Vehicle dimensions must be in format LxWxH (e.g., 400x180x150).'})
+
         # Validate passenger data
         for p_type in ['adult', 'child', 'infant']:
             count = adults if p_type == 'adult' else children if p_type == 'child' else infants
@@ -931,7 +1088,8 @@ def create_checkout_session(request):
 
         try:
             calculated_price = calculate_total_price(
-                adults, children, infants, schedule, add_cargo, cargo_type, float(weight_kg) if weight_kg and add_cargo else 0, addons
+                adults, children, infants, schedule, add_cargo, cargo_type, float(weight_kg) if weight_kg else 0, addons,
+                add_vehicle, vehicle_type, vehicle_dimensions
             )
             if not total_price:
                 total_price = calculated_price
@@ -1010,6 +1168,22 @@ def create_checkout_session(request):
                     errors.append({'field': f'{p_type}_{i}', 'message': f'{p_type.capitalize()} {i + 1}: {str(e)}'})
                     return JsonResponse({'success': False, 'errors': errors}, status=400)
 
+        # Create Vehicle
+        if add_vehicle and vehicle_type and vehicle_dimensions:
+            try:
+                Vehicle.objects.create(
+                    booking=booking,
+                    vehicle_type=vehicle_type,
+                    dimensions=vehicle_dimensions,
+                    license_plate=vehicle_license_plate,
+                    price=calculate_vehicle_price(vehicle_type, vehicle_dimensions)
+                )
+            except (ValueError, TypeError) as e:
+                logger.error(f"Vehicle creation error: {str(e)}")
+                booking.delete()
+                errors.append({'field': 'vehicle', 'message': 'Vehicle must be a valid type.'})
+                return JsonResponse({'success': False, 'errors': errors}, status=400)
+
         # Create Cargo
         if add_cargo and cargo_type and weight_kg:
             try:
@@ -1022,7 +1196,7 @@ def create_checkout_session(request):
                     booking=booking,
                     cargo_type=cargo_type,
                     weight_kg=Decimal(weight_kg),
-                    dimensions_cm=request.POST.get('dimensions_cm', ''),
+                    dimensions_cm=request.POST.get('cargo[0][dimensions_cm]', ''),
                     license_plate=license_plate,
                     price=calculate_cargo_price(Decimal(weight_kg), cargo_type)
                 )
@@ -1272,7 +1446,8 @@ def book_ticket(request):
                 'schedule': {
                     'route': f"{schedule.route.departure_port.name} to {schedule.route.destination_port.name}",
                     'departure_time': schedule.departure_time.strftime("%a, %b %d, %H:%M"),
-                    'estimated_duration': int(schedule.route.estimated_duration.total_seconds() / 60) if schedule.route.estimated_duration else "N/A"
+                    'estimated_duration': int(
+                        schedule.route.estimated_duration.total_seconds() / 60) if schedule.route.estimated_duration else "N/A"
                 },
                 'passengers': passenger_data,
                 'vehicle': {
@@ -1825,7 +2000,6 @@ def payment_success(request):
                     'payment_status': 'pending'
                 }
             )
-
             payment.payment_intent_id = session.payment_intent.id
             payment.transaction_id = session.payment_intent.id
             payment.amount = Decimal(session.payment_intent.amount) / 100
