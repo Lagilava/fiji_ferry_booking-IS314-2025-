@@ -16,6 +16,7 @@ urlpatterns = [
     path('bookings/', include('bookings.urls')),
     path('', booking_views.homepage, name='home'),
     path('privacy_policy/', booking_views.privacy_policy, name='privacy_policy'),
+    path('terms_of_service/', booking_views.terms_of_service, name='terms_of_service'),
 ]
 
 if settings.DEBUG:

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}User Profile{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto my-16 px-6 sm:px-8 lg:px-16">
+    <!-- Header Section -->
+    <header class="mb-12 text-center">
+        <h1 class="text-5xl font-bold text-gray-900 tracking-tight">User Profile</h1>
+        <p class="mt-3 text-gray-600 text-lg sm:text-xl">
+            A formal overview of your registered account details.
+        </p>
+    </header>
+
+    {% if user.is_authenticated %}
+    <!-- Profile Card -->
+    <section class="bg-white shadow-xl rounded-2xl border border-gray-200 p-10 lg:p-16 space-y-10">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-12">
+            <!-- Username -->
+            <div class="space-y-2">
+                <h2 class="text-lg font-semibold text-gray-700 uppercase tracking-wide">Username</h2>
+                <p class="text-gray-900 text-base">{{ user.username }}</p>
+            </div>
+            <!-- Email -->
+            <div class="space-y-2">
+                <h2 class="text-lg font-semibold text-gray-700 uppercase tracking-wide">Email Address</h2>
+                <p class="text-gray-900 text-base">{{ user.email }}</p>
+            </div>
+            <!-- First Name -->
+            <div class="space-y-2">
+                <h2 class="text-lg font-semibold text-gray-700 uppercase tracking-wide">First Name</h2>
+                <p class="text-gray-900 text-base">{{ user.first_name }}</p>
+            </div>
+            <!-- Last Name -->
+            <div class="space-y-2">
+                <h2 class="text-lg font-semibold text-gray-700 uppercase tracking-wide">Last Name</h2>
+                <p class="text-gray-900 text-base">{{ user.last_name }}</p>
+            </div>
+        </div>
+
+        <!-- Decorative Divider -->
+        <hr class="border-t border-gray-300 mt-10">
+
+        <!-- Action Button -->
+        <div class="mt-8 text-center">
+            <a href="{% url 'bookings:home' %}"
+               class="inline-block px-8 py-3 bg-indigo-600 text-white text-lg font-medium rounded-xl shadow-lg hover:bg-indigo-700 transition duration-300">
+               Return to Homepage
+            </a>
+        </div>
+    </section>
+
+    {% else %}
+    <!-- Not Authenticated -->
+    <div class="bg-white shadow-lg rounded-xl border border-gray-200 p-8 lg:p-12 text-center">
+        <p class="text-gray-800 text-lg sm:text-xl mb-6">
+            You are not currently logged in.
+        </p>
+        <a href="{% url 'login' %}"
+           class="text-indigo-600 font-medium text-lg underline hover:text-indigo-800 transition duration-300">
+           Please login to view your profile.
+        </a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
