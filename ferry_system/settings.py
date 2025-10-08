@@ -12,27 +12,15 @@ load_dotenv(os.path.join(BASE_DIR, '.env'))
 
 # Security settings
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-SECRET_KEY = config('SECRET_KEY', default='django-insecure-change-me-in-production')
+SECRET_KEY = config('SECRET_KEY', default='django-insecure-change-me-in-production')  # Update in .env for production
 DEBUG = config('DEBUG', default=True, cast=bool)
-ALLOWED_HOSTS = [
-    '127.0.0.1',
-    'localhost',
-    '.ngrok-free.app',
-    '.tunnelmole.net',
-    'dq2rwn-ip-45-117-242-240.tunnelmole.net',
-    'jlcnng-ip-45-117-242-240.tunnelmole.net',
-]
-
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost']  # Restrict to specific domains in production
 CSRF_TRUSTED_ORIGINS = [
     'http://localhost:8000',
     'http://127.0.0.1:8000',
     'https://localhost',
     'https://127.0.0.1',
-    'https://*.ngrok-free.app',
-    'https://*.tunnelmole.net',
-    'https://dq2rwn-ip-45-117-242-240.tunnelmole.net',
-    'https://jlcnng-ip-45-117-242-240.tunnelmole.net',
-]
+]  # Restrict to specific origins in production
 
 # Base URL for success/cancel redirects
 SITE_URL = config('SITE_URL', default='http://localhost:8000')
@@ -40,13 +28,14 @@ SITE_URL = config('SITE_URL', default='http://localhost:8000')
 CELERY_BEAT_SCHEDULE = {
     'update-schedules-every-minute': {
         'task': 'bookings.tasks.update_schedules_status',
-        'schedule': crontab(minute='*'),
+        'schedule': crontab(minute='*/5'),  # Adjusted to every 5 minutes to reduce load
     },
 }
 
 # Application definition
 INSTALLED_APPS = [
     'accounts.apps.AccountsConfig',
+    'jazzmin',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -93,8 +82,8 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': config('DB_NAME', default='fiji_ferry_db'),
-        'USER': config('DB_USER', default='root'),
-        'PASSWORD': config('DB_PASSWORD', default=''),
+        'USER': config('DB_USER', default='root'),  # Update in .env for production
+        'PASSWORD': config('DB_PASSWORD', default=''),  # Update in .env for production
         'HOST': config('DB_HOST', default='localhost'),
         'PORT': config('DB_PORT', default='3306'),
         'OPTIONS': {'sql_mode': 'traditional'},
@@ -139,8 +128,8 @@ EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = config('EMAIL_HOST', default='smtp.gmail.com')
 EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
 EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
-EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
-EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
+EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')  # Update in .env
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')  # Update in .env
 DEFAULT_FROM_EMAIL = config('EMAIL_HOST_USER', default='admin@fijiferry.com')
 ADMIN_EMAIL = config('ADMIN_EMAIL', default='admin@fijiferry.com')
 
@@ -150,7 +139,7 @@ SESSION_COOKIE_SECURE = False if DEBUG else True
 CSRF_COOKIE_SECURE = False if DEBUG else True
 SECURE_HSTS_SECONDS = 0 if DEBUG else 31536000
 SECURE_HSTS_INCLUDE_SUBDOMAINS = False if DEBUG else True
-SECURE_HSTS_PRELOAD = False if DEBUG else True
+SECURE_HSTS_PRELOAD = False  # Only enable if submitted to HSTS preload list
 
 # Stripe configuration
 STRIPE_PUBLIC_KEY = config('STRIPE_PUBLIC_KEY', default='')
@@ -176,11 +165,89 @@ LOGGING = {
     'loggers': {'bookings': {'level': 'INFO', 'handlers': ['console']}},
 }
 
-APPEND_SLASH = False
+APPEND_SLASH = True
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 2000
-
 
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_BROWSER_XSS_FILTER = True
 X_FRAME_OPTIONS = 'DENY'
+
+# =========================
+# Jazzmin Admin Settings
+# =========================
+JAZZMIN_SETTINGS = {
+    "site_title": "Fiji Ferry Booking Admin",
+    "site_header": "Fiji Ferry Booking Admin",
+    "site_brand": "Fiji Ferry",
+    "welcome_sign": "Welcome to Fiji Ferry Booking Admin",
+    "copyright": "Fiji Ferry © 2025",
+    "search_model": "auth.User",
+    "site_logo": "apple-touch-icon.png",  # Logo (top-left in header + login)
+    "site_logo_classes": "img-circle",  # (Optional) Bootstrap classes to style
+    "site_icon": "apple-touch-icon.png",
+    "user_avatar": None,
+    "topmenu_links": [
+        {
+            "name": "Dashboard",
+            "url": "/admin/",
+            "icon": "fas fa-anchor",
+            "class": "btn btn-primary-custom topmenu-item",
+            "permissions": ["auth.view_user"]
+        },
+        {
+            "name": "Bookings",
+            "url": "/admin/bookings/booking/",
+            "icon": "fas fa-ticket-alt",
+            "class": "btn btn-secondary-custom topmenu-item",
+            "permissions": ["bookings.view_booking"]
+        },
+    ],
+    "show_sidebar": True,
+    "navigation_expanded": True,
+    "hide_apps": [],
+    "hide_models": [],
+    "order_with_respect_to": ["auth", "accounts", "bookings"],
+    "icons": {
+        "auth": "fas fa-users-cog",
+        "auth.User": "fas fa-user",
+        "accounts.User": "fas fa-user-tie",
+        "bookings.Port": "fas fa-anchor",
+        "bookings.Cargo": "fas fa-box",
+        "bookings.Ferry": "fas fa-ship",
+        "bookings.Route": "fas fa-route",
+        "bookings.WeatherCondition": "fas fa-cloud",
+        "bookings.Schedule": "fas fa-calendar-alt",
+        "bookings.Booking": "fas fa-ticket-alt",
+        "bookings.Passenger": "fas fa-user-friends",
+        "bookings.Vehicle": "fas fa-car",
+        "bookings.AddOn": "fas fa-plus-circle",
+        "bookings.Payment": "fas fa-credit-card",
+        "bookings.Ticket": "fas fa-ticket",
+        "bookings.MaintenanceLog": "fas fa-tools",
+        "bookings.ServicePattern": "fas fa-clock",
+    },
+    "related_modal_active": True,
+    "custom_css": "css/admin_custom.css",
+    "custom_js": "js/admin_custom.js",
+    "show_ui_builder": False,
+}
+
+JAZZMIN_UI_TWEAKS = {
+    "theme": "custom",
+    "dark_mode_theme": "custom-dark",
+    "navbar_small_text": False,
+    "footer_small_text": False,
+    "body_small_text": False,
+    "brand_small_text": False,
+    "brand_colour": "navbar-dark",
+    "accent": "accent-custom",
+    "button_classes": {
+        "primary": "btn-primary-custom",
+        "secondary": "btn-secondary-custom",
+        "info": "btn-info-custom",
+        "warning": "btn-warning-custom",
+        "danger": "btn-danger-custom",
+        "success": "btn-success-custom",
+    },
+}

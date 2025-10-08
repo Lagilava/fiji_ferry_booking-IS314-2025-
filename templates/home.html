@@ -141,77 +141,79 @@
         <button class="dot" aria-label="Go to slide 4 of 4" type="button" data-slide="3" aria-pressed="false"></button>
     </nav>
 </header>
-<!-- 📊 STATS BAR -->
-<section class="stats-bar bg-white/80 backdrop-blur-sm py-6" data-aos="fade-up" aria-labelledby="stats-heading">
-    <div class="container mx-auto px-4">
-        <h2 id="stats-heading" class="sr-only">Service Statistics</h2>
-        <div class="stats-grid flex flex-wrap justify-center gap-8 text-center">
-            <div class="stat-item" data-aos="fade-up" data-aos-delay="100">
-                <div class="stat-number text-3xl font-bold text-emerald-600 mb-1" data-target="12" data-unit="" aria-label="12 destinations">0</div>
-                <div class="stat-label text-sm font-medium text-gray-600">Destinations</div>
-            </div>
-            <div class="stat-item" data-aos="fade-up" data-aos-delay="200">
-                <div class="stat-number text-3xl font-bold text-cyan-600 mb-1" data-target="8" data-unit="" aria-label="8 ferry operators">0</div>
-                <div class="stat-label text-sm font-medium text-gray-600">Operators</div>
-            </div>
-            <div class="stat-item" data-aos="fade-up" data-aos-delay="300">
-                <div class="stat-number text-3xl font-bold text-amber-600 mb-1" data-target="50" data-unit="+" aria-label="50+ daily departures">0</div>
-                <div class="stat-label text-sm font-medium text-gray-600">Daily Departures</div>
-            </div>
-            <div class="stat-item" data-aos="fade-up" data-aos-delay="400">
-                <div class="stat-number text-3xl font-bold text-green-600 mb-1" data-target="98" data-unit="%" aria-label="98% on-time rate">0</div>
-                <div class="stat-label text-sm font-medium text-gray-600">On-Time Rate</div>
+<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- 📊 STATS BAR -->
+    <section class="stats-bar bg-white/80 backdrop-blur-sm py-6" data-aos="fade-up" aria-labelledby="stats-heading">
+        <div class="container mx-auto px-4">
+            <h2 id="stats-heading" class="sr-only">Service Statistics</h2>
+            <div class="stats-grid flex flex-wrap justify-center gap-8 text-center">
+                <div class="stat-item" data-aos="fade-up" data-aos-delay="100">
+                    <div class="stat-number text-3xl font-bold text-emerald-600 mb-1" data-target="12" data-unit="" aria-label="12 destinations">0</div>
+                    <div class="stat-label text-sm font-medium text-gray-600">Destinations</div>
+                </div>
+                <div class="stat-item" data-aos="fade-up" data-aos-delay="200">
+                    <div class="stat-number text-3xl font-bold text-cyan-600 mb-1" data-target="8" data-unit="" aria-label="8 ferry operators">0</div>
+                    <div class="stat-label text-sm font-medium text-gray-600">Operators</div>
+                </div>
+                <div class="stat-item" data-aos="fade-up" data-aos-delay="300">
+                    <div class="stat-number text-3xl font-bold text-amber-600 mb-1" data-target="50" data-unit="+" aria-label="50+ daily departures">0</div>
+                    <div class="stat-label text-sm font-medium text-gray-600">Daily Departures</div>
+                </div>
+                <div class="stat-item" data-aos="fade-up" data-aos-delay="400">
+                    <div class="stat-number text-3xl font-bold text-green-600 mb-1" data-target="98" data-unit="%" aria-label="98% on-time rate">0</div>
+                    <div class="stat-label text-sm font-medium text-gray-600">On-Time Rate</div>
+                </div>
             </div>
         </div>
-    </div>
-</section>
-<!-- 🎯 WELCOME SECTION -->
-<section class="welcome-section py-16 bg-gradient-to-b from-white to-blue-50/50" data-aos="fade-up" aria-labelledby="welcome-heading">
-    <div class="container mx-auto px-4 text-center">
-        <div class="welcome-content max-w-4xl mx-auto" data-aos="zoom-in">
-            {% if user.is_authenticated %}
-                <h2 id="welcome-heading" class="text-3xl md:text-4xl font-bold text-gray-800 font-playfair mb-4">
-                    Welcome back, {{ user.first_name|default:user.username|title }}!
-                </h2>
-                <p class="text-xl text-gray-600 mb-8 leading-relaxed">
-                    Ready for your next island adventure? Your previous trips and preferences are saved for quick booking.
-                </p>
-                <div class="welcome-actions flex flex-col sm:flex-row gap-4 justify-center bg-white/95 backdrop-blur-sm rounded-2xl p-6 shadow-lg">
-                    <a href="{% url 'bookings:booking_history' %}"
-                       class="history-btn bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white py-3 px-8 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all flex items-center gap-2 justify-center"
-                       aria-label="View your booking history">
-                        <i class="fas fa-history"></i>
-                        <span>My Bookings</span>
-                    </a>
-                    <a href="{% url 'bookings:book_ticket' %}"
-                       class="book-btn bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white py-3 px-8 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all flex items-center gap-2 justify-center"
-                       aria-label="Book a new ferry trip">
-                        <i class="fas fa-ship"></i>
-                        <span>Book New Trip</span>
-                    </a>
-                </div>
-            {% else %}
-                <h2 id="welcome-heading" class="text-3xl md:text-4xl font-bold text-gray-800 font-playfair mb-4">
-                    Welcome to Fiji Ferry Booking!
-                </h2>
-                <p class="text-xl text-gray-600 mb-8 leading-relaxed max-w-2xl mx-auto">
-                    Discover Fiji's beautiful islands with our seamless ferry booking experience. Join thousands of happy travelers exploring paradise.
-                </p>
-                <div class="welcome-actions flex flex-col sm:flex-row gap-4 justify-center bg-white/95 backdrop-blur-sm rounded-2xl p-6 shadow-lg">
-                    <a href="{% url 'accounts:login' %}"
-                       class="login-btn bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white py-3 px-8 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all flex items-center gap-2 justify-center"
-                       aria-label="Sign in to your account">
-                        <i class="fas fa-sign-in-alt"></i>
-                        <span>Sign In</span>
-                    </a>
-                    <a href="{% url 'accounts:register' %}"
-                       class="register-btn bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white py-3 px-8 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all flex items-center gap-2 justify-center"
-                       aria-label="Create a new account">
-                        <i class="fas fa-user-plus"></i>
-                        <span>Get Started</span>
-                    </a>
-                </div>
-            {% endif %}
+    </section>
+    <!-- 🎯 WELCOME SECTION -->
+    <section class="welcome-section py-16 bg-gradient-to-b from-white to-blue-50/50" data-aos="fade-up" aria-labelledby="welcome-heading">
+        <div class="container mx-auto px-4 text-center">
+            <div class="welcome-content max-w-4xl mx-auto" data-aos="zoom-in">
+                {% if user.is_authenticated %}
+                    <h2 id="welcome-heading" class="text-3xl md:text-4xl font-bold text-gray-800 font-playfair mb-4">
+                        Welcome back, {{ user.first_name|default:user.username|title }}!
+                    </h2>
+                    <p class="text-xl text-gray-600 mb-8 leading-relaxed">
+                        Ready for your next island adventure? Your previous trips and preferences are saved for quick booking.
+                    </p>
+                    <div class="welcome-actions flex flex-col sm:flex-row gap-4 justify-center bg-white/95 backdrop-blur-sm rounded-2xl p-6 shadow-lg">
+                        <a href="{% url 'bookings:booking_history' %}"
+                           class="history-btn bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white py-3 px-8 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all flex items-center gap-2 justify-center"
+                           aria-label="View your booking history">
+                            <i class="fas fa-history"></i>
+                            <span>My Bookings</span>
+                        </a>
+                        <a href="{% url 'bookings:book_ticket' %}"
+                           class="book-btn bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white py-3 px-8 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all flex items-center gap-2 justify-center"
+                           aria-label="Book a new ferry trip">
+                            <i class="fas fa-ship"></i>
+                            <span>Book New Trip</span>
+                        </a>
+                    </div>
+                {% else %}
+                    <h2 id="welcome-heading" class="text-3xl md:text-4xl font-bold text-gray-800 font-playfair mb-4">
+                        Welcome to Fiji Ferry Booking!
+                    </h2>
+                    <p class="text-xl text-gray-600 mb-8 leading-relaxed max-w-2xl mx-auto">
+                        Discover Fiji's beautiful islands with our seamless ferry booking experience. Join thousands of happy travelers exploring paradise.
+                    </p>
+                    <div class="welcome-actions flex flex-col sm:flex-row gap-4 justify-center bg-white/95 backdrop-blur-sm rounded-2xl p-6 shadow-lg">
+                        <a href="{% url 'accounts:login' %}"
+                           class="login-btn bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white py-3 px-8 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all flex items-center gap-2 justify-center"
+                           aria-label="Sign in to your account">
+                            <i class="fas fa-sign-in-alt"></i>
+                            <span>Sign In</span>
+                        </a>
+                        <a href="{% url 'accounts:register' %}"
+                           class="register-btn bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white py-3 px-8 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all flex items-center gap-2 justify-center"
+                           aria-label="Create a new account">
+                            <i class="fas fa-user-plus"></i>
+                            <span>Get Started</span>
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
         </div>
     </div>
 </section>
@@ -903,6 +905,7 @@
         </div>
     </div>
 </section>
+</div>
 <!-- Hidden Data for JavaScript -->
 <script type="application/json" id="form-data">
 {
@@ -970,6 +973,9 @@
 <!-- Leaflet CSS -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous"/>
 <style>
+body {
+    overflow-x: hidden;
+}
 /* 🎨 HERO SECTION ENHANCEMENTS */
 .hero {
     position: relative;
@@ -1482,7 +1488,6 @@
     outline: none;
     box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
 }
-
 /* 🏝️ DESTINATIONS SECTION */
 .destinations {
     background: linear-gradient(135deg, var(--primary-light) 0%, var(--secondary-light) 100%);
@@ -1557,7 +1562,6 @@
 [data-theme="dark"] .destination-info p {
     color: var(--text-primary);
 }
-
 /* 🌟 FEATURES SECTION */
 .features {
     background: var(--bg-secondary);
@@ -1614,7 +1618,6 @@
 [data-theme="dark"] .feature-link {
     color: var(--primary);
 }
-
 /* 💬 TESTIMONIALS SECTION */
 .testimonials {
     background: var(--bg-secondary);
@@ -1724,7 +1727,6 @@
 [data-theme="dark"] .testimonial-progress div {
     background: var(--primary);
 }
-
 /* 🎯 FINAL CTA */
 .final-cta {
     position: relative;
@@ -1808,7 +1810,6 @@
     align-items: center;
     gap: 0.5rem;
 }
-
 /* 🛠️ UTILITY CLASSES */
 .font-playfair { font-family: 'Playfair Display', serif; }
 .font-poppins { font-family: 'Poppins', sans-serif; }
@@ -1816,7 +1817,7 @@
 .shadow-3xl { box-shadow: 0 35px 60px -12px rgba(0, 0, 0, 0.25); }
 .transition-all { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
 .container {
-    max-width: 1200px;
+    max-width: max-content;
     margin: 0 auto;
     padding-left: 1rem;
     padding-right: 1rem;
@@ -1855,7 +1856,6 @@
 [data-theme="dark"] .back-to-top:focus {
     background: var(--primary-dark);
 }
-
 /* Loading Screen */
 .loading-screen {
     background: var(--bg-secondary);
@@ -1868,7 +1868,6 @@
     border-color: var(--border);
     border-top-color: var(--primary);
 }
-
 /* 📱 RESPONSIVE */
 @media (max-width: 768px) {
     .hero {
@@ -1966,7 +1965,6 @@
         animation: none;
     }
 }
-
 /* ♿ ACCESSIBILITY & PERFORMANCE */
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {

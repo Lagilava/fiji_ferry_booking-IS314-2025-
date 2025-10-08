@@ -6,6 +6,7 @@ from django.core.validators import FileExtensionValidator, MinValueValidator, Ma
 from django.core.exceptions import ValidationError
 import uuid
 from datetime import time, date
+from django.db import transaction
 
 
 class Port(models.Model):
@@ -65,9 +66,9 @@ class Route(models.Model):
     destination_port = models.ForeignKey(
         'Port', on_delete=models.CASCADE, related_name='arrivals'
     )
-    distance_km = models.DecimalField(max_digits=10, decimal_places=2, null=True)
-    estimated_duration = models.DurationField(null=True)
-    base_fare = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    distance_km = models.DecimalField(max_digits=10, decimal_places=2, default=0.0)
+    estimated_duration = models.DurationField(default='00:00:00')
+    base_fare = models.DecimalField(max_digits=10, decimal_places=2, default=0.0)
     service_tier = models.CharField(
         max_length=20,
         choices=[('major', 'Major'), ('regional', 'Regional'), ('remote', 'Remote')],
@@ -124,9 +125,6 @@ class WeatherCondition(models.Model):
 
     class Meta:
         indexes = [models.Index(fields=['route', 'port', 'expires_at'])]
-        constraints = [
-            models.UniqueConstraint(fields=['route', 'port'], name='unique_weather_per_route_port')
-        ]
 
     def is_expired(self):
         return timezone.now() > self.expires_at
@@ -225,10 +223,19 @@ class Booking(models.Model):
             not self.passengers.filter(id=self.group_leader.id, passenger_type='adult').exists()
         ):
             raise ValidationError("Group leader must be an adult passenger in this booking.")
-        if self.schedule.available_seats < total_passengers:
-            raise ValidationError(
-                f"Not enough seats available ({self.schedule.available_seats} remaining)."
-            )
+
+    def reserve_seats(self):
+        """Atomically reserve seats for the booking."""
+        total_passengers = self.passenger_adults + self.passenger_children + self.passenger_infants
+        with transaction.atomic():
+            schedule = Schedule.objects.select_for_update().get(id=self.schedule.id)
+            if schedule.available_seats < total_passengers:
+                raise ValidationError(
+                    f"Not enough seats available ({schedule.available_seats} remaining)."
+                )
+            schedule.available_seats -= total_passengers
+            schedule.save()
+            self.save()
 
     def update_status_if_expired(self):
         """Update booking status to cancelled if schedule has departed."""
@@ -442,7 +449,7 @@ class MaintenanceLog(models.Model):
     ferry = models.ForeignKey('Ferry', on_delete=models.CASCADE, related_name='maintenance_logs')
     maintenance_date = models.DateField()
     notes = models.TextField(blank=True)
-    completed_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True, help_text="Set when maintenance is completed")
     maintenance_interval_days = models.PositiveIntegerField(
         default=14, help_text="Custom maintenance interval in days"
     )
@@ -458,15 +465,15 @@ class ServicePattern(models.Model):
     route = models.ForeignKey('Route', on_delete=models.CASCADE)
     weekday = models.PositiveIntegerField(
         choices=[
-            (0, 'Monday'),
-            (1, 'Tuesday'),
-            (2, 'Wednesday'),
-            (3, 'Thursday'),
-            (4, 'Friday'),
-            (5, 'Saturday'),
-            (6, 'Sunday'),
+            (1, 'Sunday'),
+            (2, 'Monday'),
+            (3, 'Tuesday'),
+            (4, 'Wednesday'),
+            (5, 'Thursday'),
+            (6, 'Friday'),
+            (7, 'Saturday'),
         ],
-        help_text="Day of the week"
+        help_text="Day of the week (aligned with ExtractWeekDay)"
     )
     window = models.CharField(max_length=20, help_text="Time window (e.g., '06:00-08:00')")
     target_departures = models.PositiveIntegerField(

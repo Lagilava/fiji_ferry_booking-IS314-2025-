@@ -1,0 +1,573 @@
+/* Ensure Font Awesome is loaded */
+@import url("https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css");
+
+/* Global reset and styles */
+* {
+    box-sizing: border-box;
+}
+
+body,
+html,
+.content-wrapper:not(.dashboard-container),
+.main-content:not(.dashboard-container) {
+    font-family: 'Inter', 'Roboto', sans-serif;
+    font-size: 1rem;
+    font-weight: 400;
+    line-height: 1.6;
+    margin: 0;
+    padding: 0;
+    color: #1f2937;
+    background: #f8fafc;
+}
+
+/* Topmenu Styling (Integrated with Dashboard) */
+.topmenu {
+    background: linear-gradient(90deg, #1e40af 0%, #26a69a 100%);
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    margin-bottom: 1.5rem;
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    max-width: 1400px;
+    margin-left: auto;
+    margin-right: auto;
+    box-sizing: border-box;
+}
+
+.topmenu-item {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.625rem 1.25rem;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 0.9375rem;
+    transition: all 0.3s ease;
+    color: #ffffff !important;
+    text-transform: uppercase;
+}
+
+.topmenu-item i {
+    margin-right: 0.625rem;
+    font-size: 1.125rem;
+}
+
+.topmenu-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    background-color: rgba(255, 255, 255, 0.15);
+}
+
+.topmenu-item.btn-primary-custom {
+    background-color: #1e40af;
+}
+
+.topmenu-item.btn-primary-custom:hover {
+    background-color: #2563eb;
+}
+
+.topmenu-item.btn-secondary-custom {
+    background-color: #e5e7eb;
+    color: #1f2937 !important;
+}
+
+.topmenu-item.btn-secondary-custom:hover {
+    background-color: #d1d5db;
+}
+
+/* Sidebar enhancements */
+.main-sidebar,
+.nav-sidebar,
+#adminmenu {
+    background: #1f2937;
+    border-right: 2px solid #1e40af;
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+    border-radius: 0 8px 8px 0;
+}
+
+.main-sidebar .nav-sidebar .nav-link,
+.main-sidebar .nav-item .nav-link,
+.main-sidebar .nav-treeview .nav-link,
+#adminmenu a {
+    color: #d1d5db;
+    padding: 0.75rem 1.25rem;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    transition: all 0.2s ease;
+}
+
+.main-sidebar .nav-sidebar .nav-link:hover,
+.main-sidebar .nav-item .nav-link:hover,
+.main-sidebar .nav-treeview .nav-link:hover,
+#adminmenu a:hover {
+    background: #1e40af;
+    color: #ffffff;
+    transform: translateX(2px);
+}
+
+/* Model icons */
+.main-sidebar .nav-sidebar .nav-link i,
+.main-sidebar .nav-treeview .nav-link i {
+    margin-right: 0.5rem;
+    color: #60a5fa;
+    font-size: 1rem;
+}
+
+.main-sidebar .nav-sidebar .nav-link:hover i,
+.main-sidebar .nav-treeview .nav-link:hover i {
+    color: #ffffff;
+}
+
+/* Header styling (Adjusted to avoid conflict with dashboard) */
+.main-header,
+#branding {
+    background: #1e40af;
+    padding: 1rem 1.5rem;
+    border-radius: 8px 8px 0 0;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    position: relative;
+    z-index: 1040; /* Higher than dashboard and topmenu */
+    width: 100%;
+    top: 0;
+    left: 0;
+    max-width: 1400px;
+    margin-left: auto;
+    margin-right: auto;
+    box-sizing: border-box;
+}
+
+.main-header h1,
+.main-header a:not(.dropdown-item),
+#branding h1,
+#branding a:not(.dropdown-item) {
+    color: #ffffff;
+    font-size: 1.75rem;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.main-header .nav-item.dropdown .nav-link,
+.main-header .dropdown-toggle {
+    color: #ffffff;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    padding: 0.5rem 1rem;
+    display: flex;
+    align-items: center;
+    transition: all 0.2s ease;
+}
+
+.main-header .nav-item.dropdown .nav-link:hover,
+.main-header .dropdown-toggle:hover {
+    background: #2563eb;
+}
+
+.main-header .dropdown-menu {
+    background: #ffffff;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    margin-top: 0.5rem;
+}
+
+.main-header .dropdown-item {
+    color: #374151;
+    font-size: 0.9375rem;
+    padding: 0.5rem 1rem;
+}
+
+.main-header .dropdown-item:hover {
+    background: #f1f5f9;
+    color: #1e40af;
+}
+
+/* Subtitles and labels */
+h2,
+h3,
+.form-label,
+.jazzmin-form-label {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #1e40af;
+    margin-bottom: 0.75rem;
+}
+
+label,
+.jazzmin-form-label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #1f2937;
+}
+
+/* Table and form enhancements */
+.table,
+.jazzmin-table {
+    background: #ffffff;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    overflow: hidden;
+    width: 100%;
+}
+
+.table th,
+.table td,
+.jazzmin-table th,
+.jazzmin-table td {
+    border-color: #e5e7eb;
+    padding: 0.75rem;
+    font-size: 0.9375rem;
+    color: #1f2937;
+}
+
+.table th:hover,
+.table td:hover,
+.jazzmin-table th:hover,
+.jazzmin-table td:hover {
+    background: #f1f5f9;
+}
+
+/* Form controls */
+.form-control,
+.jazzmin-form-control,
+input[type="text"],
+input[type="email"],
+input[type="password"],
+textarea,
+select {
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.9375rem;
+    background: #ffffff;
+    color: #1f2937;
+    transition: all 0.2s ease;
+    width: 100%;
+    max-width: 300px; /* Office-friendly constraint */
+}
+
+.form-control:focus,
+.jazzmin-form-control:focus,
+input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus,
+textarea:focus,
+select:focus {
+    border-color: #1e40af;
+    box-shadow: 0 0 6px rgba(30, 136, 229, 0.2);
+}
+
+/* Button styles */
+button,
+.btn,
+.btn-primary-custom,
+input[type="submit"],
+input[type="button"] {
+    background: #1e40af;
+    border: 1px solid #1e40af;
+    color: #ffffff;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    transition: all 0.2s ease;
+}
+
+button:hover,
+.btn:hover,
+.btn-primary-custom:hover,
+input[type="submit"]:hover,
+input[type="button"]:hover {
+    background: #2563eb;
+    border-color: #2563eb;
+    transform: translateY(-1px);
+}
+
+button:active,
+.btn:active,
+.btn-primary-custom:active,
+input[type="submit"]:active,
+input[type="button"]:active {
+    background: #1e3a8a;
+    border-color: #1e3a8a;
+}
+
+.btn-secondary-custom {
+    background: #e5e7eb;
+    border: 1px solid #d1d5db;
+    color: #1f2937;
+}
+
+.btn-secondary-custom:hover {
+    background: #d1d5db;
+    border-color: #9ca3af;
+    transform: translateY(-1px);
+}
+
+.btn-secondary-custom:active {
+    background: #9ca3af;
+    border-color: #6b7280;
+}
+
+.btn-info-custom,
+.btn-warning-custom,
+.btn-danger-custom,
+.btn-success-custom {
+    background: #26a69a;
+    border: 1px solid #26a69a;
+}
+
+.btn-info-custom:hover,
+.btn-warning-custom:hover,
+.btn-danger-custom:hover,
+.btn-success-custom:hover {
+    background: #2bbbad;
+    border-color: #2bbbad;
+    transform: translateY(-1px);
+}
+
+/* Card-like effect for object details */
+.object-tools,
+.jazzmin-object-tools {
+    background: #ffffff;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 1rem;
+    margin: 1rem 0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    width: 100%;
+    max-width: 1400px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* Dark Mode (Office-Friendly Adjustments) */
+@media (prefers-color-scheme: dark) {
+    .content-wrapper:not(.dashboard-container),
+    .main-content:not(.dashboard-container) {
+        background: #1f2937;
+        color: #e5e7eb;
+    }
+    .table,
+    .jazzmin-table {
+        background: #374151;
+        border-color: #4b5563;
+    }
+    .table th,
+    .table td,
+    .jazzmin-table th,
+    .jazzmin-table td {
+        border-color: #4b5563;
+        color: #e5e7eb;
+    }
+    .table th:hover,
+    .table td:hover,
+    .jazzmin-table th:hover,
+    .jazzmin-table td:hover {
+        background: #4b5563;
+    }
+    h2,
+    h3,
+    .form-label,
+    .jazzmin-form-label {
+        color: #60a5fa;
+    }
+    label,
+    .jazzmin-form-label {
+        color: #e5e7eb;
+    }
+    .form-control,
+    .jazzmin-form-control,
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    textarea,
+    select {
+        background: #374151;
+        border-color: #4b5563;
+        color: #e5e7eb;
+    }
+    .form-control:focus,
+    .jazzmin-form-control:focus,
+    input[type="text"]:focus,
+    input[type="email"]:focus,
+    input[type="password"]:focus,
+    textarea:focus,
+    select:focus {
+        border-color: #60a5fa;
+        box-shadow: 0 0 6px rgba(96, 165, 250, 0.2);
+    }
+    button,
+    .btn,
+    .btn-primary-custom {
+        background: #1e40af;
+        border-color: #1e40af;
+    }
+    .btn-secondary-custom {
+        background: #374151;
+        border-color: #4b5563;
+        color: #e5e7eb;
+    }
+    .btn-secondary-custom:hover {
+        background: #4b5563;
+        border-color: #6b7280;
+    }
+    .btn-info-custom,
+    .btn-warning-custom,
+    .btn-danger-custom,
+    .btn-success-custom {
+        background: #00695c;
+        border-color: #00695c;
+    }
+    .btn-info-custom:hover,
+    .btn-warning-custom:hover,
+    .btn-danger-custom:hover,
+    .btn-success-custom:hover {
+        background: #00796b;
+        border-color: #00796b;
+    }
+    .object-tools,
+    .jazzmin-object-tools {
+        background: #374151;
+        border-color: #4b5563;
+    }
+    .main-sidebar,
+    .nav-sidebar,
+    #adminmenu {
+        background: #1f2937;
+        border-color: #4b5563;
+    }
+    .main-sidebar .nav-sidebar .nav-link,
+    .main-sidebar .nav-item .nav-link,
+    .main-sidebar .nav-treeview .nav-link,
+    #adminmenu a {
+        color: #e5e7eb;
+    }
+    .main-sidebar .nav-sidebar .nav-link:hover,
+    .main-sidebar .nav-item .nav-link:hover,
+    .main-sidebar .nav-treeview .nav-link:hover,
+    #adminmenu a:hover {
+        background: #1e40af;
+        color: #ffffff;
+    }
+    .main-header,
+    #branding {
+        background: #1e40af;
+    }
+    .main-header .dropdown-menu {
+        background: #374151;
+        border-color: #4b5563;
+    }
+    .main-header .dropdown-item {
+        color: #e5e7eb;
+    }
+    .main-header .dropdown-item:hover {
+        background: #4b5563;
+        color: #60a5fa;
+    }
+    .topmenu {
+        background: linear-gradient(90deg, #1e3a8a 0%, #00695c 100%);
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    }
+    .topmenu-item {
+        color: #e5e7eb !important;
+    }
+    .topmenu-item.btn-secondary-custom {
+        background-color: #374151;
+        color: #e5e7eb !important;
+    }
+    .topmenu-item.btn-secondary-custom:hover {
+        background-color: #4b5563;
+    }
+    .topmenu-item.btn-info-custom {
+        background-color: #00695c;
+    }
+    .topmenu-item.btn-info-custom:hover {
+        background-color: #00796b;
+    }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .main-sidebar .nav-sidebar .nav-link,
+    .main-sidebar .nav-item .nav-link,
+    .main-sidebar .nav-treeview .nav-link,
+    #adminmenu a {
+        padding: 0.5rem 1rem;
+        font-size: 0.875rem;
+    }
+    .table th,
+    .table td,
+    .jazzmin-table th,
+    .jazzmin-table td {
+        padding: 0.5rem;
+        font-size: 0.875rem;
+    }
+    .object-tools,
+    .jazzmin-object-tools {
+        padding: 0.75rem;
+        margin: 0.75rem 0;
+    }
+    .main-header,
+    #branding {
+        padding: 0.75rem 1rem;
+    }
+    .form-control,
+    .jazzmin-form-control,
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    textarea,
+    select {
+        padding: 0.375rem 0.75rem;
+        font-size: 0.875rem;
+    }
+    button,
+    .btn,
+    .btn-primary-custom,
+    .btn-secondary-custom,
+    .btn-info-custom,
+    .btn-warning-custom,
+    .btn-danger-custom,
+    .btn-success-custom,
+    input[type="submit"],
+    input[type="button"] {
+        padding: 0.375rem 0.75rem;
+        font-size: 0.875rem;
+    }
+    h2,
+    h3,
+    .form-label,
+    .jazzmin-form-label {
+        font-size: 1.125rem;
+    }
+    label,
+    .jazzmin-form-label {
+        font-size: 0.8125rem;
+    }
+    .main-header .nav-item.dropdown .nav-link,
+    .main-header .dropdown-toggle {
+        padding: 0.375rem 0.75rem;
+        font-size: 0.875rem;
+    }
+    .main-header .dropdown-menu {
+        margin-top: 0.25rem;
+    }
+    .topmenu {
+        flex-direction: column;
+        padding: 0.5rem;
+        gap: 0.5rem;
+    }
+    .topmenu-item {
+        width: 100%;
+        text-align: center;
+        padding: 0.5rem;
+    }
+}
