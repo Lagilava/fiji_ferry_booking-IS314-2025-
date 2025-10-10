@@ -177,30 +177,44 @@ X_FRAME_OPTIONS = 'DENY'
 # Jazzmin Admin Settings
 # =========================
 JAZZMIN_SETTINGS = {
-    "site_title": "Fiji Ferry Booking Admin",
-    "site_header": "Fiji Ferry Booking Admin",
-    "site_brand": "Fiji Ferry",
-    "welcome_sign": "Welcome to Fiji Ferry Booking Admin",
+    "site_title": "Fiji Ferry Control Hub",  # Modernized title
+    "site_header": "Ferry Control",  # Concise for header
+    "site_brand": "Fiji Ferry",  # Consistent branding
+    "welcome_sign": "Welcome to Fiji Ferry Control Hub",
     "copyright": "Fiji Ferry © 2025",
     "search_model": "auth.User",
-    "site_logo": "apple-touch-icon.png",  # Logo (top-left in header + login)
-    "site_logo_classes": "img-circle",  # (Optional) Bootstrap classes to style
-    "site_icon": "apple-touch-icon.png",
+    "site_logo": "apple-touch-icon.png",  # Replace with your logo in static/images/
+    "site_logo_classes": "img-circle img-thumbnail",  # Subtle border effect
+    "site_icon": "apple-touch-icon.png",  # Replace with your favicon
     "user_avatar": None,
     "topmenu_links": [
         {
-            "name": "Dashboard",
+            "name": "Control Hub",
             "url": "/admin/",
             "icon": "fas fa-anchor",
             "class": "btn btn-primary-custom topmenu-item",
-            "permissions": ["auth.view_user"]
+            "permissions": ["auth.view_user"],
         },
         {
             "name": "Bookings",
             "url": "/admin/bookings/booking/",
             "icon": "fas fa-ticket-alt",
             "class": "btn btn-secondary-custom topmenu-item",
-            "permissions": ["bookings.view_booking"]
+            "permissions": ["bookings.view_booking"],
+        },
+        {
+            "name": "Schedules",
+            "url": "/admin/bookings/schedule/",
+            "icon": "fas fa-calendar-alt",
+            "class": "btn btn-info-custom topmenu-item",
+            "permissions": ["bookings.view_schedule"],
+        },
+        {
+            "name": "Maintenance",
+            "url": "/admin/bookings/maintenancelog/",
+            "icon": "fas fa-tools",
+            "class": "btn btn-success-custom topmenu-item",
+            "permissions": ["bookings.view_maintenancelog"],
         },
     ],
     "show_sidebar": True,
@@ -228,26 +242,7 @@ JAZZMIN_SETTINGS = {
         "bookings.ServicePattern": "fas fa-clock",
     },
     "related_modal_active": True,
-    "custom_css": "css/admin_custom.css",
+    "custom_css": "css/admin_custom.css",  # Points to updated CSS
     "custom_js": "js/admin_custom.js",
-    "show_ui_builder": False,
-}
-
-JAZZMIN_UI_TWEAKS = {
-    "theme": "custom",
-    "dark_mode_theme": "custom-dark",
-    "navbar_small_text": False,
-    "footer_small_text": False,
-    "body_small_text": False,
-    "brand_small_text": False,
-    "brand_colour": "navbar-dark",
-    "accent": "accent-custom",
-    "button_classes": {
-        "primary": "btn-primary-custom",
-        "secondary": "btn-secondary-custom",
-        "info": "btn-info-custom",
-        "warning": "btn-warning-custom",
-        "danger": "btn-danger-custom",
-        "success": "btn-success-custom",
-    },
+    "show_ui_builder": True,  # Enable for live tweaking
 }

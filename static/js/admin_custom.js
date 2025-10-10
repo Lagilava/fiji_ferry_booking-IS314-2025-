@@ -83,7 +83,7 @@ $(document).ready(function() {
         const canvas = document.createElement('canvas');
         canvas.id = wrapper.getAttribute('data-chart-id') || chartName.toLowerCase().replace(/\s+/g, '-');
         canvas.style.width = '100%';
-        canvas.style.height = '100%'; // Use full height of parent
+        canvas.style.height = '100%';
         canvas.style.backgroundColor = theme.chartBg;
         wrapper.appendChild(canvas);
         const ctx = canvas.getContext('2d');
@@ -702,5 +702,112 @@ $(document).ready(function() {
                 console.warn('Utilization chart not initialized.');
             }
         });
+    }
+
+    // New: Handle Admin Form Submissions for Instant Updates
+    function updateDashboardAfterSave(model, objectId) {
+        // Map models to affected dashboard sections
+        const updateMap = {
+            'booking': ['recent_bookings', 'bookings_per_route', 'revenue_over_time', 'bookings_over_time', 'payment_status', 'top_customers', 'alerts'],
+            'schedule': ['ferry_utilization', 'alerts'],
+            'maintenancelog': ['alerts', 'fleet_status'],
+            'weathercondition': ['weather_conditions'],
+            'payment': ['payment_status', 'alerts'],
+            'user': ['user_growth', 'top_customers']
+        };
+
+        const sectionsToUpdate = updateMap[model.toLowerCase()] || [];
+        console.log(`Updating dashboard for ${model} change, sections: ${sectionsToUpdate}`);
+
+        // Update relevant sections
+        sectionsToUpdate.forEach(section => {
+            if (section === 'recent_bookings') {
+                fetch('/admin/analytics-data/?chart_type=recent_bookings')
+                    .then(response => response.json())
+                    .then(data => {
+                        const table = $('#recent-bookings-table').DataTable();
+                        table.clear();
+                        data.recent_bookings.forEach(booking => {
+                            table.row.add([
+                                booking.id,
+                                booking.user_email,
+                                `<span title="${booking.schedule}">${booking.schedule}</span>`,
+                                new Date(booking.booking_date).toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short', year: 'numeric' }),
+                                booking.status
+                            ]).draw();
+                        });
+                    })
+                    .catch(error => console.error('Error updating recent bookings:', error));
+            } else if (section === 'weather_conditions') {
+                document.getElementById('refresh-weather')?.click();
+            } else if (section === 'alerts') {
+                document.getElementById('refresh-alerts')?.click();
+            } else if (section === 'fleet_status') {
+                fetch('/admin/analytics-data/?chart_type=fleet_status')
+                    .then(response => response.json())
+                    .then(data => {
+                        // Update fleet status (not currently displayed in dashboard, but can be added if needed)
+                        console.log('Fleet status updated:', data.fleet_status);
+                    })
+                    .catch(error => console.error('Error updating fleet status:', error));
+            } else {
+                const chartId = Object.keys(chartTypeMap).find(key => chartTypeMap[key] === section);
+                if (chartId) {
+                    fetchAndUpdateChart(chartId, chartDays[chartId] || '30');
+                }
+            }
+        });
+
+        // Update performance metrics
+        fetch('/admin/analytics-data/?chart_type=metrics')
+            .then(response => response.json())
+            .then(data => {
+                if (data.total_bookings) {
+                    document.querySelector('.stats-grid .stat-item:nth-child(1) .stat-number').textContent = data.total_bookings;
+                }
+                if (data.active_ferries) {
+                    document.querySelector('.stats-grid .stat-item:nth-child(2) .stat-number').textContent = data.active_ferries;
+                }
+                if (data.pending_payments) {
+                    document.querySelector('.stats-grid .stat-item:nth-child(3) .stat-number').textContent = data.pending_payments;
+                }
+            })
+            .catch(error => console.error('Error updating metrics:', error));
+    }
+
+    // Intercept admin form submissions
+    if (window.location.pathname.includes('/admin/bookings/') || window.location.pathname.includes('/admin/accounts/')) {
+        const changeForm = document.getElementById('booking_form') ||
+                          document.getElementById('schedule_form') ||
+                          document.getElementById('maintenancelog_form') ||
+                          document.getElementById('weathercondition_form') ||
+                          document.getElementById('payment_form') ||
+                          document.getElementById('user_form');
+        if (changeForm) {
+            changeForm.addEventListener('submit', function(e) {
+                const formData = new FormData(changeForm);
+                const model = changeForm.id.replace('_form', '');
+                const objectId = window.location.pathname.split('/').slice(-2)[0];
+
+                // Allow form submission to proceed
+                fetch(changeForm.action, {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+                    }
+                })
+                .then(response => {
+                    if (response.ok) {
+                        console.log(`${model} form submitted successfully`);
+                        // Trigger dashboard update after a short delay to ensure data is saved
+                        setTimeout(() => updateDashboardAfterSave(model, objectId), 500);
+                    } else {
+                        console.error('Form submission failed:', response.status);
+                    }
+                })
+                .catch(error => console.error('Error submitting form:', error));
+            });
+        }
     }
 });
