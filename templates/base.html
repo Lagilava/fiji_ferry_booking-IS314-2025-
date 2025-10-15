@@ -69,16 +69,41 @@
         --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
 
         /* Gradients */
-        --gradient-primary: linear-gradient(135deg, #10B981 0%, #059669 100%);
+        --gradient-primary: linear-gradient(135deg, #000000 0%, #28309d 100%);
         --gradient-secondary: linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%);
         --gradient-accent: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
         --gradient-glass: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
+        --gradient-navbar: linear-gradient(to left, #ffffff 0%, #22aec2 100%);
+
     }
+    /* Light theme (default on body) */
+    body[data-theme="light"] {
+        background-image: url("https://plus.unsplash.com/premium_photo-light-theme.jpg");
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+
+    }
+
+    /* Dark theme (on body) */
+    body[data-theme="dark"] {
+        background-image: url("https://wallpaperaccess.com/full/2340155.jpg");
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        background-attachment: fixed; /* keeps wallpaper locked */
+}
 
     /* Dark Mode */
     [data-theme="dark"] {
+        background-image: url('https://wallpaperaccess.com/full/2340155.jpg');
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        background-attachment: fixed;
+        color: #ffffff;
         --bg-primary: #000000;     /* Black */
-        --bg-secondary: #1A252F;   /* Slightly lighter navy-tinted black */
+        --bg-secondary: #000000;   /* Slightly lighter navy-tinted black */
         --bg-surface: #2D3B4D;     /* Muted navy blue */
         --text-primary: #FFFFFF;   /* White */
         --text-secondary: #D1D5DB; /* Light gray */
@@ -96,16 +121,6 @@
         box-sizing: border-box;
     }
 
-    body {
-        margin: 0;
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-        background: var(--bg-secondary);
-        color: var(--text-primary);
-        line-height: 1.6;
-        scroll-behavior: smooth;
-        overflow-x: hidden;
-        transition: background-color 0.3s ease, color 0.3s ease;
-    }
 
     /* 🌐 ENHANCED NAVBAR */
     .navbar {
@@ -114,7 +129,7 @@
         left: 0;
         right: 0;
         z-index: 1000;
-        background: rgba(255, 255, 255, 0.95);
+        background: var(--gradient-navbar);
         backdrop-filter: blur(20px);
         -webkit-backdrop-filter: blur(20px);
         border-bottom: 1px solid var(--border);
@@ -131,7 +146,7 @@
 
     /* Navbar scrolled state */
     .navbar.scrolled {
-        background: rgba(255, 255, 255, 0.98);
+        background: var(--gradient-navbar);
         box-shadow: var(--shadow-md);
         padding: 0.5rem 2rem;
     }
@@ -589,10 +604,10 @@
 
     /* 📌 ADVANCED FOOTER */
     .footer {
-        background: var(--gradient-primary);
+        background: var(--gradient-navbar);
         background-size: 200% 200%;
         animation: gradientShift 15s ease infinite;
-        color: white;
+        color: black;
         position: relative;
         overflow: hidden;
         margin-top: 4rem;
@@ -659,7 +674,7 @@
         font-size: 1.25rem;
         font-weight: 600;
         margin-bottom: 1.5rem;
-        color: rgba(255, 255, 255, 0.95);
+        color: #000000;
         position: relative;
     }
 
@@ -674,13 +689,13 @@
         left: 0;
         width: 40px;
         height: 2px;
-        background: rgba(255, 255, 255, 0.3);
+        background: black;
         border-radius: 1px;
     }
 
     .footer-section p,
     .footer-section a {
-        color: rgba(255, 255, 255, 0.85);
+        color: #000000;
         text-decoration: none;
         font-size: 0.95rem;
         line-height: 1.6;
@@ -695,7 +710,7 @@
     }
 
     .footer-section a:hover {
-        color: white;
+        color: #000000;
         transform: translateX(4px);
     }
 
@@ -718,7 +733,7 @@
         height: 44px;
         border-radius: 50%;
         background: rgba(255, 255, 255, 0.1);
-        color: white;
+        color: black;
         font-size: 1.1rem;
         transition: all 0.3s ease;
         backdrop-filter: blur(10px);
@@ -730,7 +745,7 @@
     }
 
     .social-link:hover {
-        background: rgba(255, 255, 255, 0.2);
+        background: #000000;
         transform: translateY(-3px) scale(1.1);
         box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
     }
@@ -748,7 +763,7 @@
         border: none;
         border-radius: 25px;
         background: rgba(255, 255, 255, 0.9);
-        color: var(--text-primary);
+        color: black;
         font-size: 0.9rem;
         outline: none;
         transition: all 0.2s ease;
@@ -774,7 +789,7 @@
         background: rgba(255, 255, 255, 0.2);
         border: none;
         border-radius: 25px;
-        color: white;
+        color: black;
         font-weight: 500;
         cursor: pointer;
         transition: all 0.2s ease;
@@ -805,7 +820,7 @@
     .footer-bottom p {
         margin: 0;
         font-size: 0.9rem;
-        color: rgba(255, 255, 255, 0.7);
+        color: black;
     }
 
     [data-theme="dark"] .footer-bottom p {
@@ -1148,7 +1163,7 @@
     [data-theme="dark"] .text-gray-300 { color: #4B5E7A !important; }
     [data-theme="dark"] .text-gray-200 { color: #2D3B4D !important; }
     [data-theme="dark"] .text-gray-100 { color: #1A252F !important; }
-    [data-theme="dark"] .bg-white { background-color: #000000 !important; }
+    [data-theme="dark"] .bg-white { background-color: transparent !important; }
     [data-theme="dark"] .bg-gray-50 { background-color: #1A252F !important; }
     [data-theme="dark"] .bg-gray-100 { background-color: #2D3B4D !important; }
     [data-theme="dark"] .bg-gray-200 { background-color: #4B5E7A !important; }
@@ -1262,38 +1277,9 @@
         </div>
     </nav>
 
-    <!-- Mobile Menu Overlay -->
-    <div class="mobile-menu" id="mobile-menu" data-mobile-menu>
-        <button class="mobile-menu-close" id="mobile-menu-close" data-mobile-close>
-            <i class="fas fa-times"></i>
-        </button>
-        <ul class="mobile-nav" data-mobile-nav>
-            <li><a href="{% url 'home' %}" class="nav-link mobile-nav-link" data-mobile-link>Home</a></li>
-            <li><a href="{% url 'bookings:book_ticket' %}" class="nav-link mobile-nav-link" data-mobile-link>Book Now</a></li>
-            <li><a href="#schedules-section" class="nav-link mobile-nav-link" onclick="scrollToSchedules()" data-mobile-link>Live Departures</a></li>
-            <li><a href="#destinations" class="nav-link mobile-nav-link" data-mobile-link>Destinations</a></li>
-            {% if user.is_authenticated %}
-                <li class="mobile-dropdown-item">
-                    <button class="dropdown-btn mobile-dropdown-btn" data-mobile-dropdown-toggle>My Account</button>
-                    <div class="mobile-dropdown-menu" data-mobile-dropdown-menu>
-                        <a href="{% url 'bookings:booking_history' %}" class="dropdown-item mobile-dropdown-item" data-mobile-dropdown-item>My Bookings</a>
-                        <a href="{% url 'bookings:profile' %}" class="dropdown-item mobile-dropdown-item" data-mobile-dropdown-item>Profile Settings</a>
-                        <form method="post" action="{% url 'accounts:logout' %}" style="margin: 0;" class="dropdown-form mobile-dropdown-form">
-                            {% csrf_token %}
-                            <button type="submit" class="dropdown-item mobile-dropdown-item" data-mobile-dropdown-item>Logout</button>
-                        </form>
-                    </div>
-                </li>
-            {% else %}
-                <li><a href="{% url 'accounts:login' %}" class="nav-link mobile-nav-link" data-mobile-link>Login</a></li>
-                <li><a href="{% url 'accounts:register' %}" class="nav-link btn btn-secondary btn-small mobile-nav-link" data-mobile-link>Get Started</a></li>
-            {% endif %}
-        </ul>
-    </div>
-
     <!-- Main Content -->
-    <main class="main-content" style="margin-top: 80px;">
-        <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <main class="main-content" style="margin-top: 100px; theme-label">
+        <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-8 ">
             {% if messages %}
                 <div class="messages animate__animated animate__fadeIn" data-messages>
                     {% for message in messages %}

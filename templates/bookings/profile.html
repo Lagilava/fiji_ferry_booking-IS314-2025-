@@ -14,7 +14,7 @@
 
     {% if user.is_authenticated %}
     <!-- Profile Card -->
-    <section class="bg-white shadow-xl rounded-2xl border border-gray-200 p-10 lg:p-16 space-y-10">
+    <section class="card-style bg-white shadow-xl rounded-2xl border border-gray-200 p-10 lg:p-16 space-y-10">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-12">
             <!-- Username -->
             <div class="space-y-2">
@@ -44,7 +44,7 @@
         <!-- Action Button -->
         <div class="mt-8 text-center">
             <a href="{% url 'bookings:home' %}"
-               class="inline-block px-8 py-3 bg-indigo-600 text-white text-lg font-medium rounded-xl shadow-lg hover:bg-indigo-700 transition duration-300">
+               class="book-btn bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white py-3 px-8 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all flex items-center gap-2 justify-center">
                Return to Homepage
             </a>
         </div>
@@ -63,4 +63,16 @@
     </div>
     {% endif %}
 </div>
+<style>
+    .book-btn {
+    background: var(--gradient-primary);
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+    color: #e0e0e0;
+}
+    .card-style {
+    background: rgba(226, 226, 226, 0.6);
+    }
+</style>
 {% endblock %}
