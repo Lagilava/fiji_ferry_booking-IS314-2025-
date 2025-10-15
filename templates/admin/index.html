@@ -3,186 +3,229 @@
 
 {% block content %}
     <div class="dashboard-container">
-        <header class="dashboard-header">
-            <h1 class="dashboard-title">Executive Analytics Hub</h1>
-            {% if user.is_authenticated %}
-                <p class="welcome-message">
-                    Welcome, {{ user.first_name|default:user.username|title }}! Take command of your fleet and bookings.
-                </p>
-            {% endif %}
+        <!-- Enhanced Header with Proper Layout -->
+        <header class="dashboard-header" role="banner">
+            <!-- Background overlay for readability -->
+            <div class="header-overlay"></div>
+
+            <!-- Main content container -->
+            <div class="header-content">
+                <div class="header-main">
+                    <!-- Title section -->
+                    <div class="dashboard-title-section">
+                        <div class="title-icon-wrapper">
+                            <div class="title-icon">
+                                <i class="fas fa-ship" aria-hidden="true"></i>
+                            </div>
+                        </div>
+                        <div class="title-text-wrapper">
+                            <h1 class="dashboard-title">Fiji Ferry Control Hub</h1>
+                            <div class="dashboard-subtitle">Real-time fleet management & booking analytics</div>
+                        </div>
+                    </div>
+
+                    <!-- Welcome section (conditionally shown) -->
+                    {% if user.is_authenticated %}
+                        <div class="welcome-section">
+                            <div class="welcome-card">
+                                <div class="welcome-icon">
+                                    <i class="fas fa-user-circle" aria-hidden="true"></i>
+                                </div>
+                                <div class="welcome-content">
+                                    <div class="welcome-text">
+                                        Welcome back,
+                                        <strong class="user-name">{{ user.first_name|default:user.username|title }}</strong>!
+                                    </div>
+                                    <div class="welcome-subtitle">
+                                        Manage your fleet and bookings with ease
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+
+                <!-- Header stats - positioned absolutely -->
+                <div class="header-stats">
+                    <div class="stat-badge time-badge">
+                        <i class="fas fa-clock" aria-hidden="true"></i>
+                        <span id="current-time"></span>
+                    </div>
+                    <div class="stat-badge date-badge">
+                        <i class="fas fa-calendar-alt" aria-hidden="true"></i>
+                        <span id="current-date"></span>
+                    </div>
+                </div>
+            </div>
         </header>
 
         <!-- Quick Action Buttons -->
-        <div class="quick-actions">
-            <a href="{% url 'admin:bookings_booking_changelist' %}" class="btn btn-primary-custom" aria-label="View all bookings" data-tippy-content="View all bookings">
-                <i class="fas fa-ticket-alt"></i> View Bookings
-            </a>
-            <a href="{% url 'admin:bookings_schedule_changelist' %}" class="btn btn-primary-custom" aria-label="Manage ferry schedules" data-tippy-content="Manage ferry schedules">
-                <i class="fas fa-calendar-alt"></i> Manage Schedules
-            </a>
-            <a href="{% url 'admin:bookings_maintenancelog_changelist' %}" class="btn btn-primary-custom" aria-label="View maintenance logs" data-tippy-content="View maintenance logs">
-                <i class="fas fa-tools"></i> Maintenance Logs
-            </a>
-        </div>
-
-        <!-- Real-Time Alerts Section -->
-        <section class="alerts-section">
-            <div class="section-header">
-                <h3 class="section-title">Alerts (<span id="alert-count">{{ alerts|length }}</span>)</h3>
-                <button id="refresh-alerts" class="btn btn-secondary" aria-label="Refresh alerts">
-                    <i class="fas fa-sync-alt" id="alert-spinner"></i> Refresh
+        <section class="quick-actions-section">
+            <h2 class="section-title">Quick Actions</h2>
+            <div class="quick-actions">
+                <a href="{% url 'admin:bookings_booking_changelist' %}" class="btn btn-primary-custom" aria-label="View all bookings" data-tippy-content="View all bookings">
+                    <i class="fas fa-ticket-alt"></i> View Bookings
+                </a>
+                <a href="{% url 'admin:bookings_schedule_changelist' %}" class="btn btn-primary-custom" aria-label="Manage ferry schedules" data-tippy-content="Manage ferry schedules">
+                    <i class="fas fa-calendar-alt"></i> Manage Schedules
+                </a>
+                <a href="{% url 'admin:bookings_maintenancelog_changelist' %}" class="btn btn-primary-custom" aria-label="View maintenance logs" data-tippy-content="View maintenance logs">
+                    <i class="fas fa-tools"></i> Maintenance Logs
+                </a>
+                <a href="{% url 'admin:export-bookings' %}" class="btn btn-primary-custom" aria-label="Export all bookings to CSV" data-tippy-content="Export all bookings to CSV">
+                    <i class="fas fa-download"></i> Export Bookings
+                </a>
+                <a href="{% url 'bookings:weather_forecast' %}" class="btn btn-primary-custom" aria-label="View weather forecast" data-tippy-content="View weather forecast">
+                    <i class="fas fa-cloud"></i> Weather Forecast
+                </a>
+                <a href="{% url 'bookings:stripe_insights' %}" class="btn btn-primary-custom" aria-label="View Stripe insights" data-tippy-content="View Stripe insights">
+                    <i class="fas fa-credit-card"></i> Stripe Insights
+                </a>
+                <button id="scan-qr-code" class="btn btn-primary-custom" aria-label="Scan QR code for ticket" data-tippy-content="Scan QR code for ticket">
+                    <i class="fas fa-qrcode"></i> Scan QR Code
                 </button>
             </div>
-            <div id="alerts-list">
-                {% for alert in alerts %}
-                    <div class="alert-banner" role="alert" aria-live="polite">
-                        <span class="alert-message">{{ alert.message }}</span>
-                        {% if alert.link %}
-                            <a href="{{ alert.link }}" class="alert-link" aria-label="View details for alert: {{ alert.message }}">Details</a>
-                        {% else %}
-                            <span class="alert-no-details" aria-label="No details available for alert: {{ alert.message }}">No Details</span>
-                        {% endif %}
-                        <button class="dismiss-alert" aria-label="Dismiss alert: {{ alert.message }}">
-                            <i class="fas fa-times"></i>
+        </section>
+
+        <!-- Enhanced QR Scanner Widget -->
+        <section class="qr-scanner-section" id="qrScannerSection" style="display: none;">
+            <div class="widget-card">
+                <div class="section-header">
+                    <h3 class="section-title">QR Scanner</h3>
+                    <button id="qr-close" class="btn btn-secondary" aria-label="Close QR scanner" data-tippy-content="Close QR scanner">
+                        <i class="fas fa-times"></i> Close
+                    </button>
+                </div>
+
+                <!-- Hidden Field for QR Token -->
+                <input type="hidden" id="qr-actual-token" value="">
+
+                <!-- Scanner Container with Progress and Feedback -->
+                <div class="qr-video-container">
+                    <video id="qr-video" width="100%" height="auto" autoplay playsinline aria-label="QR code scanning video feed"></video>
+                    <div id="qr-scan-overlay" aria-hidden="true"></div>
+                    <!-- Progress Bar for Scanning -->
+                    <div id="qr-scan-progress" class="progress" style="display: none; position: absolute; bottom: 1rem; left: 1rem; right: 1rem;">
+                        <div class="progress-bar bg-success" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                    </div>
+                    <!-- Live Feedback Indicator -->
+                    <div id="qr-scan-feedback" class="qr-feedback" style="display: none; position: absolute; top: 1rem; right: 1rem; padding: 0.5rem 1rem; background: var(--secondary); color: var(--text); border-radius: 0.375rem; font-size: 0.9rem;">
+                        Scanning...
+                    </div>
+                </div>
+
+                <!-- Result Display with Enhanced Layout -->
+                <div id="qr-result" class="mt-3" style="display: none;">
+                    <h6>Ticket Details</h6>
+                    <div class="qr-result-grid">
+                        <p><strong>Ticket ID:</strong> <span id="qr-ticket-id"></span></p>
+                        <p><strong>Booking ID:</strong> <span id="qr-booking-id"></span></p>
+                        <p><strong>Passenger:</strong> <span id="qr-passenger"></span></p>
+                        <p><strong>Route:</strong> <span id="qr-route"></span></p>
+                        <p><strong>Booking Date:</strong> <span id="qr-booking-date"></span></p>
+                        <p><strong>Status:</strong> <span id="qr-ticket-status"></span></p>
+                    </div>
+                    <div class="mt-3 qr-action-buttons">
+                        <button id="qr-mark-used" class="btn btn-success-custom" aria-label="Mark ticket as used" data-tippy-content="Mark ticket as used">
+                            <i class="fas fa-check"></i> Mark as Used
+                        </button>
+                        <button id="qr-mark-unused" class="btn btn-secondary-custom" aria-label="Mark ticket as active/unused" data-tippy-content="Mark ticket as active">
+                            <i class="fas fa-undo"></i> Mark as Active
+                        </button>
+                        <button id="qr-view-booking" class="btn btn-primary-custom" aria-label="View booking details" data-tippy-content="View booking details">
+                            <i class="fas fa-eye"></i> View Booking
+                        </button>
+                        <button id="qr-log-activity" class="btn btn-info-custom" aria-label="Log scan activity" data-tippy-content="Log scan activity">
+                            <i class="fas fa-history"></i> Log Activity
+                        </button>
+                        <button id="qr-scan-again" class="btn btn-primary-custom" aria-label="Scan another QR code" data-tippy-content="Scan another QR code">
+                            <i class="fas fa-qrcode"></i> Scan Again
                         </button>
                     </div>
-                {% empty %}
-                    <div class="alert-banner" role="alert" aria-live="polite">
-                        <span class="alert-message">All systems operational as of {{ current_time|date:'H:i d M Y' }}.</span>
-                        <span class="alert-no-details" aria-label="No details available for operational status">No Details</span>
+                </div>
+
+                <!-- Error Display -->
+                <div id="qr-error" class="alert alert-danger mt-3" style="display: none;" role="alert"></div>
+
+                <!-- Collapsible Scan History -->
+                <div id="qr-scan-history" class="mt-3">
+                    <button class="btn btn-secondary-custom qr-history-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#qr-history-collapse" aria-expanded="false" aria-controls="qr-history-collapse" aria-label="Toggle scan history" data-tippy-content="Toggle scan history">
+                        <i class="fas fa-history"></i> Scan History
+                    </button>
+                    <div class="collapse" id="qr-history-collapse">
+                        <ul class="list-group" style="max-height: 150px; overflow-y: auto;"></ul>
                     </div>
-                {% endfor %}
-            </div>
-        </section>
-
-        <!-- Performance Metrics Card -->
-        <section class="stats-bar">
-            <div class="stats-grid">
-                <div class="stat-item">
-                    <div class="stat-number">{{ total_bookings }}</div>
-                    <div class="stat-label">Total Bookings</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-number">{{ active_ferries }}</div>
-                    <div class="stat-label">Active Ferries</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-number">{{ pending_payments }}</div>
-                    <div class="stat-label">Pending Payments</div>
                 </div>
             </div>
         </section>
 
-        <!-- Weather Conditions -->
-        <section class="weather-conditions">
-            <div class="section-header">
-                <h3 class="section-title">Weather Conditions</h3>
-                <button id="refresh-weather" class="btn btn-secondary" aria-label="Refresh weather conditions">
-                    <i class="fas fa-sync-alt hidden" id="weather-spinner"></i> Refresh
-                </button>
-            </div>
-            <div class="weather-list">
-                {% for weather in weather_conditions %}
-                    <div class="weather-item">
-                        <span class="weather-date">{{ weather.updated_at|date:'H:i d M Y' }}</span>
-                        <span class="weather-details">{{ weather.port }}: {{ weather.condition }}, {{ weather.temperature }}°C, Wind {{ weather.wind_speed }} km/h</span>
-                    </div>
-                {% empty %}
-                    <div class="weather-item">No weather data available.</div>
-                {% endfor %}
+        <!-- Widgets Section -->
+        <section class="widgets-section">
+            <h2 class="section-title">Key Metrics & Alerts</h2>
+            <div class="widget-grid">
+                <div class="widget-card">
+                    {% include 'bookings/admin_widgets/performance_metrics.html' %}
+                </div>
+                <div class="widget-card">
+                    {% include 'bookings/admin_widgets/weather_alerts.html' %}
+                </div>
             </div>
         </section>
 
-        <!-- Recent Bookings Table -->
-        <section class="recent-bookings">
-            <div class="section-header">
-                <h3 class="section-title">Recent Bookings</h3>
-                <button id="export-bookings" class="btn btn-secondary" aria-label="Export bookings to CSV" data-tippy-content="Export bookings to CSV">
-                    <i class="fas fa-download"></i> Export to CSV
-                </button>
-            </div>
-            <div class="recent-bookings-table">
-                <table id="recent-bookings-table" class="display w-full">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>User</th>
-                            <th>Schedule</th>
-                            <th>Date</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for booking in recent_bookings %}
-                            <tr>
-                                <td>{{ booking.id }}</td>
-                                <td>{{ booking.user_email }}</td>
-                                <td>{{ booking.schedule }}</td>
-                                <td>{{ booking.booking_date|date:'H:i d M Y' }}</td>
-                                <td data-status="{{ booking.status }}">{{ booking.status }}</td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            <div style="display:none;">
-                <pre id="recent-bookings-data">{{ recent_bookings|json_script:"recent-bookings-data" }}</pre>
-            </div>
-        </section>
-
-        <!-- Analytics Dashboard with Tabs -->
-        <section class="analytics-dashboard">
+        <!-- Analytics Dashboard -->
+        <section class="analytics-section">
+            <h2 class="section-title">Analytics Dashboard</h2>
             <div class="dashboard-nav">
-                <ul class="nav nav-tabs" role="tablist">
+                <ul class="nav nav-tabs custom-tabs" role="tablist" aria-label="Analytics Dashboard Tabs">
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link active" id="bookings-tab" data-bs-toggle="tab" data-bs-target="#bookings" type="button" role="tab" aria-controls="bookings" aria-selected="true">
+                        <button class="nav-link active" id="bookings-tab" data-bs-toggle="tab" data-bs-target="#bookings" type="button" role="tab" aria-controls="bookings" aria-selected="true" data-tippy-content="View bookings by route">
                             <i class="fas fa-chart-bar"></i> Bookings
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="utilization-tab" data-bs-toggle="tab" data-bs-target="#utilization" type="button" role="tab" aria-controls="utilization" aria-selected="false">
+                        <button class="nav-link" id="utilization-tab" data-bs-toggle="tab" data-bs-target="#utilization" type="button" role="tab" aria-controls="utilization" aria-selected="false" data-tippy-content="View ferry utilization">
                             <i class="fas fa-ship"></i> Utilization
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="revenue-tab" data-bs-toggle="tab" data-bs-target="#revenue" type="button" role="tab" aria-controls="revenue" aria-selected="false">
+                        <button class="nav-link" id="revenue-tab" data-bs-toggle="tab" data-bs-target="#revenue" type="button" role="tab" aria-controls="revenue" aria-selected="false" data-tippy-content="View revenue over time">
                             <i class="fas fa-dollar-sign"></i> Revenue
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="payment-tab" data-bs-toggle="tab" data-bs-target="#payment" type="button" role="tab" aria-controls="payment" aria-selected="false">
+                        <button class="nav-link" id="payment-tab" data-bs-toggle="tab" data-bs-target="#payment" type="button" role="tab" aria-controls="payment" aria-selected="false" data-tippy-content="View payment status distribution">
                             <i class="fas fa-credit-card"></i> Payments
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="user-growth-tab" data-bs-toggle="tab" data-bs-target="#user-growth" type="button" role="tab" aria-controls="user-growth" aria-selected="false">
+                        <button class="nav-link" id="user-growth-tab" data-bs-toggle="tab" data-bs-target="#user-growth" type="button" role="tab" aria-controls="user-growth" aria-selected="false" data-tippy-content="View user growth trends">
                             <i class="fas fa-users"></i> User Growth
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="customers-tab" data-bs-toggle="tab" data-bs-target="#customers" type="button" role="tab" aria-controls="customers" aria-selected="false">
+                        <button class="nav-link" id="customers-tab" data-bs-toggle="tab" data-bs-target="#customers" type="button" role="tab" aria-controls="customers" aria-selected="false" data-tippy-content="View top customers by bookings">
                             <i class="fas fa-user-tie"></i> Top Customers
                         </button>
                     </li>
                 </ul>
             </div>
             <div class="tab-content">
-                <div class="tab-pane fade show active" id="bookings" role="tabpanel" aria-labelledby="bookings-tab">
+                <div class="tab-pane show active" id="bookings" role="tabpanel" aria-labelledby="bookings-tab">
                     <div class="chart-controls">
-                        <select class="date-range-filter" data-chart-id="bookingsChart" aria-label="Select date range for bookings chart">
+                        <select class="form-select date-range-filter" data-chart-id="bookingsChart" aria-label="Select date range for bookings chart">
                             <option value="7">Last 7 Days</option>
                             <option value="30" selected>Last 30 Days</option>
                             <option value="all">All Time</option>
                         </select>
-                        <button class="btn btn-secondary refresh-chart" data-chart-id="bookingsChart" aria-label="Refresh bookings chart">
+                        <button class="btn btn-secondary refresh-chart" data-chart-id="bookingsChart" aria-label="Refresh bookings chart" data-tippy-content="Refresh bookings chart">
                             <i class="fas fa-sync-alt"></i> Refresh
                         </button>
                     </div>
                     <div class="chart-wrapper" data-chart-id="bookingsChart" role="img" aria-label="Bar chart of top routes by bookings"></div>
                 </div>
-                <div class="tab-pane fade" id="utilization" role="tabpanel" aria-labelledby="utilization-tab">
+                <div class="tab-pane" id="utilization" role="tabpanel" aria-labelledby="utilization-tab">
                     <div class="chart-controls">
-                        <select class="utilization-filter" aria-label="Filter ferry utilization by day of week">
+                        <select class="form-select utilization-filter" aria-label="Filter ferry utilization by day of week">
                             <option value="all">All Days</option>
                             <option value="Monday">Monday</option>
                             <option value="Tuesday">Tuesday</option>
@@ -192,65 +235,65 @@
                             <option value="Saturday">Saturday</option>
                             <option value="Sunday">Sunday</option>
                         </select>
-                        <select class="date-range-filter" data-chart-id="utilizationChart" aria-label="Select date range for utilization chart">
+                        <select class="form-select date-range-filter" data-chart-id="utilizationChart" aria-label="Select date range for utilization chart">
                             <option value="7">Last 7 Days</option>
                             <option value="30">Last 30 Days</option>
                             <option value="all" selected>All Time</option>
                         </select>
-                        <button class="btn btn-secondary refresh-chart" data-chart-id="utilizationChart" aria-label="Refresh utilization chart">
-                            <i class="fas fa-sync-alt"></i>
+                        <button class="btn btn-secondary refresh-chart" data-chart-id="utilizationChart" aria-label="Refresh utilization chart" data-tippy-content="Refresh utilization chart">
+                            <i class="fas fa-sync-alt"></i> Refresh
                         </button>
                     </div>
                     <div class="chart-wrapper" data-chart-id="utilizationChart" role="img" aria-label="Horizontal bar chart of ferry utilization"></div>
                 </div>
-                <div class="tab-pane fade" id="revenue" role="tabpanel" aria-labelledby="revenue-tab">
+                <div class="tab-pane" id="revenue" role="tabpanel" aria-labelledby="revenue-tab">
                     <div class="chart-controls">
-                        <select class="date-range-filter" data-chart-id="revenueChart" aria-label="Select date range for revenue chart">
+                        <select class="form-select date-range-filter" data-chart-id="revenueChart" aria-label="Select date range for revenue chart">
                             <option value="7">Last 7 Days</option>
                             <option value="30" selected>Last 30 Days</option>
                             <option value="all">All Time</option>
                         </select>
-                        <button class="btn btn-secondary refresh-chart" data-chart-id="revenueChart" aria-label="Refresh revenue chart">
-                            <i class="fas fa-sync-alt"></i>
+                        <button class="btn btn-secondary refresh-chart" data-chart-id="revenueChart" aria-label="Refresh revenue chart" data-tippy-content="Refresh revenue chart">
+                            <i class="fas fa-sync-alt"></i> Refresh
                         </button>
                     </div>
                     <div class="chart-wrapper" data-chart-id="revenueChart" role="img" aria-label="Line chart of revenue over time"></div>
                 </div>
-                <div class="tab-pane fade" id="payment" role="tabpanel" aria-labelledby="payment-tab">
+                <div class="tab-pane" id="payment" role="tabpanel" aria-labelledby="payment-tab">
                     <div class="chart-controls">
-                        <select class="date-range-filter" data-chart-id="paymentChart" aria-label="Select date range for payment chart">
+                        <select class="form-select date-range-filter" data-chart-id="paymentChart" aria-label="Select date range for payment chart">
                             <option value="7">Last 7 Days</option>
                             <option value="30" selected>Last 30 Days</option>
                             <option value="all">All Time</option>
                         </select>
-                        <button class="btn btn-secondary refresh-chart" data-chart-id="paymentChart" aria-label="Refresh payment chart">
-                            <i class="fas fa-sync-alt"></i>
+                        <button class="btn btn-secondary refresh-chart" data-chart-id="paymentChart" aria-label="Refresh payment chart" data-tippy-content="Refresh payment chart">
+                            <i class="fas fa-sync-alt"></i> Refresh
                         </button>
                     </div>
                     <div class="chart-wrapper" data-chart-id="paymentChart" role="img" aria-label="Pie chart of payment status"></div>
                 </div>
-                <div class="tab-pane fade" id="user-growth" role="tabpanel" aria-labelledby="user-growth-tab">
+                <div class="tab-pane" id="user-growth" role="tabpanel" aria-labelledby="user-growth-tab">
                     <div class="chart-controls">
-                        <select class="date-range-filter" data-chart-id="userGrowthChart" aria-label="Select date range for user growth chart">
+                        <select class="form-select date-range-filter" data-chart-id="userGrowthChart" aria-label="Select date range for user growth chart">
                             <option value="7">Last 7 Days</option>
                             <option value="30" selected>Last 30 Days</option>
                             <option value="all">All Time</option>
                         </select>
-                        <button class="btn btn-secondary refresh-chart" data-chart-id="userGrowthChart" aria-label="Refresh user growth chart">
-                            <i class="fas fa-sync-alt"></i>
+                        <button class="btn btn-secondary refresh-chart" data-chart-id="userGrowthChart" aria-label="Refresh user growth chart" data-tippy-content="Refresh user growth chart">
+                            <i class="fas fa-sync-alt"></i> Refresh
                         </button>
                     </div>
                     <div class="chart-wrapper" data-chart-id="userGrowthChart" role="img" aria-label="Line chart of user growth"></div>
                 </div>
-                <div class="tab-pane fade" id="customers" role="tabpanel" aria-labelledby="customers-tab">
+                <div class="tab-pane" id="customers" role="tabpanel" aria-labelledby="customers-tab">
                     <div class="chart-controls">
-                        <select class="date-range-filter" data-chart-id="topCustomersChart" aria-label="Select date range for top customers chart">
+                        <select class="form-select date-range-filter" data-chart-id="topCustomersChart" aria-label="Select date range for top customers chart">
                             <option value="7">Last 7 Days</option>
                             <option value="30" selected>Last 30 Days</option>
                             <option value="all">All Time</option>
                         </select>
-                        <button class="btn btn-secondary refresh-chart" data-chart-id="topCustomersChart" aria-label="Refresh top customers chart">
-                            <i class="fas fa-sync-alt"></i>
+                        <button class="btn btn-secondary refresh-chart" data-chart-id="topCustomersChart" aria-label="Refresh top customers chart" data-tippy-content="Refresh top customers chart">
+                            <i class="fas fa-sync-alt"></i> Refresh
                         </button>
                     </div>
                     <div class="chart-wrapper" data-chart-id="topCustomersChart" role="img" aria-label="Bar chart of top customers by bookings"></div>
@@ -258,8 +301,35 @@
             </div>
         </section>
 
+        <!-- Recent Bookings Table -->
+        <section class="recent-bookings-section">
+            <div class="section-header">
+                <h3 class="section-title">Recent Bookings</h3>
+                <button id="export-bookings" class="btn btn-secondary" aria-label="Export selected bookings to CSV" data-tippy-content="Export selected bookings to CSV">
+                    <i class="fas fa-download"></i> Export to CSV
+                </button>
+            </div>
+            <div class="recent-bookings-table">
+                <table id="recent-bookings-table" class="display w-full">
+                    <thead>
+                        <tr>
+                            <th scope="col">ID</th>
+                            <th scope="col">User</th>
+                            <th scope="col">Route</th>
+                            <th scope="col">Date</th>
+                            <th scope="col">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+            <div style="display:none;">
+                <pre id="recent-bookings-data">{{ recent_bookings|json_script:"recent-bookings-data" }}</pre>
+            </div>
+        </section>
+
         <!-- Recent Activity Log -->
-        <section class="recent-activity">
+        <section class="recent-activity-section">
             <h3 class="section-title">Recent Operations</h3>
             <div class="activity-list">
                 {% for activity in recent_activities %}
@@ -301,6 +371,7 @@
     {{ user_growth|json_script:"user-growth-data" }}
     {{ top_customers|json_script:"top-customers-data" }}
     {{ recent_bookings|json_script:"recent-bookings-data" }}
+
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script>
         // Enforce jQuery 3.6.0 and handle conflicts
@@ -309,745 +380,92 @@
             window.jQueryOld = window.jQuery;
             window.jQuery = jQuery.noConflict(true);
         }
-        // Debug DataTables loading
-        window.addEventListener('load', function() {
-            console.log('Page fully loaded. Checking DataTables:', typeof $.fn.DataTable !== 'undefined');
+    </script>
+
+    <!-- Header Time/Date Update Script -->
+    <script>
+        // Update header time and date
+        function updateHeaderTime() {
+            const now = new Date();
+            const timeElement = document.getElementById('current-time');
+            const dateElement = document.getElementById('current-date');
+
+            if (timeElement) {
+                timeElement.textContent = now.toLocaleTimeString('en-US', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: true
+                });
+            }
+
+            if (dateElement) {
+                dateElement.textContent = now.toLocaleDateString('en-US', {
+                    weekday: 'long',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                });
+            }
+        }
+
+        // Update every second
+        setInterval(updateHeaderTime, 1000);
+        updateHeaderTime(); // Initial call
+    </script>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" defer></script>
+    <link rel="stylesheet" href="https://cdn.datatables.net/2.1.8/css/dataTables.bootstrap5.min.css">
+    <script src="https://cdn.datatables.net/2.1.8/js/jquery.dataTables.min.js" defer></script>
+    <script>
+        // Dynamic fallback to local DataTables
+        document.addEventListener('DOMContentLoaded', function() {
             if (typeof $.fn.DataTable === 'undefined') {
-                console.error('DataTables script failed to load. Check network tab or ensure local fallback is set up.');
+                console.warn('DataTables CDN failed. Attempting to load local DataTables.');
+                const script = document.createElement('script');
+                script.src = "{% static 'js/jquery.dataTables.min.js' %}";
+                script.onload = function() { console.log('Local DataTables loaded successfully.'); };
+                script.onerror = function() { console.error('Failed to load local DataTables.'); };
+                document.head.appendChild(script);
             }
         });
     </script>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <link rel="stylesheet" href="https://cdn.datatables.net/2.1.8/css/dataTables.bootstrap5.min.css">
-    <script src="https://cdn.datatables.net/2.1.8/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js" defer></script>
     <script>
-        // Dynamic fallback to local DataTables
-        if (typeof $.fn.DataTable === 'undefined') {
-            const script = document.createElement('script');
-            script.src = "{% static 'js/jquery.dataTables.min.js' %}";
-            script.onload = function() {
-                console.log('Local DataTables loaded successfully.');
-            };
-            script.onerror = function() {
-                console.error('Failed to load local DataTables. Ensure file exists in static/js/.');
-            };
-            document.head.appendChild(script);
-        }
+        // Dynamic fallback to local Chart.js
+        document.addEventListener('DOMContentLoaded', function() {
+            if (typeof Chart === 'undefined') {
+                console.warn('Chart.js CDN failed. Attempting to load local Chart.js.');
+                const script = document.createElement('script');
+                script.src = "{% static 'js/chart.umd.min.js' %}";
+                script.onload = function() { console.log('Local Chart.js loaded successfully.'); };
+                script.onerror = function() { console.error('Failed to load local Chart.js.'); };
+                document.head.appendChild(script);
+            }
+        });
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
-    <script src="https://unpkg.com/@popperjs/core@2"></script>
-    <script src="https://unpkg.com/tippy.js@6"></script>
-    {% if request.path == '/admin/' %}
-        <script src="{% static 'js/admin_custom.js' %}" id="chartScript"></script>
-    {% endif %}
-    <style>
-        /* Scope all styles to .dashboard-container */
-        .dashboard-container {
-            font-family: 'Inter', 'Roboto', sans-serif;
-            font-weight: 400;
-            line-height: 1.6;
-            color: #1f2937; /* Darker text for better contrast */
-            width: 100%;
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 1.5rem;
-            background: #f8fafc;
-            border-radius: 0 0 12px 12px; /* Avoid affecting top border radius */
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 1.5rem;
-            min-height: calc(100vh - 5rem); /* Adjusted for admin header height */
-            box-sizing: border-box; /* Ensure padding doesn't add to width */
-            overflow-x: hidden; /* Prevent horizontal overflow */
-        }
-
-        .dashboard-container .dashboard-header {
-            background: #1e40af;
-            padding: 1.5rem;
-            border-radius: 0;
-            text-align: center;
-            color: #ffffff;
-            width: 100%;
-            box-sizing: border-box;
-        }
-
-        .dashboard-container .dashboard-title {
-            font-size: 2rem;
-            font-weight: 600;
-            margin: 0;
-        }
-
-        .dashboard-container .welcome-message {
-            font-size: 1rem;
-            background: rgba(255, 255, 255, 0.15);
-            padding: 0.75rem;
-            border-radius: 8px;
-            margin-top: 1rem;
-            max-width: 600px;
-            margin-left: auto;
-            margin-right: auto;
-        }
-
-        .dashboard-container .section-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1rem;
-            width: 100%;
-            box-sizing: border-box;
-        }
-
-        .dashboard-container .section-title {
-            font-size: 1.5rem;
-            font-weight: 600;
-            color: #1e40af;
-        }
-
-        .dashboard-container .btn {
-            padding: 0.5rem 1rem;
-            border-radius: 6px;
-            font-weight: 500;
-            text-decoration: none;
-            transition: all 0.2s ease;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .dashboard-container .btn-primary-custom {
-            background: #1e40af;
-            color: #ffffff;
-            border: 1px solid #1e40af;
-        }
-
-        .dashboard-container .btn-primary-custom:hover {
-            background: #2563eb;
-            border-color: #2563eb;
-            transform: translateY(-1px);
-            color: #ffffff;
-        }
-
-        .dashboard-container .btn-primary-custom:active {
-            background: #1e3a8a;
-            border-color: #1e3a8a;
-            color: #ffffff;
-        }
-
-        .dashboard-container .btn-secondary,
-        .dashboard-container #refresh-alerts,
-        .dashboard-container #refresh-weather,
-        .dashboard-container .refresh-chart {
-            background: #e5e7eb;
-            color: #1f2937;
-            border: 1px solid #d1d5db;
-        }
-
-        .dashboard-container .btn-secondary:hover,
-        .dashboard-container #refresh-alerts:hover,
-        .dashboard-container #refresh-weather:hover,
-        .dashboard-container .refresh-chart:hover {
-            background: #d1d5db;
-            border-color: #9ca3af;
-            transform: translateY(-1px);
-            color: #1f2937;
-        }
-
-        .dashboard-container .btn-secondary:active,
-        .dashboard-container #refresh-alerts:active,
-        .dashboard-container #refresh-weather:active,
-        .dashboard-container .refresh-chart:active {
-            background: #9ca3af;
-            border-color: #6b7280;
-            color: #1f2937;
-        }
-
-        .dashboard-container .quick-actions {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1rem;
-            padding: 1rem 0;
-            width: 100%;
-        }
-
-        .dashboard-container .quick-actions .btn-primary-custom {
-            justify-content: center;
-            padding: 0.75rem;
-            font-size: 1rem;
-        }
-
-        .dashboard-container .alerts-section .alert-banner {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 1rem;
-            background: #ffffff;
-            border-radius: 8px;
-            border-left: 4px solid #b91c1c;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-            margin-bottom: 1rem;
-            width: 100%;
-        }
-
-        .dashboard-container .alert-message {
-            font-weight: 500;
-            color: #b91c1c;
-        }
-
-        .dashboard-container .alert-link {
-            color: #1e40af;
-            font-weight: 500;
-        }
-
-        .dashboard-container .alert-link:hover {
-            color: #2563eb;
-        }
-
-        .dashboard-container .alert-no-details {
-            color: #6b7280;
-            font-weight: 500;
-        }
-
-        .dashboard-container .dismiss-alert {
-            background: none;
-            border: none;
-            color: #b91c1c;
-            cursor: pointer;
-        }
-
-        .dashboard-container .dismiss-alert:hover {
-            color: #991b1b;
-        }
-
-        .dashboard-container .stats-bar {
-            background: #ffffff;
-            border-radius: 8px;
-            padding: 1.5rem;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-            width: 100%;
-        }
-
-        .dashboard-container .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 1rem;
-            width: 100%;
-        }
-
-        .dashboard-container .stat-item {
-            background: #f8fafc;
-            padding: 1rem;
-            border-radius: 6px;
-            text-align: center;
-            width: 100%;
-        }
-
-        .dashboard-container .stat-number {
-            font-size: 1.75rem;
-            font-weight: 600;
-            color: #1e40af;
-        }
-
-        .dashboard-container .stat-label {
-            font-size: 0.875rem;
-            color: #6b7280;
-            text-transform: uppercase;
-        }
-
-        .dashboard-container .weather-conditions {
-            background: #ffffff;
-            border-radius: 8px;
-            padding: 1.5rem;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-            width: 100%;
-        }
-
-        .dashboard-container .weather-list {
-            max-height: 300px;
-            overflow-y: auto;
-            width: 100%;
-        }
-
-        .dashboard-container .weather-item {
-            padding: 0.75rem;
-            border-bottom: 1px solid #e5e7eb;
-            display: flex;
-            gap: 1rem;
-            width: 100%;
-        }
-
-        .dashboard-container .weather-date,
-        .dashboard-container .weather-details {
-            color: #1f2937;
-        }
-
-        .dashboard-container .recent-bookings-table {
-            background: #ffffff;
-            border-radius: 8px;
-            padding: 1.5rem;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-            overflow-x: auto;
-            width: 100%;
-        }
-
-        .dashboard-container #recent-bookings-table {
-            width: 100%;
-            font-size: 0.875rem;
-            color: #1f2937; /* Explicitly set for visibility */
-        }
-
-        .dashboard-container #recent-bookings-table thead th {
-            background: #f1f5f9;
-            color: #1e40af;
-            padding: 0.75rem;
-            border-bottom: 2px solid #d1d5db;
-            text-transform: uppercase;
-            width: 100%;
-        }
-
-        .dashboard-container #recent-bookings-table tbody td {
-            padding: 0.75rem;
-            border-bottom: 1px solid #e5e7eb;
-            color: #1f2937; /* Explicitly set for visibility */
-            width: 100%;
-        }
-
-        .dashboard-container #recent-bookings-table tbody tr:hover {
-            background: #f1f5f9;
-        }
-
-        .dashboard-container #recent-bookings-table tbody td:nth-child(3) {
-            max-width: 250px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .dashboard-container #recent-bookings-table tbody td:nth-child(5) {
-            color: #b91c1c;
-            font-weight: 500;
-        }
-
-        .dashboard-container #recent-bookings-table tbody td:nth-child(5):before {
-            content: '';
-            display: inline-block;
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #b91c1c;
-            margin-right: 0.5rem;
-        }
-
-        .dashboard-container #recent-bookings-table tbody td:nth-child(5)[data-status="confirmed"] {
-            color: #047857;
-        }
-
-        .dashboard-container #recent-bookings-table tbody td:nth-child(5)[data-status="confirmed"]:before {
-            background: #047857;
-        }
-
-        .dashboard-container .analytics-dashboard {
-            background: #ffffff;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-            width: 100%;
-        }
-
-        .dashboard-container .dashboard-nav {
-            padding: 0.5rem;
-            width: 100%;
-        }
-
-        .dashboard-container .nav-tabs {
-            display: flex;
-            border-bottom: none;
-            width: 100%;
-        }
-
-        .dashboard-container .nav-item {
-            flex: 1;
-            width: 100%;
-        }
-
-        .dashboard-container .nav-link {
-            color: #1f2937;
-            font-weight: 500;
-            padding: 0.75rem;
-            border-radius: 6px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s ease;
-            width: 100%;
-        }
-
-        .dashboard-container .nav-link:hover {
-            background: #f1f5f9;
-            color: #1e40af;
-        }
-
-        .dashboard-container .nav-link.active {
-            background: #1e40af;
-            color: #ffffff;
-        }
-
-        .dashboard-container .nav-link i {
-            margin-right: 0.5rem;
-        }
-
-        .dashboard-container .tab-content {
-            padding: 1.5rem;
-            width: 100%;
-        }
-
-        .dashboard-container .chart-controls {
-            display: flex;
-            gap: 1rem;
-            align-items: center;
-            margin-bottom: 1rem;
-            width: 100%;
-        }
-
-        .dashboard-container .chart-wrapper {
-            min-height: 400px;
-            border-radius: 8px;
-            background: #ffffff;
-            width: 100%;
-        }
-
-        .dashboard-container .date-range-filter,
-        .dashboard-container .utilization-filter {
-            padding: 0.5rem;
-            border: 1px solid #d1d5db;
-            border-radius: 6px;
-            background: #ffffff;
-            color: #1f2937;
-            width: 100%;
-            max-width: 200px; /* Limit width for consistency */
-        }
-
-        .dashboard-container .date-range-filter:focus,
-        .dashboard-container .utilization-filter:focus {
-            border-color: #1e40af;
-            outline: none;
-            color: #1f2937; /* Lock text color */
-        }
-
-        .dashboard-container .recent-activity {
-            background: #ffffff;
-            border-radius: 8px;
-            padding: 1.5rem;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-            width: 100%;
-        }
-
-        .dashboard-container .activity-list {
-            max-height: 300px;
-            overflow-y: auto;
-            width: 100%;
-        }
-
-        .dashboard-container .activity-item {
-            padding: 0.75rem;
-            border-bottom: 1px solid #e5e7eb;
-            display: flex;
-            gap: 1rem;
-            align-items: center;
-            font-size: 0.9375rem;
-            width: 100%;
-        }
-
-        .dashboard-container .activity-date {
-            color: #1f2937;
-            font-weight: 500;
-            min-width: 120px;
-        }
-
-        .dashboard-container .activity-operator {
-            color: #1e40af;
-            font-weight: 600;
-            min-width: 100px;
-        }
-
-        .dashboard-container .activity-action {
-            color: #374151;
-            font-style: italic;
-            flex-grow: 1;
-        }
-
-        .dashboard-container .activity-resource {
-            color: #1f2937;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            max-width: 300px;
-        }
-
-        .dashboard-container .activity-count {
-            color: #6b7280;
-            font-weight: 500;
-            margin-left: 0.5rem;
-        }
-
-        /* Dark Mode */
-        @media (prefers-color-scheme: dark) {
-            .dashboard-container {
-                background: #1f2937;
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js" defer></script>
+    <script src="https://unpkg.com/@popperjs/core@2" defer></script>
+    <script src="https://unpkg.com/tippy.js@6" defer></script>
+    <script src="https://unpkg.com/jsqr@1.4.0/dist/jsQR.min.js" defer></script>
+    <script>
+        // Dynamic fallback to local jsQR
+        document.addEventListener('DOMContentLoaded', function() {
+            if (typeof jsQR === 'undefined') {
+                console.warn('jsQR CDN failed. Attempting to load local jsQR.');
+                const script = document.createElement('script');
+                script.src = "{% static 'js/jsQR.min.js' %}";
+                script.onload = function() { console.log('Local jsQR loaded successfully.'); };
+                script.onerror = function() { console.error('Failed to load local jsQR.'); };
+                document.head.appendChild(script);
             }
-
-            .dashboard-container .dashboard-header {
-                background: #1e40af;
-            }
-
-            .dashboard-container .section-title {
-                color: #60a5fa;
-            }
-
-            .dashboard-container .btn-primary-custom {
-                background: #1e40af;
-                border-color: #1e40af;
-                color: #ffffff;
-            }
-
-            .dashboard-container .btn-primary-custom:hover {
-                background: #2563eb;
-                border-color: #2563eb;
-                color: #ffffff;
-            }
-
-            .dashboard-container .btn-secondary,
-            .dashboard-container #refresh-alerts,
-            .dashboard-container #refresh-weather,
-            .dashboard-container .refresh-chart {
-                background: #374151;
-                color: #e5e7eb;
-                border-color: #4b5563;
-            }
-
-            .dashboard-container .btn-secondary:hover,
-            .dashboard-container #refresh-alerts:hover,
-            .dashboard-container #refresh-weather:hover,
-            .dashboard-container .refresh-chart:hover {
-                background: #4b5563;
-                border-color: #6b7280;
-                color: #e5e7eb;
-            }
-
-            .dashboard-container .stats-bar,
-            .dashboard-container .weather-conditions,
-            .dashboard-container .recent-bookings-table,
-            .dashboard-container .recent-activity,
-            .dashboard-container .analytics-dashboard {
-                background: #1f2937;
-            }
-
-            .dashboard-container .stats-grid .stat-item {
-                background: #374151;
-            }
-
-            .dashboard-container .stat-number {
-                color: #60a5fa;
-            }
-
-            .dashboard-container .stat-label,
-            .dashboard-container .weather-date,
-            .dashboard-container .weather-details,
-            .dashboard-container .activity-date,
-            .dashboard-container .activity-resource {
-                color: #e5e7eb;
-            }
-
-            .dashboard-container .activity-operator {
-                color: #60a5fa;
-            }
-
-            .dashboard-container .activity-action {
-                color: #d1d5db;
-            }
-
-            .dashboard-container .activity-count {
-                color: #9ca3af;
-            }
-
-            .dashboard-container #recent-bookings-table {
-                color: #e5e7eb;
-            }
-
-            .dashboard-container #recent-bookings-table thead th {
-                background: #374151;
-                color: #60a5fa;
-                border-bottom: 2px solid #4b5563;
-            }
-
-            .dashboard-container #recent-bookings-table tbody td {
-                border-bottom: 1px solid #4b5563;
-                color: #e5e7eb;
-            }
-
-            .dashboard-container #recent-bookings-table tbody tr:hover {
-                background: #374151;
-            }
-
-            .dashboard-container #recent-bookings-table tbody td:nth-child(5) {
-                color: #f87171;
-            }
-
-            .dashboard-container #recent-bookings-table tbody td:nth-child(5):before {
-                background: #f87171;
-            }
-
-            .dashboard-container #recent-bookings-table tbody td:nth-child(5)[data-status="confirmed"] {
-                color: #10b981;
-            }
-
-            .dashboard-container #recent-bookings-table tbody td:nth-child(5)[data-status="confirmed"]:before {
-                background: #10b981;
-            }
-
-            .dashboard-container .alerts-section .alert-banner {
-                background: #374151;
-                border-left-color: #f87171;
-                color: #e5e7eb;
-            }
-
-            .dashboard-container .alert-message {
-                color: #f87171;
-            }
-
-            .dashboard-container .alert-link {
-                color: #60a5fa;
-            }
-
-            .dashboard-container .alert-link:hover {
-                color: #93c5fd;
-            }
-
-            .dashboard-container .alert-no-details {
-                color: #9ca3af;
-            }
-
-            .dashboard-container .dismiss-alert {
-                color: #f87171;
-            }
-
-            .dashboard-container .dismiss-alert:hover {
-                color: #ef4444;
-            }
-
-            .dashboard-container .nav-link {
-                color: #e5e7eb;
-            }
-
-            .dashboard-container .nav-link:hover {
-                background: #374151;
-                color: #93c5fd;
-            }
-
-            .dashboard-container .nav-link.active {
-                background: #1e40af;
-                color: #ffffff;
-            }
-
-            .dashboard-container .chart-wrapper {
-                background: #374151;
-            }
-
-            .dashboard-container .date-range-filter,
-            .dashboard-container .utilization-filter {
-                background: #374151;
-                color: #e5e7eb;
-                border-color: #4b5563;
-            }
-
-            .dashboard-container .date-range-filter:focus,
-            .dashboard-container .utilization-filter:focus {
-                border-color: #60a5fa;
-                color: #e5e7eb;
-            }
-        }
-
-        /* Responsive Design */
-        @media (max-width: 768px) {
-            .dashboard-container {
-                padding: 1rem;
-                gap: 1rem;
-                margin-top: 0;
-            }
-
-            .dashboard-container .dashboard-header {
-                padding: 1rem;
-            }
-
-            .dashboard-container .dashboard-title {
-                font-size: 1.5rem;
-            }
-
-            .dashboard-container .welcome-message {
-                font-size: 0.875rem;
-            }
-
-            .dashboard-container .quick-actions {
-                grid-template-columns: 1fr;
-            }
-
-            .dashboard-container .section-title {
-                font-size: 1.25rem;
-            }
-
-            .dashboard-container .stats-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .dashboard-container .weather-list,
-            .dashboard-container .activity-list {
-                max-height: 200px;
-            }
-
-            .dashboard-container .chart-controls {
-                flex-direction: column;
-                align-items: stretch;
-            }
-
-            .dashboard-container .chart-wrapper {
-                min-height: 300px;
-            }
-
-            .dashboard-container .nav-tabs {
-                flex-direction: column;
-            }
-
-            .dashboard-container .nav-item {
-                width: 100%;
-            }
-
-            .dashboard-container .nav-link {
-                justify-content: flex-start;
-                font-size: 0.875rem;
-            }
-
-            .dashboard-container #recent-bookings-table {
-                font-size: 0.75rem;
-            }
-
-            .dashboard-container .activity-item {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 0.5rem;
-            }
-
-            .dashboard-container .activity-date,
-            .dashboard-container .activity-operator {
-                min-width: auto;
-            }
-
-            .dashboard-container .activity-resource {
-                max-width: 100%;
-                white-space: normal;
-            }
-        }
-    </style>
+        });
+    </script>
+    <link rel="stylesheet" href="{% static 'css/admin_custom.css' %}">
+    <link rel="stylesheet" href="{% static 'css/admin_dashboard.css' %}">
+    <link rel="stylesheet" href="{% static 'css/qr_scanner_advanced.css' %}">
+    <script src="{% static 'js/admin_custom.js' %}" id="chartScript" defer></script>
+    <script src="{% static 'js/qr_scanner.js' %}" defer></script>
 {% endblock %}

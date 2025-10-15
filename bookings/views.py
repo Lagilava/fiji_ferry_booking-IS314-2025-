@@ -8,6 +8,8 @@ import time
 import uuid
 from decimal import Decimal
 from io import BytesIO
+
+from django.contrib.admin.views.decorators import staff_member_required
 from reportlab.lib.pagesizes import A4
 import stripe
 import qrcode
@@ -32,7 +34,7 @@ from django.views.decorators.http import require_POST, require_GET
 
 from .decorators import login_required_allow_anonymous
 from .forms import CargoBookingForm, ModifyBookingForm
-from .models import Schedule, Booking, Passenger, Payment, Ticket, Cargo, Route, WeatherCondition, AddOn, Vehicle
+from .models import Schedule, Booking, Passenger, Payment, Ticket, Cargo, Route, WeatherCondition, AddOn, Vehicle, Port
 
 logger = logging.getLogger(__name__)
 stripe.api_key = settings.STRIPE_SECRET_KEY
@@ -2450,3 +2452,86 @@ def download_ticket(request, ticket_id):
     response = HttpResponse(buffer, content_type='image/png')
     response['Content-Disposition'] = f'attachment; filename=ticket_{ticket.id}.png'
     return response
+
+@require_GET
+@staff_member_required
+def weather_forecast_view(request):
+    """Fetch weather forecasts for all ports using OpenWeatherMap API."""
+    api_key = settings.OPENWEATHERMAP_API_KEY
+    ports = Port.objects.values('lat', 'lng', 'name')
+    forecasts = []
+    cache_key = 'weather_forecasts_all_ports'
+    cached_forecasts = cache.get(cache_key)
+
+    if cached_forecasts:
+        logger.info("Returning cached weather forecasts")
+        return JsonResponse({'forecasts': cached_forecasts})
+
+    try:
+        for port in ports:
+            url = f"https://api.openweathermap.org/data/2.5/forecast?lat={port['lat']}&lon={port['lng']}&appid={api_key}&units=metric"
+            response = requests.get(url, timeout=5)
+            response.raise_for_status()
+            data = response.json()
+            if data.get('list'):
+                forecasts.append({
+                    'port': port['name'],
+                    'forecast': [
+                        {
+                            'datetime': item['dt_txt'],
+                            'temperature': float(item['main']['temp']),
+                            'condition': item['weather'][0]['description'],
+                            'wind_speed': float(item['wind']['speed']) * 3.6,  # Convert m/s to km/h
+                            'precipitation_probability': float(item.get('pop', 0)) * 100
+                        } for item in data['list'][:8]  # Next 24 hours (3-hour intervals)
+                    ]
+                })
+        cache.set(cache_key, forecasts, timeout=1800)  # Cache for 30 minutes
+        logger.info(f"Weather forecasts fetched for {len(ports)} ports")
+        return JsonResponse({'forecasts': forecasts})
+    except requests.RequestException as e:
+        logger.error(f"OpenWeatherMap API error: {str(e)}")
+        return JsonResponse({'error': 'Failed to fetch weather forecasts'}, status=500)
+
+@require_GET
+@staff_member_required
+def stripe_insights_view(request):
+    """Fetch recent Stripe transactions and disputes."""
+    stripe.api_key = settings.STRIPE_SECRET_KEY
+    cache_key = 'stripe_insights'
+    cached_insights = cache.get(cache_key)
+
+    if cached_insights:
+        logger.info("Returning cached Stripe insights")
+        return JsonResponse(cached_insights)
+
+    try:
+        charges = stripe.Charge.list(limit=5)
+        disputes = stripe.Dispute.list(limit=3)
+        insights = {
+            'recent_charges': [
+                {
+                    'id': c.id,
+                    'amount': float(c.amount / 100),
+                    'status': c.status,
+                    'created': datetime.datetime.fromtimestamp(c.created).isoformat(),
+                    'description': c.description or f"Booking #{c.metadata.get('booking_id', 'N/A')}"
+                } for c in charges.data
+            ],
+            'disputes': [
+                {
+                    'id': d.id,
+                    'amount': float(d.amount / 100),
+                    'status': d.status,
+                    'reason': d.reason,
+                    'created': datetime.datetime.fromtimestamp(d.created).isoformat()
+                } for d in disputes.data
+            ]
+        }
+        cache.set(cache_key, insights, timeout=300)  # Cache for 5 minutes
+        logger.info("Stripe insights fetched successfully")
+        return JsonResponse(insights)
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe API error: {str(e)}")
+        return JsonResponse({'error': 'Failed to fetch Stripe insights'}, status=500)
+
