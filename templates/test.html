@@ -1,0 +1,177 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Fiji - Route Avoiding Land (Leaflet + Turf)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style> #map { height: 100vh; } .controls { position: absolute; z-index:1000; left:10px; top:10px; background:white;padding:8px;border-radius:6px; } </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div class="controls">
+    <button id="routeBtn">Compute route Suva → Savusavu</button>
+  </div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+
+  <script>
+  // --- Helper: convert between Leaflet [lat,lng] and turf [lng,lat] ---
+  const toLngLat = (latlng) => [latlng[1], latlng[0]];
+  const toLatLng = (lnglat) => [lnglat[1], lnglat[0]];
+
+  // 1) Initialize map
+  const map = L.map('map').setView([-17.7, 178.2], 7);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap contributors' }).addTo(map);
+
+  // Sample ports (Leaflet lat,lng)
+  const suva = [-18.1416, 178.4419];
+  const savusavu = [-16.7792, 179.3419];
+  L.marker(suva).addTo(map).bindPopup('Suva');
+  L.marker(savusavu).addTo(map).bindPopup('Savusavu');
+
+  // 2) Load land polygon for Fiji (example source). You can replace with higher-res coastline if you want.
+  // NOTE: If offline or you prefer, host the GeoJSON yourself.
+  const landGeojsonUrl = 'https://raw.githubusercontent.com/johan/world.geo.json/master/countries/FJI.geo.json';
+
+  let landGeoJSON = null;
+  fetch(landGeojsonUrl)
+    .then(r => r.json())
+    .then(g => {
+      landGeoJSON = g;
+      L.geoJSON(landGeoJSON, { style: { color: '#444', fillColor: '#ddd', weight: 1, fillOpacity: 0.7 } }).addTo(map);
+    })
+    .catch(err => {
+      console.error('Failed to load land GeoJSON', err);
+      alert('Failed to load land polygon - check console.');
+    });
+
+  // --- Dijkstra implementation (simple) ---
+  function dijkstra(nodes, edges, startIdx, endIdx) {
+    const N = nodes.length;
+    const dist = Array(N).fill(Infinity);
+    const prev = Array(N).fill(null);
+    const visited = Array(N).fill(false);
+    dist[startIdx] = 0;
+    for (let k = 0; k < N; k++) {
+      let u = -1;
+      let best = Infinity;
+      for (let i = 0; i < N; i++) if (!visited[i] && dist[i] < best) { best = dist[i]; u = i; }
+      if (u === -1) break;
+      visited[u] = true;
+      if (u === endIdx) break;
+      (edges[u] || []).forEach(({ v, w }) => {
+        if (dist[u] + w < dist[v]) {
+          dist[v] = dist[u] + w;
+          prev[v] = u;
+        }
+      });
+    }
+    if (dist[endIdx] === Infinity) return null;
+    const path = [];
+    for (let cur = endIdx; cur !== null; cur = prev[cur]) path.push(cur);
+    return path.reverse();
+  }
+
+  // --- Core: compute route avoiding land using visibility graph ---
+  function computeRouteAvoidLand(startLatLng, endLatLng, landGeoJSON) {
+    // turf needs [lng,lat]
+    const start = toLngLat(startLatLng);
+    const end = toLngLat(endLatLng);
+
+    // Quick check: direct line intersects land?
+    const direct = turf.lineString([start, end]);
+    const intersects = turf.lineIntersect(direct, landGeoJSON);
+    if (intersects.features.length === 0) {
+      return [start, end]; // safe direct route
+    }
+
+    // Build candidate nodes: start, end, and filtered coastline vertices
+    // Extract polygon coordinates (handle MultiPolygon & Polygon)
+    let coords = [];
+    turf.flattenEach(landGeoJSON, function (feature) {
+      const geom = feature.geometry;
+      if (geom && geom.type === 'Polygon') {
+        geom.coordinates.forEach(ring => coords.push(...ring));
+      } else if (geom && geom.type === 'MultiPolygon') {
+        geom.coordinates.forEach(poly => poly.forEach(ring => coords.push(...ring)));
+      }
+    });
+
+    // Build bounding box around start-end and expand by margin to keep local vertices
+    const bbox = turf.bbox(turf.lineString([start, end]));
+    const margin = 1.0; // degrees - tune for your route coverage
+    const bboxExpanded = [bbox[0] - margin, bbox[1] - margin, bbox[2] + margin, bbox[3] + margin];
+
+    // Filter polygon vertices to those inside expanded bbox (reduces graph size)
+    const candidateVertices = coords.filter(pt => {
+      const [lng, lat] = pt;
+      return lng >= bboxExpanded[0] && lng <= bboxExpanded[2] && lat >= bboxExpanded[1] && lat <= bboxExpanded[3];
+    });
+
+    // If too few vertices in bbox, expand margin until we have enough (safety)
+    if (candidateVertices.length < 20) {
+      const larger = 2.5;
+      const bbox2 = [bbox[0] - larger, bbox[1] - larger, bbox[2] + larger, bbox[3] + larger];
+      candidateVertices.push(...coords.filter(pt => {
+        const [lng, lat] = pt;
+        return lng >= bbox2[0] && lng <= bbox2[2] && lat >= bbox2[1] && lat <= bbox2[3];
+      }));
+    }
+
+    // Build node list (unique)
+    const nodesLngLat = [];
+    const pushUnique = (pt) => {
+      const key = pt[0].toFixed(6) + ',' + pt[1].toFixed(6);
+      if (!nodesLngLat._seen) nodesLngLat._seen = new Set();
+      if (!nodesLngLat._seen.has(key)) { nodesLngLat._seen.add(key); nodesLngLat.push(pt); }
+    };
+    pushUnique(start); // index 0
+    pushUnique(end);   // index 1
+    candidateVertices.forEach(pt => pushUnique(pt));
+
+    // Build edges between nodes if the connecting segment does NOT intersect land
+    const N = nodesLngLat.length;
+    const edges = Array.from({ length: N }, () => []);
+    for (let i = 0; i < N; i++) {
+      for (let j = i + 1; j < N; j++) {
+        const a = nodesLngLat[i];
+        const b = nodesLngLat[j];
+        const line = turf.lineString([a, b]);
+        // If the line intersects the land polygon, skip it.
+        if (turf.lineIntersect(line, landGeoJSON).features.length === 0) {
+          const w = turf.distance(turf.point(a), turf.point(b), { units: 'kilometers' });
+          edges[i].push({ v: j, w });
+          edges[j].push({ v: i, w });
+        }
+      }
+    }
+
+    // Compute shortest path from index 0 (start) to index 1 (end)
+    const pathIdx = dijkstra(nodesLngLat, edges, 0, 1);
+    if (!pathIdx) return null;
+    const pathCoords = pathIdx.map(i => nodesLngLat[i]);
+    return pathCoords; // array of [lng,lat]
+  }
+
+  // Draw the route (clear prev)
+  let routeLayer = null;
+  function drawRouteGeo(pathLngLat) {
+    if (routeLayer) map.removeLayer(routeLayer);
+    const latlngs = pathLngLat.map(toLatLng); // convert to [lat,lng]
+    routeLayer = L.polyline(latlngs, { color: 'blue', weight: 4 }).addTo(map);
+    map.fitBounds(routeLayer.getBounds(), { padding: [40, 40] });
+  }
+
+  // Hook button
+  document.getElementById('routeBtn').addEventListener('click', () => {
+    if (!landGeoJSON) { alert('Land data not yet loaded.'); return; }
+    const path = computeRouteAvoidLand(suva, savusavu, landGeoJSON);
+    if (!path) { alert('No path found (increase search margin or use higher-res coastline).'); return; }
+    drawRouteGeo(path);
+  });
+
+  </script>
+</body>
+</html>

@@ -1,0 +1,262 @@
+{% load static %}
+
+<div id="weather_alerts" class="jazzmin-widget" data-widget-url="/admin/widget-data/weather_alerts/" role="region" aria-label="Weather alerts widget">
+    <style>
+        /* Theme variables (shared with performance_metrics.html) */
+        :root {
+            --primary: #1e40af;
+            --primary-hover: #2563eb;
+            --primary-active: #1e3a8a;
+            --secondary: #e5e7eb;
+            --secondary-hover: #d1d5db;
+            --secondary-active: #9ca3af;
+            --accent: #26a69a;
+            --warning: #b91c1c;
+            --success: #047857;
+            --text: #1f2937;
+            --background: #f8fafc;
+            --chart-bg: #ffffff;
+            --border: #d1d5db;
+            --muted: #6b7280;
+            --shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            --gradient: linear-gradient(135deg, #1e40af, #2563eb);
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --primary: #60a5fa;
+                --primary-hover: #93c5fd;
+                --primary-active: #3b82f6;
+                --secondary: #374151;
+                --secondary-hover: #4b5563;
+                --secondary-active: #6b7280;
+                --accent: #26a69a;
+                --warning: #f87171;
+                --success: #10b981;
+                --text: #e5e7eb;
+                --background: #1f2937;
+                --chart-bg: #374151;
+                --border: #4b5563;
+                --muted: #9ca3af;
+                --shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+                --gradient: linear-gradient(135deg, #60a5fa, #93c5fd);
+            }
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        /* Widget styles */
+        .jazzmin-widget {
+            background: var(--chart-bg);
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: var(--shadow);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            font-family: 'Inter', 'Roboto', sans-serif;
+            color: var(--text);
+        }
+
+        .jazzmin-widget:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+        }
+
+        /* Section header */
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .section-title {
+            font-size: 1.9rem;
+            font-weight: 600;
+            color: var(--primary);
+            margin: 0;
+            position: relative;
+        }
+
+        .section-title::after {
+            content: '';
+            display: block;
+            width: 50px;
+            height: 3px;
+            background: var(--primary);
+            margin-top: 0.5rem;
+        }
+
+        /* Weather alerts list */
+        .weather-alerts-list {
+            max-height: 320px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--muted) var(--chart-bg);
+            background: var(--chart-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        .weather-alerts-list::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .weather-alerts-list::-webkit-scrollbar-thumb {
+            background: var(--muted);
+            border-radius: 4px;
+        }
+
+        .weather-alert-item {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border);
+            color: var(--text);
+            font-size: 0.95rem;
+            transition: background 0.2s ease, transform 0.2s ease;
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        .weather-alert-item:hover {
+            background: var(--secondary-hover);
+            transform: translateX(5px);
+        }
+
+        .weather-alert-item.critical[aria-live="alert"] {
+            animation: pulse 1.5s ease-in-out infinite;
+            background: rgba(var(--warning), 0.1);
+            border-left: 4px solid var(--warning);
+        }
+
+        .weather-alert-item .badge.bg-danger {
+            background: var(--warning);
+            color: #ffffff;
+            padding: 0.4rem 0.8rem;
+            border-radius: 6px;
+            font-weight: 500;
+        }
+
+        .no-alerts {
+            text-align: center;
+            color: var(--muted);
+            font-style: italic;
+        }
+
+        /* Error message */
+        .error-message {
+            display: none;
+            color: var(--warning);
+            font-size: 0.9rem;
+            text-align: center;
+            margin-top: 1rem;
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        /* Refresh button */
+        #refresh-weather-alerts {
+            background: var(--secondary);
+            color: var(--text);
+            border: 1px solid var(--border);
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        #refresh-weather-alerts:hover:not(:disabled) {
+            background: var(--secondary-hover);
+            color: var(--primary);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow);
+        }
+
+        #refresh-weather-alerts:active:not(:disabled) {
+            background: var(--secondary-active);
+            transform: translateY(0);
+        }
+
+        #refresh-weather-alerts:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        #weather-alerts-spinner:not(.hidden) {
+            animation: spin 1s linear infinite;
+        }
+
+        /* Last updated */
+        .last-updated {
+            color: var(--muted);
+            font-size: 0.85rem;
+            margin-top: 1rem;
+            display: block;
+            text-align: right;
+        }
+
+        #weather-last-updated {
+            font-weight: 500;
+        }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+            .jazzmin-widget {
+                padding: 1.5rem;
+            }
+
+            .section-title {
+                font-size: 1.5rem;
+            }
+
+            .weather-alerts-list {
+                max-height: 240px;
+            }
+
+            .weather-alert-item {
+                font-size: 0.9rem;
+                padding: 0.75rem;
+            }
+
+            .last-updated {
+                text-align: left;
+            }
+        }
+
+        @media (max-width: 576px) {
+            .jazzmin-widget {
+                padding: 1rem;
+            }
+
+            .section-title {
+                font-size: 1.25rem;
+            }
+        }
+    </style>
+
+    <div class="section-header">
+        <h3 class="section-title">Weather Alerts</h3>
+        <button id="refresh-weather-alerts" class="btn btn-secondary" aria-label="Refresh weather alerts" data-tippy-content="Refresh weather alerts" tabindex="0">
+            <i class="fas fa-sync-alt hidden" id="weather-alerts-spinner" aria-hidden="true"></i> Refresh
+        </button>
+    </div>
+    <div class="weather-alerts-list" aria-live="polite">
+        <div class="weather-alert-item" aria-live="polite">Loading weather alerts...</div>
+    </div>
+    <div class="error-message" id="weather-alerts-error" role="alert"></div>
+    <small class="last-updated">Last updated: <span id="weather-last-updated">N/A</span></small>
+</div>

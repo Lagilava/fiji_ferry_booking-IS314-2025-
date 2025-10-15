@@ -1,0 +1,644 @@
+/* Import Google Fonts to match admin_custom.css */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto:wght@400;500&display=swap');
+
+/* ==============================
+   Theme Variables (Aligned with admin_custom.css)
+   ============================== */
+:root {
+    --primary: #1e40af;
+    --primary-hover: #2563eb;
+    --primary-active: #1e3a8a;
+    --secondary: #e5e7eb;
+    --secondary-hover: #d1d5db;
+    --secondary-active: #9ca3af;
+    --accent: #26a69a;
+    --warning: #b91c1c;
+    --success: #047857;
+    --text: #1f2937;
+    --background: #f8fafc;
+    --chart-bg: #ffffff;
+    --border: #d1d5db;
+    --muted: #6b7280;
+    --shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.1);
+    --gradient: linear-gradient(135deg, #1e40af, #2563eb);
+    --info: #0288d1;
+    --info-hover: #4fc3f7;
+    --info-active: #0277bd;
+    --success-hover: #059669;
+    --success-active: #065f46;
+    --advanced-glow: 0 0 0.5rem rgba(38, 166, 154, 0.3);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --primary: #60a5fa;
+        --primary-hover: #93c5fd;
+        --primary-active: #3b82f6;
+        --secondary: #374151;
+        --secondary-hover: #4b5563;
+        --secondary-active: #6b7280;
+        --accent: #26a69a;
+        --warning: #f87171;
+        --success: #10b981;
+        --text: #e5e7eb;
+        --background: #1f2937;
+        --chart-bg: #374151;
+        --border: #4b5563;
+        --muted: #9ca3af;
+        --shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.2);
+        --gradient: linear-gradient(135deg, #60a5fa, #93c5fd);
+        --info: #4fc3f7;
+        --info-hover: #81d4fa;
+        --info-active: #0288d1;
+        --success-hover: #34d399;
+        --success-active: #059669;
+        --advanced-glow: 0 0 0.5rem rgba(38, 166, 154, 0.5);
+    }
+}
+
+/* ==============================
+   Animations
+   ============================== */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(0.625rem); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleHover {
+    from { transform: scale(1); }
+    to { transform: scale(1.05); }
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+@keyframes scan {
+    0% { transform: translate(-50%, -50%) translateY(0); }
+    50% { transform: translate(-50%, -50%) translateY(0.625rem); }
+    100% { transform: translate(-50%, -50%) translateY(0); }
+}
+
+@keyframes ripple {
+    0% { transform: scale(0); opacity: 0.3; }
+    100% { transform: scale(2); opacity: 0; }
+}
+
+@keyframes progress {
+    0% { width: 0%; }
+    100% { width: 100%; }
+}
+
+/* ==============================
+   Utility Classes
+   ============================== */
+.hidden {
+    display: none;
+}
+
+/* ==============================
+   QR Scanner Container
+   ============================== */
+.qr-scanner-section {
+    background: var(--chart-bg);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+    box-shadow: var(--shadow);
+    margin: 1.5rem;
+    position: relative;
+    overflow: hidden;
+    animation: fadeIn 0.5s ease-out;
+    transition: transform 0.3s ease;
+}
+
+.qr-scanner-section:hover {
+    transform: translateY(-0.3125rem);
+    box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.15);
+}
+
+.qr-scanner-section::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image:
+        linear-gradient(to bottom, transparent 95%, var(--accent) 95%),
+        linear-gradient(to right, transparent 95%, var(--accent) 95%);
+    background-size: 20px 20px;
+    opacity: 0.1;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.qr-scanner-section::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 50px;
+    height: 50px;
+    background: var(--accent);
+    border-radius: 50%;
+    transform: scale(0);
+    opacity: 0;
+    z-index: 1;
+    animation: ripple 3s ease-in-out infinite;
+}
+
+/* ==============================
+   Header Styling
+   ============================== */
+.qr-scanner-section .section-header {
+    background: var(--secondary);
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-radius: 0.75rem 0.75rem 0 0;
+    position: relative;
+    z-index: 2;
+}
+
+.section-title {
+    font-family: 'Inter', sans-serif;
+    font-size: clamp(1.25rem, 3vw, 1.5rem);
+    font-weight: 600;
+    color: var(--primary);
+    margin: 0;
+}
+
+.section-title::after {
+    content: '';
+    display: block;
+    width: 3.125rem;
+    height: 0.1875rem;
+    background: var(--primary);
+    margin-top: 0.5rem;
+}
+
+/* ==============================
+   Close Button
+   ============================== */
+#qr-close {
+    background: var(--secondary);
+    color: var(--text);
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: 0.375rem;
+    font-family: 'Inter', sans-serif;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+#qr-close:hover {
+    background: var(--secondary-hover);
+    color: var(--primary);
+    transform: translateY(-0.125rem);
+    box-shadow: var(--shadow);
+}
+
+#qr-close:active {
+    background: var(--secondary-active);
+    transform: translateY(0);
+}
+
+#qr-close:focus {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+    box-shadow: 0 0 0.5rem rgba(30, 64, 175, 0.3);
+}
+
+/* ==============================
+   Hidden Token Field
+   ============================== */
+#qr-actual-token {
+    display: none;
+}
+
+/* ==============================
+   Video Container
+   ============================== */
+.qr-video-container {
+    position: relative;
+    padding: 1.5rem;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 2;
+}
+
+#qr-video {
+    border: 1px solid var(--border);
+    border-radius: 0.375rem;
+    box-shadow: var(--shadow);
+    max-width: 100%;
+    max-height: 360px;
+    background: var(--background);
+}
+
+/* ==============================
+   Scan Overlay
+   ============================== */
+#qr-scan-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 12.5rem;
+    height: 12.5rem;
+    transform: translate(-50%, -50%);
+    border: 2px solid var(--accent);
+    box-shadow: var(--advanced-glow);
+    animation: scan 2s infinite;
+    pointer-events: none;
+    z-index: 3;
+    background: radial-gradient(circle, rgba(38, 166, 154, 0.1) 0%, transparent 70%);
+}
+
+/* ==============================
+   Progress Bar
+   ============================== */
+#qr-scan-progress {
+    height: 0.5rem;
+    background: var(--secondary);
+    border-radius: 0.25rem;
+}
+
+#qr-scan-progress .progress-bar {
+    transition: width 0.3s ease;
+    animation: progress 2s ease-in-out infinite;
+}
+
+/* ==============================
+   Feedback Indicator
+   ============================== */
+.qr-feedback {
+    box-shadow: var(--shadow);
+    transition: opacity 0.3s ease;
+}
+
+/* ==============================
+   Result Display
+   ============================== */
+#qr-result {
+    background: var(--chart-bg);
+    border: 1px solid var(--border);
+    border-radius: 0.375rem;
+    padding: 1.5rem;
+    margin: 1.5rem;
+    box-shadow: var(--shadow);
+    animation: fadeIn 0.5s ease-out;
+    position: relative;
+    z-index: 2;
+}
+
+#qr-result h6 {
+    font-family: 'Inter', sans-serif;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--primary);
+    margin-bottom: 1rem;
+}
+
+.qr-result-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.75rem;
+}
+
+#qr-result p {
+    padding: 0.75rem;
+    margin: 0;
+    background: var(--secondary);
+    border-left: 2px solid var(--primary);
+    border-radius: 0.375rem;
+    font-family: 'Roboto', sans-serif;
+    font-size: 0.9rem;
+    color: var(--text);
+    transition: all 0.3s ease;
+}
+
+#qr-result p:hover {
+    background: var(--secondary-hover);
+    transform: translateX(0.3125rem);
+}
+
+#qr-result p strong {
+    color: var(--primary);
+    font-weight: 500;
+}
+
+#qr-result p span {
+    color: var(--text);
+}
+
+/* ==============================
+   Action Buttons
+   ============================== */
+.qr-action-buttons {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+}
+
+#qr-mark-used,
+#qr-mark-unused,
+#qr-view-booking,
+#qr-log-activity,
+#qr-scan-again {
+    padding: 0.75rem 1rem;
+    border-radius: 0.375rem;
+    font-family: 'Inter', sans-serif;
+    font-weight: 500;
+    font-size: 0.9rem;
+    border: none;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+#qr-mark-used {
+    background: var(--success);
+    color: #ffffff;
+}
+
+#qr-mark-used:hover:not(:disabled) {
+    background: var(--success-hover);
+    transform: translateY(-0.125rem);
+    box-shadow: var(--shadow);
+}
+
+#qr-mark-used:active:not(:disabled) {
+    background: var(--success-active);
+    transform: translateY(0);
+}
+
+#qr-mark-used:disabled {
+    background: rgba(4, 120, 87, 0.5);
+    cursor: not-allowed;
+}
+
+#qr-mark-unused {
+    background: var(--secondary);
+    color: var(--text);
+    border: 1px solid var(--border);
+}
+
+#qr-mark-unused:hover:not(:disabled) {
+    background: var(--secondary-hover);
+    color: var(--primary);
+    transform: translateY(-0.125rem);
+    box-shadow: var(--shadow);
+}
+
+#qr-mark-unused:active:not(:disabled) {
+    background: var(--secondary-active);
+    transform: translateY(0);
+}
+
+#qr-mark-unused:disabled {
+    background: rgba(156, 163, 175, 0.5);
+    cursor: not-allowed;
+}
+
+#qr-view-booking {
+    background: var(--gradient);
+    color: #ffffff;
+}
+
+#qr-view-booking:hover:not(:disabled) {
+    background: var(--primary-hover);
+    transform: translateY(-0.125rem);
+    box-shadow: var(--shadow);
+}
+
+#qr-view-booking:active:not(:disabled) {
+    background: var(--primary-active);
+    transform: translateY(0);
+}
+
+#qr-log-activity {
+    background: var(--info);
+    color: #ffffff;
+}
+
+#qr-log-activity:hover {
+    background: var(--info-hover);
+    transform: translateY(-0.125rem);
+    box-shadow: var(--shadow);
+}
+
+#qr-log-activity:active {
+    background: var(--info-active);
+    transform: translateY(0);
+}
+
+#qr-scan-again {
+    background: var(--accent);
+    color: #ffffff;
+}
+
+#qr-scan-again:hover {
+    background: var(--success-hover);
+    transform: translateY(-0.125rem);
+    box-shadow: var(--shadow);
+}
+
+#qr-scan-again:active {
+    background: var(--success-active);
+    transform: translateY(0);
+}
+
+#qr-mark-used:focus,
+#qr-mark-unused:focus,
+#qr-view-booking:focus,
+#qr-log-activity:focus,
+#qr-scan-again:focus {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+    box-shadow: 0 0 0.5rem rgba(30, 64, 175, 0.3);
+}
+
+#qr-mark-used::after,
+#qr-mark-unused::after,
+#qr-view-booking::after,
+#qr-log-activity::after,
+#qr-scan-again::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100px;
+    height: 100px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 50%;
+    transform: translate(-50%, -50%) scale(0);
+    transition: transform 0.3s ease, opacity 0.3s ease;
+    opacity: 0;
+}
+
+#qr-mark-used:hover::after,
+#qr-mark-unused:hover::after,
+#qr-view-booking:hover::after,
+#qr-log-activity:hover::after,
+#qr-scan-again:hover::after {
+    transform: translate(-50%, -50%) scale(2);
+    opacity: 0.3;
+}
+
+/* ==============================
+   Error Display
+   ============================== */
+#qr-error {
+    background: var(--warning);
+    color: #ffffff;
+    border: none;
+    border-radius: 0.375rem;
+    padding: 1rem;
+    margin: 1.5rem;
+    box-shadow: var(--shadow);
+    font-family: 'Inter', sans-serif;
+    font-size: 0.9rem;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* ==============================
+   Scan History
+   ============================== */
+.qr-scan-history {
+    background: var(--chart-bg);
+    border: 1px solid var(--border);
+    border-radius: 0.375rem;
+    margin: 1.5rem;
+    padding: 1rem;
+    font-family: 'Roboto', sans-serif;
+    font-size: 0.9rem;
+}
+
+.qr-history-toggle {
+    width: 100%;
+    text-align: left;
+    margin-bottom: 0.5rem;
+}
+
+.qr-scan-history .collapse {
+    max-height: 9.375rem;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--muted) var(--chart-bg);
+}
+
+.qr-scan-history .collapse::-webkit-scrollbar {
+    width: 0.5rem;
+}
+
+.qr-scan-history .collapse::-webkit-scrollbar-track {
+    background: var(--chart-bg);
+    border-radius: 0.25rem;
+}
+
+.qr-scan-history .collapse::-webkit-scrollbar-thumb {
+    background: var(--muted);
+    border-radius: 0.25rem;
+}
+
+.qr-scan-history h6 {
+    font-family: 'Inter', sans-serif;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--primary);
+    margin-bottom: 0.75rem;
+}
+
+.qr-scan-history ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.qr-scan-history .list-group-item {
+    background: var(--chart-bg);
+    border: 1px solid var(--border);
+    padding: 0.75rem;
+    color: var(--text);
+    transition: all 0.3s ease;
+}
+
+.qr-scan-history .list-group-item:hover {
+    background: var(--secondary-hover);
+    transform: translateX(0.3125rem);
+}
+
+/* ==============================
+   Responsive Adjustments
+   ============================== */
+@media (max-width: 992px) {
+    .qr-scanner-section {
+        margin: 1rem;
+    }
+
+    #qr-scan-overlay {
+        width: 10rem;
+        height: 10rem;
+    }
+
+    .qr-result-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .qr-scanner-section {
+        margin: 1rem;
+        border-radius: 0.5rem;
+    }
+
+    #qr-scan-overlay {
+        width: 9.375rem;
+        height: 9.375rem;
+    }
+
+    #qr-result,
+    .qr-scan-history {
+        margin: 1rem;
+        padding: 1rem;
+    }
+
+    .qr-action-buttons {
+        grid-template-columns: 1fr;
+    }
+
+    .section-title {
+        font-size: clamp(1rem, 3vw, 1.25rem);
+    }
+}
+
+@media (max-width: 576px) {
+    #qr-scan-overlay {
+        width: 7.5rem;
+        height: 7.5rem;
+    }
+
+    #qr-result p {
+        flex-direction: column;
+        gap: 0.5rem;
+        align-items: flex-start;
+    }
+
+    #qr-result p strong {
+        min-width: auto;
+    }
+
+    .qr-feedback {
+        font-size: 0.8rem;
+        padding: 0.4rem 0.8rem;
+    }
+}

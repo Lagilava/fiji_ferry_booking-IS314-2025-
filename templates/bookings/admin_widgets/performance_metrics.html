@@ -1,0 +1,404 @@
+{% load static %}
+
+<div id="performance_metrics" class="jazzmin-widget performance-widget" data-widget-url="/admin/widget-data/performance_metrics/" role="region" aria-label="Performance metrics widget">
+    <div class="section-header">
+        <h3 class="section-title">
+            <div class="metrics-icon">
+                <i class="fas fa-chart-line" aria-hidden="true"></i>
+            </div>
+            Performance Metrics
+        </h3>
+        <button id="refresh-performance-metrics" class="btn btn-primary-custom" aria-label="Refresh performance metrics" data-tippy-content="Refresh performance metrics" tabindex="0">
+            <i class="fas fa-sync-alt hidden" id="performance-metrics-spinner" aria-hidden="true"></i>
+            <i class="fas fa-redo" aria-hidden="true"></i>
+        </button>
+    </div>
+
+    <div class="stats-grid" aria-live="polite" id="stats-grid">
+        <!-- Loading state -->
+        <div class="stat-item loading">
+            <div class="stat-number-shimmer"></div>
+            <p class="stat-label">Loading...</p>
+        </div>
+        <div class="stat-item loading">
+            <div class="stat-number-shimmer"></div>
+            <p class="stat-label">Loading...</p>
+        </div>
+        <div class="stat-item loading">
+            <div class="stat-number-shimmer"></div>
+            <p class="stat-label">Loading...</p>
+        </div>
+    </div>
+
+    <div class="error-message-widget" id="performance-metrics-error" role="alert"></div>
+    <div class="last-updated-widget">
+        <span class="update-badge">Live</span>
+        Updated: <span id="metrics-updated-at">Loading...</span>
+    </div>
+
+    <script>
+        (function() {
+            // Widget-specific scope
+            const widgetScope = 'performance_metrics';
+
+            document.addEventListener('DOMContentLoaded', function() {
+                const statsGrid = document.getElementById('stats-grid');
+                const errorDiv = document.getElementById('performance-metrics-error');
+                const refreshBtn = document.getElementById('refresh-performance-metrics');
+                const spinner = document.getElementById('performance-metrics-spinner');
+                const metricsUpdatedAt = document.getElementById('metrics-updated-at');
+
+                let metricsData = null;
+
+                function showLoadingState() {
+                    statsGrid.innerHTML = `
+                        <div class="stat-item loading">
+                            <div class="stat-number-shimmer"></div>
+                            <p class="stat-label">Loading...</p>
+                        </div>
+                        <div class="stat-item loading">
+                            <div class="stat-number-shimmer"></div>
+                            <p class="stat-label">Loading...</p>
+                        </div>
+                        <div class="stat-item loading">
+                            <div class="stat-number-shimmer"></div>
+                            <p class="stat-label">Loading...</p>
+                        </div>
+                    `;
+                }
+
+                function renderMetrics(data) {
+                    metricsData = data;
+
+                    statsGrid.innerHTML = `
+                        <div class="stat-item" data-metric="total-bookings">
+                            <h3 class="stat-number" id="total-bookings" aria-label="Total bookings">${formatNumber(data.total_bookings || 0)}</h3>
+                            <p class="stat-label">Total Bookings</p>
+                            ${data.total_bookings_change !== undefined ?
+                                `<span class="metric-change ${data.total_bookings_change >= 0 ? 'positive' : 'negative'}">
+                                    ${data.total_bookings_change >= 0 ? '+' : ''}${data.total_bookings_change}%
+                                    <i class="fas ${data.total_bookings_change >= 0 ? 'fa-arrow-up' : 'fa-arrow-down'}"></i>
+                                </span>` : ''
+                            }
+                        </div>
+                        <div class="stat-item" data-metric="active-ferries">
+                            <h3 class="stat-number" id="active-ferries" aria-label="Active ferries">${formatNumber(data.active_ferries || 0)}</h3>
+                            <p class="stat-label">Active Ferries</p>
+                            ${data.active_ferries_change !== undefined ?
+                                `<span class="metric-change ${data.active_ferries_change >= 0 ? 'positive' : 'negative'}">
+                                    ${data.active_ferries_change >= 0 ? '+' : ''}${data.active_ferries_change}%
+                                    <i class="fas ${data.active_ferries_change >= 0 ? 'fa-arrow-up' : 'fa-arrow-down'}"></i>
+                                </span>` : ''
+                            }
+                        </div>
+                        <div class="stat-item" data-metric="pending-payments">
+                            <h3 class="stat-number" id="pending-payments" aria-label="Pending payments">${formatNumber(data.pending_payments || 0)}</h3>
+                            <p class="stat-label">Pending Payments</p>
+                            ${data.pending_payments_change !== undefined ?
+                                `<span class="metric-change ${data.pending_payments_change >= 0 ? 'positive' : 'negative'}">
+                                    ${data.pending_payments_change >= 0 ? '+' : ''}${data.pending_payments_change}%
+                                    <i class="fas ${data.pending_payments_change >= 0 ? 'fa-arrow-up' : 'fa-arrow-down'}"></i>
+                                </span>` : ''
+                            }
+                        </div>
+                    `;
+
+                    // Add animations to stat items
+                    const statItems = statsGrid.querySelectorAll('.stat-item');
+                    statItems.forEach((item, index) => {
+                        item.style.animationDelay = `${index * 0.1}s`;
+                        item.classList.add('animate-in');
+                    });
+
+                    metricsUpdatedAt.textContent = new Date().toLocaleTimeString('en-US', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit'
+                    });
+                }
+
+                function formatNumber(num) {
+                    if (num >= 1_000_000) {
+                        return (num / 1_000_000).toFixed(1) + 'M';
+                    } else if (num >= 1_000) {
+                        return (num / 1_000).toFixed(1) + 'K';
+                    }
+                    return num.toString();
+                }
+
+                async function fetchMetrics() {
+                    try {
+                        refreshBtn.disabled = true;
+                        spinner.classList.remove('hidden');
+                        errorDiv.style.display = 'none';
+                        showLoadingState();
+
+                        const response = await fetch('/admin/widget-data/performance_metrics/', {
+                            headers: {
+                                'X-Requested-With': 'XMLHttpRequest',
+                                'Accept': 'application/json'
+                            }
+                        });
+
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+
+                        const data = await response.json();
+
+                        if (data.error) {
+                            throw new Error(data.error);
+                        }
+
+                        renderMetrics(data);
+
+                    } catch (error) {
+                        console.error('Error fetching performance metrics:', error);
+                        errorDiv.innerHTML = `
+                            <div class="alert alert-danger">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                Failed to load metrics: ${error.message}
+                            </div>
+                        `;
+                        errorDiv.style.display = 'block';
+                        statsGrid.innerHTML = '<div class="no-data">Error loading metrics</div>';
+                    } finally {
+                        refreshBtn.disabled = false;
+                        spinner.classList.add('hidden');
+                    }
+                }
+
+                // Initialize
+                fetchMetrics();
+
+                // Event listeners
+                refreshBtn.addEventListener('click', fetchMetrics);
+
+                // Auto-refresh every 2 minutes
+                setInterval(fetchMetrics, 2 * 60 * 1000);
+
+                // Handle visibility change for background refresh
+                document.addEventListener('visibilitychange', function() {
+                    if (!document.hidden) {
+                        fetchMetrics();
+                    }
+                });
+
+                // Add click handlers for stat items
+                statsGrid.addEventListener('click', function(e) {
+                    const statItem = e.target.closest('.stat-item');
+                    if (statItem) {
+                        const metric = statItem.dataset.metric;
+                        if (metricsData && metricsData[metric]) {
+                            // You can add detailed view navigation here
+                            console.log(`Clicked on ${metric}:`, metricsData[metric]);
+                        }
+                    }
+                });
+            });
+        })();
+    </script>
+</div>
+
+<style>
+/* Widget-specific CSS that complements admin_custom.css */
+.performance-widget {
+    position: relative;
+    overflow: hidden;
+}
+
+.performance-widget .metrics-icon {
+    width: 32px;
+    height: 32px;
+    background: var(--gradient);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1.2rem;
+    margin-right: 0.75rem;
+    animation: iconFloat 3s ease-in-out infinite;
+    box-shadow: 0 2px 8px rgba(30, 64, 175, 0.3);
+}
+
+.performance-widget .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.performance-widget .stat-item {
+    text-align: center;
+    padding: 1.5rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+}
+
+.performance-widget .stat-item::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--gradient);
+    transform: scaleX(0);
+    transition: transform 0.3s ease;
+}
+
+.performance-widget .stat-item:hover::before {
+    transform: scaleX(1);
+}
+
+.performance-widget .stat-item:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+    background: var(--secondary-hover);
+}
+
+.performance-widget .stat-number {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--primary);
+    margin: 0 0 0.5rem 0;
+    line-height: 1.2;
+}
+
+.performance-widget .stat-label {
+    font-size: 0.95rem;
+    color: var(--muted);
+    margin: 0;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.performance-widget .metric-change {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-top: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 12px;
+}
+
+.performance-widget .metric-change.positive {
+    background: rgba(4, 120, 87, 0.1);
+    color: var(--success);
+}
+
+.performance-widget .metric-change.negative {
+    background: rgba(185, 28, 28, 0.1);
+    color: var(--warning);
+}
+
+.performance-widget .loading .stat-number-shimmer {
+    height: 2rem;
+    background: linear-gradient(90deg, var(--secondary) 25%,
+                              rgba(255,255,255,0.1) 50%,
+                              var(--secondary) 75%);
+    background-size: 200px 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 4px;
+    margin-bottom: 0.5rem;
+}
+
+.performance-widget .error-message-widget {
+    display: none;
+    background: rgba(var(--warning-rgb, 185,28,28), 0.1);
+    border: 1px solid var(--warning);
+    color: var(--warning);
+    padding: 1rem;
+    border-radius: 8px;
+    text-align: center;
+    margin-top: 1rem;
+}
+
+.performance-widget .no-data {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 2rem;
+    color: var(--muted);
+    font-style: italic;
+}
+
+.performance-widget .last-updated-widget {
+    color: var(--muted);
+    font-size: 0.85rem;
+    margin-top: 1.5rem;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.performance-widget .animate-in {
+    animation: fadeInUp 0.6s ease-out forwards;
+    opacity: 0;
+    transform: translateY(20px);
+}
+
+.performance-widget .stat-item.animate-in {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Animations */
+@keyframes iconFloat {
+    0%, 100% { transform: translateY(0px) rotate(0deg); }
+    50% { transform: translateY(-5px) rotate(5deg); }
+}
+
+@keyframes shimmer {
+    0% { background-position: -200px 0; }
+    100% { background-position: 200px 0; }
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .performance-widget .stats-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+
+    .performance-widget .stat-number {
+        font-size: 1.8rem;
+    }
+}
+
+@media (max-width: 576px) {
+    .performance-widget .stat-number {
+        font-size: 1.5rem;
+    }
+
+    .performance-widget .metrics-icon {
+        width: 28px;
+        height: 28px;
+        font-size: 1rem;
+    }
+}
+</style>

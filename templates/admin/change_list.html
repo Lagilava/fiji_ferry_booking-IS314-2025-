@@ -1,0 +1,356 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static admin_list jazzmin %}
+
+{% block extrastyle %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'vendor/select2/css/select2.min.css' %}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="{% static 'css/admin_custom.css' %}">
+
+    {% if cl.formset or action_form %}
+        <script type="text/javascript" src="{% url 'admin:jsi18n' %}"></script>
+    {% endif %}
+    {{ media.css }}
+{% endblock %}
+
+{% block extrahead %}
+    {{ block.super }}
+
+    <!-- WebSocket Context - DATA ATTRIBUTES (NO JSON ISSUES) -->
+    <div id="websocket-context"
+         style="display:none;"
+         data-model="{{ opts.model_name|escapejs }}"
+         data-app="{{ opts.app_label|escapejs }}"
+         data-verbose="{{ cl.opts.verbose_name_plural|default:'Items'|escapejs }}"
+         data-results="{{ cl.result_count|default:'0' }}"
+         data-total="{{ cl.full_result_count|default:'0' }}"
+         data-page="{{ cl.page_num|default:'1' }}"
+         data-filters="{{ cl.has_filters|yesno:'true,false' }}"
+         data-formset="{{ cl.formset|yesno:'true,false' }}"
+         data-actions="{{ cl.show_admin_actions|yesno:'true,false' }}"
+         data-current-url="{{ request.get_full_path|escapejs }}"
+         data-list-display="{{ cl.model_admin.list_display|safe }}"
+         data-search-fields="{{ cl.model_admin.search_fields|safe }}">
+    </div>
+
+    <!-- Model Data -->
+    <div id="model-context"
+         style="display:none;"
+         data-model="{{ opts.model_name|escapejs }}"
+         data-app="{{ opts.app_label|escapejs }}"
+         data-verbose="{% if opts.verbose_name %}{{ opts.verbose_name|escapejs }}{% else %}Model{% endif %}"
+         data-pk="{{ opts.pk|default:''|escapejs }}">
+    </div>
+
+    <!-- === MINIMAL SCRIPTS === -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+{% endblock %}
+
+{% block bodyclass %}{{ block.super }} app-{{ opts.app_label }} model-{{ opts.model_name }} change-list websocket-enabled{% endblock %}
+
+{% block breadcrumbs %}
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'admin:index' %}">{% trans 'Home' %}</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a></li>
+        <li class="breadcrumb-item active">{{ cl.opts.verbose_name_plural|capfirst }}</li>
+    </ol>
+{% endblock %}
+
+{% block content_title %}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="mb-0">{{ cl.opts.verbose_name_plural|capfirst }}</h1>
+        <div class="websocket-status d-flex align-items-center gap-2">
+            <span class="status-indicator disconnected" id="ws-indicator">
+                <i class="fas fa-circle"></i> Offline
+            </span>
+            <button id="ws-refresh" class="btn btn-sm btn-outline-secondary" title="Force refresh">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+        </div>
+    </div>
+{% endblock %}
+
+{% block coltype %}flex{% endblock %}
+
+{% block page_actions %}
+    <div class="d-flex justify-content-end align-items-center mb-3">
+        {% change_list_object_tools %}
+        <button id="export-selection" class="btn btn-outline-success ms-2" disabled>
+            <i class="fas fa-download me-1"></i> Export Selected
+        </button>
+    </div>
+{% endblock %}
+
+{% block content %}
+    {% block date_hierarchy %}{% if cl.date_hierarchy %}{% date_hierarchy cl %}{% endif %}{% endblock %}
+
+    {% block search %}
+        {% search_form cl %}
+    {% endblock %}
+
+    <div class="results-container" id="results-container">
+        <form id="changelist-form" method="post"{% if cl.formset and cl.formset.is_multipart %} enctype="multipart/form-data"{% endif %} novalidate>
+            {% csrf_token %}
+
+            {% if cl.formset %}
+                {{ cl.formset.management_form }}
+            {% endif %}
+
+            <div id="content-main">
+                {% if cl.formset and cl.formset.errors %}
+                <div class="alert alert-warning">
+                    {% if cl.formset.total_error_count == 1 %}
+                        {% trans "Please correct the error below." %}
+                    {% else %}
+                        {% trans "Please correct the errors below." %}
+                    {% endif %}
+                </div>
+                {{ cl.formset.non_form_errors }}
+                {% endif %}
+
+                <div class="module{% if cl.has_filters %} filtered{% endif %}" id="changelist">
+                    <!-- Top Actions -->
+                    {% if action_form and actions_on_top and cl.show_admin_actions %}
+                        <div class="row mb-3">
+                            <div class="col-12">
+                                {% admin_actions %}
+                            </div>
+                        </div>
+                    {% endif %}
+
+                    <!-- Results -->
+                    <div class="results-table">
+                        {% result_list cl %}
+                    </div>
+
+                    <!-- Bottom Actions -->
+                    {% if action_form and actions_on_bottom and cl.show_admin_actions %}
+                        <div class="row mt-3">
+                            <div class="col-12">
+                                {% admin_actions %}
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+
+                <!-- Pagination -->
+                {% block pagination %}{% pagination cl %}{% endblock %}
+            </div>
+        </form>
+    </div>
+
+    <!-- Real-time Activity Feed -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card activity-feed border-0 shadow-sm">
+                <div class="card-header bg-gradient-primary text-white d-flex justify-content-between align-items-center" style="cursor: pointer;">
+                    <h6 class="mb-0"><i class="fas fa-bell me-2"></i> Real-time Activity</h6>
+                    <button id="activity-toggle" class="btn btn-sm btn-outline-light rounded-circle" style="width: 30px; height: 30px;">
+                        <i class="fas fa-minus"></i>
+                    </button>
+                </div>
+                <div id="activity-feed-content" class="card-body p-0" style="max-height: 300px; overflow-y: auto;">
+                    <div class="activity-empty text-center py-4 text-muted">
+                        <i class="fas fa-clock" style="font-size: 3rem; opacity: 0.5; display: block; margin-bottom: 1rem;"></i>
+                        <p class="mb-0">Waiting for updates...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extrajs %}
+    {{ block.super }}
+
+    <!-- === PAGE FLAGS & CONTEXT PARSING === -->
+    <script>
+        (function() {
+            'use strict';
+
+            // CRITICAL: Prevent dashboard conflicts
+            window.__IS_CHANGE_LIST__ = true;
+            window.__SKIP_DASHBOARD_INIT__ = true;
+
+            // Parse context from data attributes
+            function parseContextData() {
+                const context = document.getElementById('websocket-context');
+                const modelContext = document.getElementById('model-context');
+
+                if (!context) {
+                    console.warn('WebSocket context not found');
+                    return {};
+                }
+
+                return {
+                    model_name: context.dataset.model || '',
+                    app_label: context.dataset.app || '',
+                    verbose_name_plural: context.dataset.verbose || 'Items',
+                    result_count: parseInt(context.dataset.results) || 0,
+                    full_result_count: parseInt(context.dataset.total) || 0,
+                    page_num: parseInt(context.dataset.page) || 1,
+                    has_filters: context.dataset.filters === 'true',
+                    formset: context.dataset.formset === 'true',
+                    show_admin_actions: context.dataset.actions === 'true',
+                    current_url: context.dataset.currentUrl || window.location.href,
+                    list_display: context.dataset.listDisplay ? JSON.parse(context.dataset.listDisplay) : [],
+                    search_fields: context.dataset.searchFields ? JSON.parse(context.dataset.searchFields) : []
+                };
+            }
+
+            // Global context
+            window.CHANGE_LIST_CONTEXT = parseContextData();
+
+            // Filter config
+            window.filterInputLengthDefault = 0;
+            window.filterInputLength = {
+                {% for k,v in cl.model_admin.filter_input_length.items %}
+                    '{{ k }}': {{ v }},
+                {% endfor %}
+            };
+
+            // WebSocket Configuration
+            window.WEBSOCKET_CONFIG = {
+                url: 'ws://' + window.location.host + '/ws/admin/dashboard/',
+                model: window.CHANGE_LIST_CONTEXT.model_name,
+                app_label: window.CHANGE_LIST_CONTEXT.app_label,
+                reconnectDelay: 5000,
+                maxReconnectAttempts: 5,
+                is_changelist: true,
+                user_id: {{ user.id|default:0 }}
+            };
+
+            console.log('✅ ChangeList context loaded:', window.CHANGE_LIST_CONTEXT);
+        })();
+    </script>
+
+    <!-- Libraries -->
+    <script src="{% static 'vendor/select2/js/select2.min.js' %}"></script>
+    <script src="{% static 'jazzmin/js/change_list.js' %}"></script>
+    <script src="{% static 'js/change_list_websocket.js' %}"></script>
+
+    <!-- UI Event Handlers -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // WebSocket status sync
+            function updateStatusIndicator(connected) {
+                const indicator = document.getElementById('ws-indicator');
+                if (!indicator) return;
+
+                indicator.className = `status-indicator ${connected ? 'connected' : 'disconnected'}`;
+                indicator.innerHTML = `<i class="fas fa-circle"></i> ${connected ? 'Live' : 'Offline'}`;
+            }
+
+            document.addEventListener('admin-ws-connected', () => updateStatusIndicator(true));
+            document.addEventListener('admin-ws-disconnected', () => updateStatusIndicator(false));
+
+            // Export functionality
+            const exportBtn = document.getElementById('export-selection');
+            if (exportBtn) {
+                function updateExportState() {
+                    const selected = document.querySelectorAll('input.action-select:checked');
+                    const count = selected.length;
+                    exportBtn.disabled = count === 0;
+                    exportBtn.innerHTML = `<i class="fas fa-download me-1"></i> Export ${count || 'Selected'}`;
+                    exportBtn.title = count ? `Export ${count} selected items` : 'Select items to export';
+                }
+
+                // Initial state and event listeners
+                updateExportState();
+                document.addEventListener('change', (e) => {
+                    if (e.target.matches('input.action-select')) {
+                        updateExportState();
+                    }
+                });
+
+                exportBtn.addEventListener('click', async () => {
+                    const selected = document.querySelectorAll('input.action-select:checked');
+                    if (selected.length === 0) return;
+
+                    const ids = Array.from(selected).map(cb => cb.value);
+                    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]');
+
+                    if (!csrfToken) {
+                        alert('Security token missing');
+                        return;
+                    }
+
+                    try {
+                        exportBtn.disabled = true;
+                        exportBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Exporting...';
+
+                        const formData = new FormData();
+                        formData.append('csrfmiddlewaretoken', csrfToken.value);
+                        formData.append('_selected_action', 'export_selected');
+                        formData.append('ids', JSON.stringify(ids));
+
+                        // Submit via existing admin form
+                        const form = document.getElementById('changelist-form');
+                        const actionInput = document.createElement('input');
+                        actionInput.type = 'hidden';
+                        actionInput.name = 'action';
+                        actionInput.value = 'export_selected';
+                        form.appendChild(actionInput);
+
+                        const idsInput = document.createElement('input');
+                        idsInput.type = 'hidden';
+                        idsInput.name = 'export_ids';
+                        idsInput.value = JSON.stringify(ids);
+                        form.appendChild(idsInput);
+
+                        // Trigger form submission
+                        form.submit();
+
+                        // Clean up
+                        setTimeout(() => {
+                            form.removeChild(actionInput);
+                            form.removeChild(idsInput);
+                        }, 100);
+                    } catch (error) {
+                        console.error('Export error:', error);
+                        alert('Export failed');
+                        exportBtn.disabled = false;
+                        updateExportState();
+                    }
+                });
+            }
+
+            // Refresh button
+            const refreshBtn = document.getElementById('ws-refresh');
+            if (refreshBtn) {
+                refreshBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const icon = refreshBtn.querySelector('i');
+                    icon.classList.add('fa-spin');
+
+                    // Trigger WebSocket refresh
+                    if (window.changeListWS && window.changeListWS.requestSync) {
+                        window.changeListWS.requestSync();
+                    } else {
+                        // Fallback: reload page
+                        window.location.reload();
+                    }
+
+                    setTimeout(() => icon.classList.remove('fa-spin'), 1000);
+                });
+            }
+
+            // Activity feed toggle
+            const activityToggle = document.getElementById('activity-toggle');
+            const activityContent = document.getElementById('activity-feed-content');
+            if (activityToggle && activityContent) {
+                activityToggle.addEventListener('click', () => {
+                    const icon = activityToggle.querySelector('i');
+                    const isVisible = activityContent.style.display !== 'none';
+
+                    activityContent.style.display = isVisible ? 'none' : 'block';
+                    icon.className = isVisible ? 'fas fa-plus' : 'fas fa-minus';
+                });
+            }
+        });
+    </script>
+{% endblock %}
