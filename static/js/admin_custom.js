@@ -595,9 +595,11 @@ document.addEventListener('DOMContentLoaded', function() {
             try {
                 const data = JSON.parse(event.data);
                 console.log('WebSocket message received:', data);
+
                 if (data.type === 'weather_alerts') {
                     const weatherWidget = document.getElementById('weather_alerts');
                     if (weatherWidget) updateWidgetContent(weatherWidget, data);
+
                 } else if (data.type === 'booking_updates') {
                     const dataElement = document.getElementById('recent-bookings-data');
                     if (dataElement && data.data && Array.isArray(data.data)) {
@@ -617,6 +619,24 @@ document.addEventListener('DOMContentLoaded', function() {
                             console.log('Recent bookings table updated via WebSocket.');
                         }
                     }
+
+                } else if (data.type === 'schedule_update') {
+                    // Handle schedule updates
+                    const row = document.querySelector(`#schedule-${data.schedule_id}`);
+                    if (row) {
+                        const seatsElem = row.querySelector('.available-seats');
+                        const statusElem = row.querySelector('.status');
+                        if (seatsElem) seatsElem.textContent = data.available_seats;
+                        if (statusElem) statusElem.textContent = data.status;
+                    }
+
+                    // Optionally update dashboard charts
+                    if (window.updateDashboard) {
+                        window.updateDashboard('ferry_utilization', data);
+                    }
+
+                    console.log('Schedule updated via WebSocket:', data);
+
                 } else {
                     console.warn('Unknown WebSocket message type:', data.type);
                 }
@@ -624,6 +644,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.error('Error parsing WebSocket message:', e);
             }
         };
+
 
         ws.onclose = (event) => {
             console.log(`WebSocket disconnected: Code ${event.code}, Reason: ${event.reason}`);

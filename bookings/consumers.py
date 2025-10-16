@@ -1,11 +1,10 @@
-# Add this to bookings/consumers.py - DO NOT REMOVE EXISTING CODE
-
 import json
 import logging
+import asyncio
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from asgiref.sync import sync_to_async
-from django.utils import timezone, asyncio
+from django.utils import timezone
 from django.apps import apps
 from django.contrib import admin
 from django.db import transaction
@@ -13,6 +12,8 @@ from django.http import HttpRequest
 from .admin import AdminEnhancements
 from .models import Booking, Schedule, Ticket, Payment, WeatherCondition
 from channels.layers import get_channel_layer
+from django.db.models.signals import post_save, post_delete
+from django.dispatch import receiver
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +35,26 @@ class AdminDashboardConsumer(AsyncWebsocketConsumer):
         await self.send_initial_data()
 
     async def disconnect(self, close_code):
-        await self.channel_layer.group_discard(self.group_name, self.channel_name)
-        logger.info(f"Admin WebSocket disconnected: {self.scope.get('user', 'anonymous')}")
+        """Safe disconnect with attribute checks"""
+        try:
+            # Only attempt group discard if attributes exist
+            if (hasattr(self, 'group_name') and
+                    hasattr(self, 'channel_name') and
+                    hasattr(self, 'channel_layer')):
+
+                await self.channel_layer.group_discard(self.group_name, self.channel_name)
+                user_info = getattr(self, 'user', None)
+                if user_info and hasattr(user_info, 'username'):
+                    logger.info(f"Admin WebSocket disconnected: {user_info.username}")
+                else:
+                    logger.info("Admin WebSocket disconnected: anonymous")
+            else:
+                logger.warning("Disconnect called without proper group_name setup")
+        except Exception as e:
+            logger.error(f"Error during disconnect: {str(e)}")
+        finally:
+            # Ensure cleanup even if errors occur
+            pass
 
     @database_sync_to_async
     def get_initial_data_sync(self):
@@ -51,7 +70,7 @@ class AdminDashboardConsumer(AsyncWebsocketConsumer):
     async def send_initial_data(self):
         """Send initial real-time data to connected clients"""
         try:
-            initial_data = await sync_to_async(self.get_initial_data_sync)()
+            initial_data = await self.get_initial_data_sync()
             data = {
                 'type': 'initial_data',
                 **initial_data
@@ -102,7 +121,7 @@ class AdminDashboardConsumer(AsyncWebsocketConsumer):
         """Clear analytics cache and notify clients"""
         try:
             from .admin import clear_analytics_cache
-            sync_to_async(clear_analytics_cache)()
+            await sync_to_async(clear_analytics_cache)()
             await self.channel_layer.group_send(
                 self.group_name,
                 {
@@ -125,11 +144,11 @@ class AdminDashboardConsumer(AsyncWebsocketConsumer):
         }))
 
     async def ticket_update(self, event):
-        ticket_id = event.get('ticket_id')
+        ticket_id = event.get('ticket_id') or event.get('instance_id')
         new_status = event.get('new_status', 'unknown')
 
         if ticket_id is None:
-            logger.error(f"Missing 'ticket_id' in ticket_update event: {event}")
+            logger.error(f"Missing ticket ID in ticket_update event: {event}")
             return
 
         await self.send(text_data=json.dumps({
@@ -156,13 +175,18 @@ class AdminDashboardConsumer(AsyncWebsocketConsumer):
 
     async def schedule_update(self, event):
         """Handle schedule updates"""
+        schedule_id = event.get('schedule_id')
+        if schedule_id is None:
+            logger.error(f"Missing 'schedule_id' in schedule_update event: {event}")
+            return
         await self.send(text_data=json.dumps({
             'type': 'schedule_update',
-            'schedule_id': event['schedule_id'],
-            'status': event['status'],
-            'available_seats': event['available_seats'],
-            'timestamp': event['timestamp']
+            'schedule_id': schedule_id,
+            'status': event.get('status'),
+            'available_seats': event.get('available_seats'),
+            'timestamp': event.get('timestamp')
         }))
+
 
     async def weather_alerts_update(self, event):
         """Handle weather alerts"""
@@ -180,6 +204,16 @@ class AdminDashboardConsumer(AsyncWebsocketConsumer):
             'timestamp': event['timestamp']
         }))
 
+    async def payment_update(self, event):
+        await self.send(text_data=json.dumps({
+            'type': 'payment_update',
+            'booking_id': event.get('booking_id'),
+            'status': event.get('status'),
+            'amount': event.get('amount'),
+            'timestamp': event.get('timestamp')
+        }))
+        logger.info(f"Payment update broadcast: booking {event.get('booking_id')} -> {event.get('status')}")
+
     async def handleMessage(self, data):
         """Enhanced message handling for change list integration"""
         message_type = data.get('type')
@@ -194,7 +228,6 @@ class AdminDashboardConsumer(AsyncWebsocketConsumer):
             # Existing handlers
             if data.get('action') == 'refresh_weather':
                 await self.broadcast_weather_update()
-            # ... rest of existing handlers
 
     async def handleJoinChangeList(self, data):
         """Handle change list connection"""
@@ -215,14 +248,13 @@ class AdminDashboardConsumer(AsyncWebsocketConsumer):
         app_label = data.get('app_label')
         filters = data.get('filters', {})
 
-        # Forward to model-specific consumer or handle here
         group_name = f"admin_changelist_{app_label}_{model}"
         await self.channel_layer.group_send(
             group_name,
             {
                 'type': 'full_sync',
-                'objects': [],  # You'd populate this with actual data
-                'fields': [],  # Field definitions
+                'objects': [],
+                'fields': [],
                 'total_count': 0,
                 'timestamp': timezone.now().isoformat()
             }
@@ -243,6 +275,7 @@ class AdminDashboardConsumer(AsyncWebsocketConsumer):
                 }
             )
 
+
 class AdminChangeListConsumer(AsyncWebsocketConsumer):
     """
     WebSocket consumer for real-time admin change list updates
@@ -255,49 +288,83 @@ class AdminChangeListConsumer(AsyncWebsocketConsumer):
             logger.warning(f"Unauthorized ChangeList WebSocket connection by {self.scope.get('user', 'anonymous')}")
             return
 
-        # Extract model info from query params or path
-        self.app_label = self.scope['url_route']['kwargs'].get('app_label') or \
-                         self.scope['query_string'].decode().split('app_label=')[1].split('&')[0] if 'app_label=' in \
-                                                                                                     self.scope[
-                                                                                                         'query_string'].decode() else None
-        self.model_name = self.scope['url_route']['kwargs'].get('model') or \
-                          self.scope['query_string'].decode().split('model=')[1].split('&')[0] if 'model=' in \
-                                                                                                  self.scope[
-                                                                                                      'query_string'].decode() else None
+        # Safe extraction of model info
+        try:
+            self.app_label = (self.scope['url_route']['kwargs'].get('app_label') or
+                              self.scope['query_string'].decode().split('app_label=')[1].split('&')[0]
+                              if 'app_label=' in self.scope['query_string'].decode() else None)
+
+            self.model_name = (self.scope['url_route']['kwargs'].get('model') or
+                               self.scope['query_string'].decode().split('model=')[1].split('&')[0]
+                               if 'model=' in self.scope['query_string'].decode() else None)
+        except Exception:
+            self.app_label = None
+            self.model_name = None
 
         if not self.app_label or not self.model_name:
             await self.close()
             logger.error("Missing app_label or model_name in ChangeList WebSocket connection")
             return
 
-        self.model = apps.get_model(self.app_label, self.model_name)
+        try:
+            self.model = apps.get_model(self.app_label, self.model_name)
+        except Exception as e:
+            logger.error(f"Invalid model {self.app_label}.{self.model_name}: {str(e)}")
+            await self.close()
+            return
+
         self.group_name = f"admin_changelist_{self.app_label}_{self.model_name}"
 
-        # Store connection info
+        # Set these attributes explicitly for safe disconnect
         self.filters = {}
         self.user_filters = {}
 
-        await self.channel_layer.group_add(self.group_name, self.channel_name)
-        await self.accept()
+        try:
+            await self.channel_layer.group_add(self.group_name, self.channel_name)
+            await self.accept()
 
-        logger.info(
-            f"Admin ChangeList WebSocket connected: {self.user.username} for {self.app_label}.{self.model_name}")
+            logger.info(
+                f"Admin ChangeList WebSocket connected: {self.user.username} for {self.app_label}.{self.model_name}")
 
-        # Send connection confirmation
-        await self.send(text_data=json.dumps({
-            'type': 'connection_confirmed',
-            'model': self.model_name,
-            'app_label': self.app_label,
-            'timestamp': timezone.now().isoformat()
-        }))
+            # Send connection confirmation
+            await self.send(text_data=json.dumps({
+                'type': 'connection_confirmed',
+                'model': self.model_name,
+                'app_label': self.app_label,
+                'timestamp': timezone.now().isoformat()
+            }))
 
-        # Send initial sync after brief delay to allow client setup
-        await self.send_initial_sync()
+            # Send initial sync
+            await self.send_initial_sync()
+
+        except Exception as e:
+            logger.error(f"Error in ChangeList connect: {str(e)}")
+            await self.close()
 
     async def disconnect(self, close_code):
-        await self.channel_layer.group_discard(self.group_name, self.channel_name)
-        logger.info(
-            f"Admin ChangeList WebSocket disconnected: {self.user.username} for {self.app_label}.{self.model_name}")
+        """Safe disconnect for ChangeList consumer"""
+        try:
+            # Check if group_name exists before attempting discard
+            if (hasattr(self, 'group_name') and
+                    hasattr(self, 'channel_name') and
+                    hasattr(self, 'channel_layer')):
+
+                await self.channel_layer.group_discard(self.group_name, self.channel_name)
+                user_info = getattr(self, 'user', None)
+                app_label = getattr(self, 'app_label', 'unknown')
+                model_name = getattr(self, 'model_name', 'unknown')
+
+                if user_info and hasattr(user_info, 'username'):
+                    logger.info(
+                        f"Admin ChangeList WebSocket disconnected: {user_info.username} "
+                        f"for {app_label}.{model_name}"
+                    )
+                else:
+                    logger.info(f"ChangeList WebSocket disconnected for {app_label}.{model_name}")
+            else:
+                logger.warning("ChangeList disconnect called without proper group setup")
+        except Exception as e:
+            logger.error(f"Error during ChangeList disconnect: {str(e)}")
 
     async def receive(self, text_data):
         """Handle messages from admin change list clients"""
@@ -335,7 +402,6 @@ class AdminChangeListConsumer(AsyncWebsocketConsumer):
     def get_model_admin(self):
         """Get the model admin instance"""
         try:
-            app_config = apps.get_app_config(self.app_label)
             model_admin = admin.site._registry[self.model]
             return model_admin
         except (KeyError, AttributeError):
@@ -359,16 +425,8 @@ class AdminChangeListConsumer(AsyncWebsocketConsumer):
             if filters:
                 # Apply search and filter conditions
                 if filters.get('q'):
-                    queryset = queryset.filter(
-                        model_admin.get_search_results(request, queryset, filters['q'])
-                    )
-
-                # Apply field filters
-                for field, value in filters.items():
-                    if field not in ['q', 'o', '_p']:  # Skip pagination and ordering
-                        # This is simplified - you'd need to handle actual filter logic
-                        # based on your ModelAdmin's filter implementation
-                        pass
+                    search_results = model_admin.get_search_results(request, queryset, filters['q'])
+                    queryset = queryset.filter(search_results)
 
             # Get field structure for table display
             fields = []
@@ -378,7 +436,10 @@ class AdminChangeListConsumer(AsyncWebsocketConsumer):
                     verbose_name = field_name
                 else:
                     field_name = field
-                    verbose_name = str(model_admin.model._meta.get_field(field).verbose_name)
+                    try:
+                        verbose_name = str(self.model._meta.get_field(field).verbose_name)
+                    except:
+                        verbose_name = field_name
                 fields.append({
                     'name': field_name,
                     'verbose_name': verbose_name
@@ -420,7 +481,7 @@ class AdminChangeListConsumer(AsyncWebsocketConsumer):
         """Handle full sync request"""
         try:
             filters = data.get('filters', {})
-            objects, fields = await sync_to_async(self.get_filtered_queryset)(filters)
+            objects, fields = await database_sync_to_async(self.get_filtered_queryset)(filters)
 
             await self.send(text_data=json.dumps({
                 'type': 'full_sync',
@@ -442,7 +503,6 @@ class AdminChangeListConsumer(AsyncWebsocketConsumer):
     async def handle_selection_change(self, data):
         """Handle selection changes for export coordination"""
         selected_ids = data.get('selected', [])
-        # Broadcast to group for coordination
         await self.channel_layer.group_send(
             self.group_name,
             {
@@ -513,19 +573,11 @@ class AdminChangeListConsumer(AsyncWebsocketConsumer):
         }))
 
 
-# Signal handlers for real-time updates (add to your signals.py or here)
-from django.db.models.signals import post_save, post_delete
-from django.dispatch import receiver
-
-
+# Signal handlers for real-time updates
 @receiver([post_save, post_delete], dispatch_uid="admin_changelist_signals")
 def broadcast_model_changes(sender, instance, **kwargs):
-    """Broadcast model changes to admin change list WebSocket"""
-    if not hasattr(instance, '_broadcast_to_changelist'):
-        return
-
-    # Only broadcast if explicitly marked
-    if not getattr(instance, '_broadcast_to_changelist', False):
+    """Broadcast model changes to admin change list WebSocket - safer version"""
+    if not hasattr(instance, '_broadcast_to_changelist') or not getattr(instance, '_broadcast_to_changelist', False):
         return
 
     try:
@@ -533,35 +585,55 @@ def broadcast_model_changes(sender, instance, **kwargs):
         if channel_layer:
             model_name = instance._meta.model_name
             app_label = instance._meta.app_label
+            group_name = f"admin_changelist_{app_label}_{model_name}"
 
             # Determine action
-            action = 'delete' if kwargs.get('using', False) and kwargs.get('signal') == post_delete else 'update'
             if kwargs.get('created'):
                 action = 'create'
+            elif 'signal' in kwargs and kwargs['signal'].__name__ == 'post_delete':
+                action = 'delete'
+            else:
+                action = 'update'
 
-            async def broadcast_update():
-                await channel_layer.group_send(
-                    f"admin_changelist_{app_label}_{model_name}",
-                    {
-                        'type': 'model_update',
-                        'action': action,
-                        'model': model_name,
-                        'objects': [{
-                            'id': instance.pk,
-                            'fields': {field.name: str(getattr(instance, field.name, 'N/A'))
-                                       for field in instance._meta.fields}
-                        }],
-                        'timestamp': timezone.now().isoformat()
-                    }
-                )
+            # Use sync_to_async for channel layer operations
+            @sync_to_async
+            def safe_broadcast():
+                try:
+                    # Create async task for broadcasting
+                    async def broadcast_update():
+                        await channel_layer.group_send(
+                            group_name,
+                            {
+                                'type': 'model_update',
+                                'action': action,
+                                'model': model_name,
+                                'objects': [{
+                                    'id': getattr(instance, 'pk', None),
+                                    'fields': {
+                                        field.name: str(getattr(instance, field.name, 'N/A'))
+                                        for field in instance._meta.fields
+                                        if hasattr(instance, field.name)
+                                    }
+                                }],
+                                'timestamp': timezone.now().isoformat()
+                            }
+                        )
 
-            # Run async broadcast
-            import asyncio
-            loop = asyncio.get_event_loop()
-            loop.create_task(broadcast_update())
+                    # Run in event loop if available
+                    try:
+                        loop = asyncio.get_running_loop()
+                        loop.create_task(broadcast_update())
+                    except RuntimeError:
+                        # No running loop, use sync fallback
+                        pass
+
+                except Exception as e:
+                    logger.error(f"Failed to broadcast model change: {str(e)}")
+
+            safe_broadcast()
 
     except Exception as e:
-        logger.error(f"Error broadcasting model change: {str(e)}")
+        logger.error(f"Error in broadcast_model_changes: {str(e)}")
 
 
 # Utility function to mark instances for broadcasting
@@ -584,22 +656,32 @@ def broadcast_admin_action(action_func):
                 app_label = modeladmin.model._meta.app_label
                 model_name = modeladmin.model._meta.model_name
 
-                async def broadcast_action():
-                    await channel_layer.group_send(
-                        f"admin_changelist_{app_label}_{model_name}",
-                        {
-                            'type': 'activity_update',
-                            'user': request.user.username,
-                            'action': f'bulk_{action_func.__name__}',
-                            'target': f'{len(queryset)} {model_name}(s)',
-                            'details': f'Admin action executed by {request.user.username}',
-                            'timestamp': timezone.now().isoformat()
-                        }
-                    )
+                @sync_to_async
+                def safe_broadcast():
+                    try:
+                        async def broadcast_action():
+                            await channel_layer.group_send(
+                                f"admin_changelist_{app_label}_{model_name}",
+                                {
+                                    'type': 'activity_update',
+                                    'user': request.user.username,
+                                    'action': f'bulk_{action_func.__name__}',
+                                    'target': f'{len(queryset)} {model_name}(s)',
+                                    'details': f'Admin action executed by {request.user.username}',
+                                    'timestamp': timezone.now().isoformat()
+                                }
+                            )
 
-                import asyncio
-                loop = asyncio.get_event_loop()
-                loop.create_task(broadcast_action())
+                        try:
+                            loop = asyncio.get_running_loop()
+                            loop.create_task(broadcast_action())
+                        except RuntimeError:
+                            pass
+
+                    except Exception as e:
+                        logger.error(f"Error broadcasting admin action: {str(e)}")
+
+                safe_broadcast()
 
         except Exception as e:
             logger.error(f"Error broadcasting admin action: {str(e)}")

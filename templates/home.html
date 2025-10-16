@@ -144,7 +144,7 @@
 
     {% if user.is_authenticated %}
       <h2 id="welcome-heading" class="text-3xl md:text-4xl font-bold font-playfair mb-4">
-        Welcome back, Kesa!
+        Welcome back, {{ user.get_full_name|default:user.username }}!
       </h2>
 
       <p class="text-xl mb-8 leading-relaxed">

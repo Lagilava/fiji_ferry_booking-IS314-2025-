@@ -1,1479 +1,508 @@
 {% extends 'base.html' %}
 {% load static %}
+{% load bookings_tags %}
 
 {% block title %}Book Your Ferry - Fiji Ferry Booking{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/aos/2.3.4/aos.css" integrity="sha512-1cK78a1o+ht2JcaW6g8OXYwqpev9+6GqOkz9xmBN9iUUhIndKtxwILGWYOSibOKjLsEdjyjZvYDq/cZwNeak0w==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/aos/2.3.4/aos.css" />
+<link rel="stylesheet" href="{% static 'css/booking.css' %}" />
 <style>
-/* Booking-specific CSS using base template variables */
-:root {
-    /* Step-specific colors using base palette */
-    --step-1-accent: var(--error); /* Coral Red for step 1 */
-    --step-2-accent: var(--secondary); /* Sky Blue for step 2 */
-    --step-3-accent: var(--primary); /* Emerald for step 3 */
-    --step-4-accent: var(--accent); /* Golden for step 4 */
-    --step-4-accent-hover: var(--accent-dark);
-
-    /* Step backgrounds */
-    --step-1-bg: rgba(239, 68, 68, 0.05);
-    --step-2-bg: rgba(59, 130, 246, 0.05);
-    --step-3-bg: rgba(16, 185, 129, 0.05);
-    --step-4-bg: rgba(245, 158, 11, 0.05);
-
-    /* Booking-specific backgrounds */
-    --card-bg: var(--bg-primary);
-    --input-bg: var(--bg-primary);
-    --text-color: var(--text-primary);
-    --border-color: var(--border);
-    --button-bg: var(--primary);
-    --button-hover: var(--primary-dark);
-    --alert-error-text: var(--error);
-    --alert-error-bg: #FEF2F2;
-    --alert-warning-bg: #FEF3C7;
-}
-
-[data-theme="dark"] {
-    --step-1-bg: rgba(239, 68, 68, 0.15);
-    --step-2-bg: rgba(59, 130, 246, 0.15);
-    --step-3-bg: rgba(16, 185, 129, 0.15);
-    --step-4-bg: rgba(245, 158, 11, 0.15);
-    --card-bg: var(--bg-primary);
-    --input-bg: var(--bg-primary);
-    --text-color: var(--text-primary);
-    --border-color: var(--border);
-    --button-bg: var(--primary);
-    --button-hover: var(--primary-dark);
-    --alert-error-bg: rgba(239, 68, 68, 0.1);
-    --alert-warning-bg: rgba(245, 158, 11, 0.1);
-}
-
-/* Skip link for accessibility */
-.sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
-}
-
-.sr-only:focus {
-    position: static;
-    width: auto;
-    height: auto;
-    padding: 0.5rem 1rem;
-    margin: 0.5rem;
-    background: var(--primary);
-    color: white;
-    clip: auto;
-    white-space: normal;
-}
-
-/* Booking Form Container */
-.booking-form-container {
-    background: rgba(226, 226, 226, 0.6);
-    border: 1px solid var(--border);
-    border-radius: 1rem;
-    box-shadow: var(--shadow-md);
-    position: relative;
-    overflow: hidden;
-    max-width: 800px;
-    margin: 0 auto;
-}
-
-.booking-form-container::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 4px;
-    background: var(--gradient-primary);
-}
-
-/* Progress Bar */
-.progress-bar {
-    background: var(--bg-surface);
-    border-radius: 9999px;
-    height: 4px;
-    overflow: hidden;
-    margin-bottom: 2rem;
-}
-
-.progress-bar-fill {
-    background: var(--gradient-primary);
-    transition: width 0.3s ease;
-    width: 25%; /* Default for step 1 */
-    height: 100%;
-}
-
-/* Step Navigation */
-.steps {
-    display: flex;
-    justify-content: space-between;
-    gap: 1rem;
-    margin-bottom: 2rem;
-    padding: 1rem 0;
-    border-bottom: 1px solid var(--border);
-}
-
-.step {
-    flex: 1;
-    text-align: center;
-    position: relative;
-    padding: 0 0.5rem;
-}
-
-.step-number {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 2.5rem;
-    height: 2.5rem;
-    border-radius: 50%;
-    font-weight: 600;
-    font-size: 0.875rem;
-    margin: 0 auto 0.5rem;
-    transition: all 0.3s ease;
-    position: relative;
-    background: var(--bg-surface);
-    color: var(--text-secondary);
-    border: 2px solid var(--border);
-}
-
-.step.active .step-number {
-    background: #212883;
-    color: white;
-    border-color: #212883;
-    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
-}
-
-.step.completed .step-number {
-    background: var(--primary);
-    color: white;
-    border-color: var(--primary);
-}
-
-.step.completed .step-number::after {
-    content: '✔';
-    position: absolute;
-    font-size: 0.75rem;
-    font-weight: bold;
-    animation: checkmark 0.3s ease-in-out;
-}
-
-@keyframes checkmark {
-    0% { transform: scale(0) rotate(0deg); opacity: 0; }
-    50% { transform: scale(1.2) rotate(180deg); opacity: 0.7; }
-    100% { transform: scale(1) rotate(360deg); opacity: 1; }
-}
-
-.step-label {
-    font-size: 0.75rem;
-    font-weight: 500;
-    color: var(--text-secondary);
-    transition: color 0.3s ease;
-    font-family: 'Inter', sans-serif;
-}
-
-.step.active .step-label,
-.step.completed .step-label {
-    color: var(--text-primary);
-}
-
-/* Form Steps */
-.form-step {
-    display: none;
-    opacity: 0;
-    transform: translateY(20px);
-    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.form-step.active {
-    display: block;
-    opacity: 1;
-    transform: translateY(0);
-}
-
-.form-step[aria-busy="true"] {
-    opacity: 0.7;
-    pointer-events: none;
-}
-
-/* Step Descriptions */
-.step-description {
-    background-color: rgba(189, 189, 189, 0.5);
-    border: 1px solid transparent;
-    border-radius: 0.75rem;
-    padding: 1.5rem;
-    margin-bottom: 2rem;
-    transition: all 0.3s ease;
-    font-family: 'Inter', sans-serif;
-}
-
-.step-2.active .step-description {
-    background: var(--step-2-bg);
-    border-color: var(--step-2-accent);
-}
-.step-3.active .step-description {
-    background: var(--step-3-bg);
-    border-color: var(--step-3-accent);
-}
-.step-4.active .step-description {
-    background: var(--step-4-bg);
-    border-color: var(--step-4-accent);
-}
-
-/* Form Elements */
-.form-group {
-    margin-bottom: 1.5rem;
-}
-
-.form-group label {
-    display: block;
-    font-weight: 500;
-    color: var(--text-primary);
-    margin-bottom: 0.5rem;
-    font-size: 0.875rem;
-    font-family: 'Inter', sans-serif;
-}
-
-.form-input,
-.form-select {
-    width: 100%;
-    padding: 0.875rem 1rem;
-    border: 2px solid var(--border);
-    border-radius: 0.5rem;
-    font-size: 1rem;
-    background: #f1f5f9;
-    color: var(--text-primary);
-    transition: all 0.2s ease;
-    font-family: inherit;
-    box-sizing: border-box;
-}
-
-.form-input:focus,
-.form-select:focus {
-    outline: none;
-    border-color: var(--step-1-accent);
-    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
-    background: white;
-}
-
-[data-theme="dark"] .form-input:focus,
-[data-theme="dark"] .form-select:focus {
-    background: var(--bg-primary);
-    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
-}
-
-.form-input::placeholder {
-    color: var(--text-muted);
-}
-
-/* Icon inputs */
-.input-with-icon {
-    position: relative;
-}
-
-.input-with-icon svg,
-.input-with-icon i {
-    position: absolute;
-    left: 1rem;
-    top: 50%;
-    transform: translateY(-50%);
-    color: var(--text-muted);
-    width: 1.25rem;
-    height: 1.25rem;
-    pointer-events: none;
-}
-
-.input-with-icon .form-input,
-.input-with-icon .form-select {
-    padding-left: 3rem;
-}
-
-/* Passenger counters */
-.passenger-counters {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 1rem;
-    margin-bottom: 2rem;
-}
-
-.counter-group {
-    background: var(--bg-surface);
-    border-radius: 0.75rem;
-    padding: 1.5rem;
-    text-align: center;
-    border: 1px solid var(--border);
-    transition: all 0.2s ease;
-}
-
-.counter-group:hover {
-    border-color: var(--step-2-accent);
-    box-shadow: var(--shadow-sm);
-}
-
-.counter-label {
-    font-size: 0.875rem;
-    color: var(--text-secondary);
-    margin-bottom: 0.5rem;
-    font-weight: 500;
-    font-family: 'Inter', sans-serif;
-}
-
-.counter-value {
-    font-size: 2rem;
-    font-weight: 700;
-    color: var(--text-primary);
-    line-height: 1;
-}
-
-/* Passenger cards */
-.passenger-card {
-    background: var(--bg-primary);
-    border: 1px solid var(--border);
-    border-radius: 0.75rem;
-    padding: 1.5rem;
-    margin-bottom: 1rem;
-    transition: all 0.2s ease;
-    box-shadow: var(--shadow-sm);
-}
-
-.passenger-card:hover {
-    border-color: var(--step-2-accent);
-    box-shadow: var(--shadow-md);
-}
-
-.passenger-card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    width: 100%;
-    background: none;
-    border: none;
-    padding: 0.5rem 0;
-    cursor: pointer;
-    color: var(--text-primary);
-    transition: all 0.2s ease;
-    font-weight: 500;
-    font-family: 'Inter', sans-serif;
-    width: 100%;
-    text-align: left;
-}
-
-.passenger-card-header:hover {
-    color: var(--step-2-accent);
-}
-
-.toggle-icon {
-    font-size: 1.25rem;
-    color: var(--text-muted);
-    transition: transform 0.2s ease;
-    margin-left: 0.5rem;
-    background: none;
-    border: none;
-    cursor: pointer;
-}
-
-.passenger-card-header[aria-expanded="true"] .toggle-icon {
-    transform: rotate(180deg);
-}
-
-/* Add-on sections */
-.addon-section {
-    background: var(--bg-primary);
-    border: 1px solid var(--border);
-    border-radius: 0.75rem;
-    padding: 1.5rem;
-    margin-bottom: 1.5rem;
-    box-shadow: var(--shadow-sm);
-}
-
-.addon-section h3 {
-    font-size: 1.25rem;
-    font-weight: 600;
-    color: var(--text-primary);
-    margin-bottom: 1rem;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-family: 'Playfair Display', serif;
-}
-
-.addon-section h3 i {
-    color: var(--step-3-accent);
-}
-
-/* Checkbox styling */
-.form-checkbox {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.75rem;
-    margin-bottom: 1rem;
-    cursor: pointer;
-}
-
-.form-checkbox input[type="checkbox"] {
-    width: 1.25rem;
-    height: 1.25rem;
-    margin: 0;
-    flex-shrink: 0;
-    accent-color: var(--step-3-accent);
-    margin-top: 0.125rem;
-}
-
-.form-checkbox label {
-    margin: 0;
-    cursor: pointer;
-    line-height: 1.5;
-    font-family: 'Inter', sans-serif;
-}
-
-/* Summary cards */
-.summary-card {
-    background: var(--bg-primary);
-    border: 1px solid var(--border);
-    border-radius: 0.75rem;
-    padding: 1.5rem;
-    margin-bottom: 1.5rem;
-    box-shadow: var(--shadow-sm);
-}
-
-.summary-card h3 {
-    font-size: 1.125rem;
-    font-weight: 600;
-    color: var(--text-primary);
-    margin-bottom: 1rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 2px solid var(--border);
-    font-family: 'Playfair Display', serif;
-}
-
-.summary-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.5rem 0;
-    border-bottom: 1px solid var(--border);
-}
-
-.summary-row:last-child {
-    border-bottom: none;
-    font-weight: 600;
-    margin-top: 0.5rem;
-    padding-top: 0.5rem;
-}
-
-.summary-label {
-    color: var(--text-secondary);
-}
-
-.summary-value {
-    color: var(--text-primary);
-    font-weight: 500;
-}
-
-/* Total cost */
-.total-cost {
-    background: linear-gradient(135deg, var(--step-4-accent) 0%, var(--accent-dark) 100%);
-    color: white;
-    padding: 2rem;
-    border-radius: 0.75rem;
-    text-align: center;
-    font-size: 1.5rem;
-    font-weight: 700;
-    margin-bottom: 2rem;
-    box-shadow: var(--shadow-lg);
-}
-
-/* Form actions */
-.form-actions {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 1rem;
-    margin-top: 2rem;
-    padding-top: 2rem;
-    border-top: 1px solid var(--border);
-    position: sticky;
-    bottom: 0;
-    z-index: 10;
-    backdrop-filter: blur(10px);
-}
-
-/* Button styles */
-.cta-button {
-    color: #242424;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.875rem 2rem;
-    border-radius: 0.5rem;
-    font-weight: 600;
-    font-size: 0.95rem;
-    text-decoration: none;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    border: none;
-    position: relative;
-    overflow: hidden;
-    min-width: 120px;
-    justify-content: center;
-    font-family: 'Inter', sans-serif;
-}
-
-.cta-button::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-    transition: left 0.5s;
-}
-
-.cta-button:hover::before {
-    left: 100%;
-}
-
-.cta-button-primary {
-    background: var(--gradient-primary);
-    color: white;
-    box-shadow: var(--shadow-md);
-}
-
-.cta-button-primary:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-lg);
-}
-
-.cta-button-secondary {
-    background: transparent;
-    color: var(--text-primary);
-    border: 2px solid var(--border);
-}
-
-.cta-button-secondary:hover {
-    background: var(--bg-surface);
-    border-color: var(--step-2-accent);
-    color: var(--step-2-accent);
-}
-
-.cta-button[aria-busy="true"] {
-    opacity: 0.7;
-    pointer-events: none;
-}
-
-.cta-button[aria-busy="true"] .spinner {
-    display: inline-block !important;
-    width: 1.25rem;
-    height: 1.25rem;
-    border: 2px solid currentColor;
-    border-radius: 50%;
-    border-top-color: transparent;
-    animation: spin 1s ease-in-out infinite;
-    margin-right: 0.5rem;
-}
-
-/* Error messages */
-.error-message {
-    color: var(--alert-error-text);
-    font-size: 0.875rem;
-    margin-top: 0.5rem;
-    display: none;
-    font-family: 'Inter', sans-serif;
-}
-
-.error-message.show {
-    display: block;
-    animation: shake 0.5s ease-in-out;
-}
-
-@keyframes shake {
-    0%, 100% { transform: translateX(0); }
-    25% { transform: translateX(-5px); }
-    75% { transform: translateX(5px); }
-}
-
-/* Weather warning */
-.weather-warning {
-    background: var(--alert-warning-bg);
-    border: 1px solid rgba(245, 158, 11, 0.3);
-    border-radius: 0.5rem;
-    padding: 1rem;
-    margin-bottom: 1.5rem;
-    display: none;
-}
-
-.weather-warning.show {
-    display: block;
-    animation: slideDown 0.3s ease;
-}
-
-.weather-warning.warning {
-    background: var(--alert-warning-bg);
-    border-color: rgba(245, 158, 11, 0.3);
-    color: var(--accent);
-}
-
-.weather-warning.danger {
-    background: var(--alert-error-bg);
-    border-color: rgba(239, 68, 68, 0.3);
-    color: var(--error);
-}
-
-/* File preview */
-.file-preview {
-    margin-top: 0.5rem;
-}
-
-.file-preview img {
-    max-width: 100%;
-    max-height: 8rem;
-    object-fit: contain;
-    border-radius: 0.25rem;
-    border: 1px solid var(--border);
-    transition: opacity 0.3s ease;
-}
-
-.pdf-icon {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.75rem 1rem;
-    background: var(--step-2-bg);
-    border-radius: 0.5rem;
-    color: var(--text-primary);
-    font-size: 0.875rem;
-    border: 1px solid var(--border);
-    transition: all 0.2s ease;
-}
-
-.pdf-icon:hover {
-    background: var(--step-2-accent);
-    color: white;
-}
-
-/* Alerts */
-.alert {
-    padding: 1rem 1.5rem;
-    margin: 1rem 0;
-    border-radius: 0.75rem;
-    box-shadow: var(--shadow-sm);
-    border-left: 4px solid;
-    font-family: 'Inter', sans-serif;
-}
-
-.alert.error {
-    background: var(--alert-error-bg);
-    color: var(--alert-error-text);
-    border-left-color: var(--alert-error-text);
-}
-
-.alert.warning {
-    background: var(--alert-warning-bg);
-    color: var(--accent);
-    border-left-color: var(--accent);
-}
-
-.alert.success {
-    background: rgba(16, 185, 129, 0.1);
-    color: var(--primary);
-    border-left-color: var(--primary);
-}
-
-/* Loading spinner */
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
-
-.loading-spinner {
-    width: 2rem;
-    height: 2rem;
-    border: 3px solid var(--border);
-    border-top: 3px solid var(--primary);
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-    display: inline-block;
-}
-
-/* Responsive Design */
-@media (max-width: 768px) {
-    .steps {
-        overflow-x: auto;
-        padding: 0 1rem;
-        gap: 0.5rem;
-    }
-
-    .step {
-        min-width: 80px;
-        flex: 0 0 auto;
-    }
-
-    .step-label {
-        font-size: 0.7rem;
-    }
-
-    .form-actions {
-        flex-direction: column;
-        gap: 1rem;
-    }
-
-    .cta-button {
-        width: 100%;
-        justify-content: center;
-    }
-
-    .passenger-counters {
-        grid-template-columns: repeat(3, 1fr);
-        gap: 0.5rem;
-    }
-
-    .counter-group {
-        padding: 1rem;
-    }
-
-    .counter-value {
-        font-size: 1.5rem;
-    }
-
-    .summary-row {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 0.25rem;
-    }
-
-    .booking-form-container {
-
-        margin: 0 -1rem;
-        border-radius: 0;
-        border-left: none;
-        border-right: none;
-        border-top-left-radius: 1rem;
-        border-top-right-radius: 1rem;
-    }
-}
-
-@media (max-width: 480px) {
-    .step-description {
-        padding: 1rem;
-    }
-
-    .addon-section,
-    .summary-card {
-        padding: 1rem;
-    }
-
-    .passenger-card {
-        padding: 1rem;
-    }
-
-    .passenger-card-header {
-        font-size: 0.875rem;
-    }
-}
-
-/* Print styles */
-@media print {
-    .booking-form-container,
-    .steps,
-    .form-actions,
-    .progress-bar {
-        display: none !important;
-    }
-
-    .summary-card {
-        break-inside: avoid;
-        page-break-inside: avoid;
-    }
-}
-
-/* Focus styles for accessibility */
-.form-input:focus,
-.form-select:focus,
-.cta-button:focus {
-    outline: 2px solid var(--primary);
-    outline-offset: 2px;
-}
-
-[data-theme="dark"] .form-input:focus,
-[data-theme="dark"] .form-select:focus,
-[data-theme="dark"] .cta-button:focus {
-    outline-color: var(--primary);
-}
+    .form-step { display: none; }
+    .form-step.active { display: block; }
 </style>
 {% endblock %}
 
 {% block content %}
-<!-- Skip link for accessibility -->
 <a href="#main-content" class="sr-only focus:not-sr-only fixed top-4 left-4 z-50 bg-primary text-white px-4 py-2 rounded focus:outline-none">
     Skip to main content
 </a>
 
-<main id="main-content" class="container mx-auto px-4 py-8 md:py-12 max-w-7xl" data-aos="fade-in">
-    <h1 class="text-3xl md:text-4xl font-bold text-center mb-6 md:mb-8 font-playfair" data-aos="fade-down">Book Your Ferry</h1>
+<main id="main-content" class="container mx-auto px-4 py-8 md:py-12 max-w-7xl">
+    <h1 class="text-3xl md:text-4xl font-bold text-center mb-6 md:mb-8">Book Your Ferry</h1>
 
     <!-- Progress Bar -->
-    <div class="progress-bar bg-var-border-color rounded-full h-2 mb-6 md:mb-8">
-        <div class="progress-bar-fill bg-var-step-1-accent rounded-full h-full transition-all duration-300"></div>
+    <div class="progress-bar mb-8" role="progressbar" aria-valuemin="0" aria-valuemax="4" aria-valuenow="{{ form_data.step|default:1 }}">
+        <div class="progress-bar-fill" id="progress-bar-fill" aria-hidden="true"></div>
     </div>
 
     <!-- Step Navigation -->
-    <nav aria-label="Booking progress" class="steps">
-        <ol class="flex flex-wrap justify-between w-full">
-            <li class="step flex-1 text-center font-inter min-w-[80px] mx-1" data-step="1">
-                <span class="step-number block w-8 h-8 mx-auto rounded-full bg-var-step-1-accent text-white flex items-center justify-center transition-all duration-300">1</span>
-                <span class="step-label block text-xs md:text-sm text-var-text-color mt-2">Select Schedule</span>
+    <nav aria-label="Booking progress" class="steps mb-8">
+        <ol class="flex justify-between">
+            <li class="step active" data-step="1">
+                <span class="step-number">1</span>
+                <span class="step-label">Schedule</span>
             </li>
-            <li class="step flex-1 text-center font-inter min-w-[80px] mx-1" data-step="2">
-                <span class="step-number block w-8 h-8 mx-auto rounded-full bg-gray-300 text-gray-600 flex items-center justify-center transition-all duration-300">2</span>
-                <span class="step-label block text-xs md:text-sm text-var-text-color mt-2">Passenger Details</span>
+            <li class="step" data-step="2">
+                <span class="step-number">2</span>
+                <span class="step-label">Passengers</span>
             </li>
-            <li class="step flex-1 text-center font-inter min-w-[80px] mx-1" data-step="3">
-                <span class="step-number block w-8 h-8 mx-auto rounded-full bg-gray-300 text-gray-600 flex items-center justify-center transition-all duration-300">3</span>
-                <span class="step-label block text-xs md:text-sm text-var-text-color mt-2">Add-Ons</span>
+            <li class="step" data-step="3">
+                <span class="step-number">3</span>
+                <span class="step-label">Add-Ons</span>
             </li>
-            <li class="step flex-1 text-center font-inter min-w-[80px] mx-1" data-step="4">
-                <span class="step-number block w-8 h-8 mx-auto rounded-full bg-gray-300 text-gray-600 flex items-center justify-center transition-all duration-300">4</span>
-                <span class="step-label block text-xs md:text-sm text-var-text-color mt-2">Summary</span>
+            <li class="step" data-step="4">
+                <span class="step-number">4</span>
+                <span class="step-label">Review</span>
             </li>
         </ol>
     </nav>
 
-    <!-- Booking Form Container -->
-    <div class="booking-form-container bg-var-card-bg rounded-lg shadow-lg p-6 md:p-8 mx-auto" data-aos="fade-up">
-        <form id="booking-form" action="{% url 'bookings:book_ticket' %}" method="post" enctype="multipart/form-data" aria-label="Ferry booking form" novalidate>
+    <div class="booking-form-container">
+        <form id="booking-form" enctype="multipart/form-data" novalidate>
             {% csrf_token %}
-            <input type="hidden" name="step" value="{{ form_data.step|default:1 }}">
+            <input type="hidden" name="step" id="current-step" value="{{ form_data.step|default:1 }}">
 
-            <!-- Step 1: Select Schedule -->
-            <div class="form-step step-1 active" data-step="1" aria-busy="false" role="region" aria-labelledby="step1-heading">
-                <h2 id="step1-heading" class="sr-only">Step 1: Select Schedule</h2>
-                <div class="step-description bg-var-step-1-bg p-4 rounded-lg mb-6 text-var-text-color font-poppins">
-                    <p class="text-sm md:text-base">Choose your ferry schedule. All fields are required.</p>
+            <!-- STEP 1: Schedule Selection -->
+            <section class="form-step active" data-step="1">
+                <div class="step-description">
+                    <h2 class="sr-only">Step 1: Select Schedule</h2>
+                    <p>Choose your ferry schedule. All fields are required.</p>
                 </div>
 
                 <div class="form-group mb-6">
-                    <label for="schedule_id" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">Select Schedule *</label>
-                    <div class="input-with-icon relative">
-                        <i class="fas fa-calendar-alt absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-var-text-color"></i>
-                        <select id="schedule_id"
-                                name="schedule_id"
-                                required
-                                class="form-select w-full pl-10 p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-1-accent transition-all duration-300"
-                                aria-required="true"
-                                aria-describedby="error-schedule_id"
-                                data-validation="required">
-                            <option value="">Select a schedule</option>
-                            {% for schedule in schedules %}
-                                {% with schedule_id_str=schedule.id|stringformat:"s" %}
-                                <option value="{{ schedule.id }}" {% if form_data.schedule_id == schedule_id_str %}selected{% endif %}>
-                                    {{ schedule.route.departure_port.name }} to {{ schedule.route.destination_port.name }} - {{ schedule.departure_time|date:"D, M d, H:i" }} ({{ schedule.route.estimated_duration }})
-                                </option>
-                                {% endwith %}
-                            {% endfor %}
-                        </select>
-                        <p id="error-schedule_id" class="error-message mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
-                    </div>
+                    <label for="schedule_id" class="block text-sm font-semibold mb-2">Ferry Schedule *</label>
+                    <select id="schedule_id" name="schedule_id" required class="form-select w-full">
+                        <option value="">Choose a schedule</option>
+                        {% for schedule in schedules %}
+                            <option value="{{ schedule.id }}"
+                                    {% if form_data.schedule_id == schedule.id|stringformat:"s" %}selected{% endif %}>
+                                {{ schedule.route.departure_port.name }} → {{ schedule.route.destination_port.name }}
+                                - {{ schedule.departure_time|date:"M d, Y H:i" }} ({{ schedule.available_seats }} seats)
+                            </option>
+                        {% empty %}
+                            <option disabled>No schedules available</option>
+                        {% endfor %}
+                    </select>
+                    <p id="error-schedule_id" class="error-message text-red-500 text-sm mt-1" aria-live="polite"></p>
                 </div>
 
                 {% if not user.is_authenticated %}
                 <div class="form-group mb-6">
-                    <label for="guest_email" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">Guest Email *</label>
-                    <div class="input-with-icon relative">
-                        <i class="fas fa-envelope absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-var-text-color"></i>
-                        <input type="email"
-                               id="guest_email"
-                               name="guest_email"
-                               value="{{ form_data.guest_email|default:'' }}"
-                               required
-                               class="form-input w-full pl-10 p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-1-accent transition-all duration-300"
-                               placeholder="Enter your email"
-                               aria-required="true"
-                               aria-describedby="error-guest_email"
-                               data-validation="email required"
-                               data-error-message="Please enter a valid email address">
-                        <p id="error-guest_email" class="error-message mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
-                    </div>
+                    <label for="guest_email" class="block text-sm font-semibold mb-2">Email Address *</label>
+                    <input type="email" id="guest_email" name="guest_email"
+                           value="{{ form_data.guest_email|default_if_none:'' }}"
+                           required class="form-input w-full" placeholder="your.email@example.com">
+                    <p id="error-guest_email" class="error-message text-red-500 text-sm mt-1" aria-live="polite"></p>
                 </div>
                 {% endif %}
 
-                <div class="form-group mb-6" id="schedule-error-reset" style="display: none;">
-                    <div class="alert error p-4 rounded-lg">
-                        <p class="text-sm text-var-alert-error-text font-poppins mb-2">The selected schedule is no longer available. Please choose a new one.</p>
-                        <button type="button" id="reset-schedule" class="cta-button bg-var-button-bg text-white py-2 px-4 rounded-lg hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-bg transition-all duration-300">
-                            <i class="fas fa-refresh mr-2"></i>Reset and Choose New Schedule
-                        </button>
-                    </div>
+                <div class="form-actions">
+                    <button type="button" class="prev-step btn btn-secondary" data-prev="1" disabled>Previous</button>
+                    <button type="button" class="next-step btn btn-primary" data-next="2">Next: Passengers</button>
                 </div>
+            </section>
 
-                <div class="form-actions mt-6 flex justify-end sticky bottom-0 bg-var-card-bg py-4 z-10">
-                    <button type="button"
-                            class="next-step cta-button bg-var-button-bg text-white py-2 px-6 rounded-lg hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-bg flex items-center transition-all duration-300"
-                            data-next="2"
-                            aria-busy="false">
-                        <span class="spinner hidden w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></span>
-                        <i class="fas fa-arrow-right mr-2"></i>Next
-                    </button>
-                </div>
-            </div>
-
-            <!-- Step 2: Passenger Details -->
-            <div class="form-step step-2" data-step="2" aria-busy="false" role="region" aria-labelledby="step2-heading">
-                <h2 id="step2-heading" class="sr-only">Step 2: Passenger Details</h2>
-                <div class="step-description bg-var-step-2-bg p-4 rounded-lg mb-6 text-var-text-color font-poppins">
-                    <p class="text-sm md:text-base">Enter details for each passenger. Fields marked with <span class="font-semibold">* are required</span>. Children and infants must be accompanied by at least one adult.</p>
+            <!-- STEP 2: Passenger Details -->
+            <section class="form-step" data-step="2">
+                <div class="step-description">
+                    <h2 class="sr-only">Step 2: Passenger Details</h2>
+                    <p>Enter details for each passenger</p>
                 </div>
 
                 <!-- Passenger Counters -->
                 <div class="passenger-counters grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                    <div class="counter-group form-group">
-                        <label for="adults" class="counter-label block text-sm font-semibold text-var-text-color font-poppins mb-2">Adults (18+)</label>
-                        <input type="number"
-                               id="adults"
-                               name="adults"
-                               min="0"
-                               max="20"
-                               value="{{ form_data.adults|default:1 }}"
-                               required
-                               class="form-input w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-2-accent transition-all duration-300 text-center text-2xl"
-                               aria-required="true"
-                               aria-describedby="error-adults"
-                               data-validation="required min:1">
-                        <p id="error-adults" class="error-message mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                    <div class="counter-group">
+                        <label class="block text-sm font-medium mb-2">Adults (18+)</label>
+                        <input type="number" id="adults" name="adults" min="1" max="20"
+                               value="{{ form_data.adults|default:1 }}" required
+                               class="w-full p-2 border rounded">
+                        <p id="error-adults" class="error-message text-red-500 text-sm mt-1"></p>
                     </div>
-                    <div class="counter-group form-group">
-                        <label for="children" class="counter-label block text-sm font-semibold text-var-text-color font-poppins mb-2">Children (2-17)</label>
-                        <input type="number"
-                               id="children"
-                               name="children"
-                               min="0"
-                               max="15"
+                    <div class="counter-group">
+                        <label class="block text-sm font-medium mb-2">Children (2-17)</label>
+                        <input type="number" id="children" name="children" min="0" max="15"
                                value="{{ form_data.children|default:0 }}"
-                               class="form-input w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-2-accent transition-all duration-300 text-center text-2xl"
-                               aria-describedby="error-children"
-                               data-validation="min:0">
-                        <p id="error-children" class="error-message mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                               class="w-full p-2 border rounded">
+                        <p id="error-children" class="error-message text-red-500 text-sm mt-1"></p>
                     </div>
-                    <div class="counter-group form-group">
-                        <label for="infants" class="counter-label block text-sm font-semibold text-var-text-color font-poppins mb-2">Infants (0-2)</label>
-                        <input type="number"
-                               id="infants"
-                               name="infants"
-                               min="0"
-                               max="5"
+                    <div class="counter-group">
+                        <label class="block text-sm font-medium mb-2">Infants (0-2)</label>
+                        <input type="number" id="infants" name="infants" min="0" max="5"
                                value="{{ form_data.infants|default:0 }}"
-                               class="form-input w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-2-accent transition-all duration-300 text-center text-2xl"
-                               aria-describedby="error-infants"
-                               data-validation="min:0">
-                        <p id="error-infants" class="error-message mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                               class="w-full p-2 border rounded">
+                        <p id="error-infants" class="error-message text-red-500 text-sm mt-1"></p>
                     </div>
                 </div>
 
-                <div id="passenger-details" class="space-y-4 mb-6">
-                    <p id="passenger-details-error" class="error-message mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
-                    <div id="adult-fields" class="space-y-4"></div>
-                    <div id="child-fields" class="space-y-4"></div>
-                    <div id="infant-fields" class="space-y-4"></div>
-                </div>
+                <!-- Passenger Field Containers -->
+                <div id="adult-fields" class="space-y-4 mb-6"></div>
+                <div id="child-fields" class="space-y-4 mb-6"></div>
+                <div id="infant-fields" class="space-y-4 mb-6"></div>
 
-                <div class="form-actions mt-6 flex flex-wrap justify-between gap-2 sticky bottom-0 bg-var-card-bg py-4 z-10">
-                    <button type="button"
-                            class="prev-step cta-button bg-gray-500 text-white py-2 px-6 rounded-lg hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 flex items-center transition-all duration-300"
-                            data-prev="1"
-                            aria-busy="false">
-                        <i class="fas fa-arrow-left mr-2"></i>Previous
-                    </button>
-                    <button type="button"
-                            class="next-step cta-button bg-var-button-bg text-white py-2 px-6 rounded-lg hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-bg flex items-center transition-all duration-300"
-                            data-next="3"
-                            aria-busy="false">
-                        <span class="spinner hidden w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></span>
-                        <i class="fas fa-arrow-right mr-2"></i>Next
-                    </button>
-                </div>
-            </div>
+                <!-- PASSENGER TEMPLATE -->
+                <template id="passenger-field-template">
+                    <div class="passenger-card p-4 border rounded-lg">
+                        <button type="button" class="passenger-header flex justify-between w-full text-left mb-3" aria-expanded="true">
+                            <span class="passenger-title font-medium">{type} Passenger #{index}</span>
+                            <span class="toggle-icon">▼</span>
+                        </button>
+                        <div class="passenger-content">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div class="form-group">
+                                    <label class="block text-sm font-medium mb-1">First Name *</label>
+                                    <input type="text" name="{type}_first_name_{index}" required
+                                           class="form-input w-full p-2 border rounded">
+                                    <p class="error-message text-red-500 text-sm mt-1" id="error-{type}_first_name_{index}"></p>
+                                </div>
+                                <div class="form-group">
+                                    <label class="block text-sm font-medium mb-1">Last Name *</label>
+                                    <input type="text" name="{type}_last_name_{index}" required
+                                           class="form-input w-full p-2 border rounded">
+                                    <p class="error-message text-red-500 text-sm mt-1" id="error-{type}_last_name_{index}"></p>
+                                </div>
+                            </div>
 
-            <!-- Step 3: Add-Ons -->
-            <div class="form-step step-3" data-step="3" aria-busy="false" role="region" aria-labelledby="step3-heading">
-                <h2 id="step3-heading" class="sr-only">Step 3: Add-Ons</h2>
-                <div class="step-description bg-var-step-3-bg p-4 rounded-lg mb-6 text-var-text-color font-poppins">
-                    <p class="text-sm md:text-base">Add optional services like premium seating, vehicle or cargo transport, or meals. Prices are per unit.</p>
-                </div>
+                            <!-- Age and Document (non-infants) -->
+                            <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4" data-for="non-infant">
+                                <div class="form-group">
+                                    <label class="block text-sm font-medium mb-1">Age *</label>
+                                    <input type="number" name="{type}_age_{index}" min="2" max="120" required
+                                           class="form-input w-full p-2 border rounded">
+                                    <p class="error-message text-red-500 text-sm mt-1" id="error-{type}_age_{index}"></p>
+                                </div>
+                                <div class="form-group">
+                                    <label class="block text-sm font-medium mb-1">ID Document *</label>
+                                    <input type="file" name="{type}_id_document_{index}" accept=".pdf,.jpg,.jpeg,.png" required
+                                           class="form-input w-full p-2 border rounded">
+                                    <div class="file-preview mt-2 p-2 bg-gray-50 rounded"></div>
+                                    <p class="error-message text-red-500 text-sm mt-1" id="error-{type}_id_document_{index}"></p>
+                                </div>
+                                <div class="form-group">
+                                    <label class="block text-sm font-medium mb-1">Phone (Optional)</label>
+                                    <input type="tel" name="{type}_phone_{index}"
+                                           class="form-input w-full p-2 border rounded">
+                                </div>
+                            </div>
 
-                <!-- Seat Upgrades -->
-                <div class="addon-section">
-                    <h3 class="text-lg font-semibold text-var-text-color font-poppins mb-4">
-                        <i class="fas fa-chair text-var-step-3-accent"></i>Seat Upgrades
-                    </h3>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div class="form-group">
-                            <label for="premium_seating_quantity" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">
-                                Premium Seating (FJD 20.00)
-                            </label>
-                            <input type="number"
-                                   id="premium_seating_quantity"
-                                   name="premium_seating_quantity"
-                                   min="0"
-                                   max="20"
-                                   value="{{ form_data.premium_seating_quantity|default:0 }}"
-                                   class="form-input w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300"
-                                   aria-describedby="error-premium_seating_quantity"
-                                   data-validation="min:0">
-                            <p id="error-premium_seating_quantity" class="error-message mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
-                        </div>
-                        <div class="form-group">
-                            <label for="priority_boarding_quantity" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">
-                                Priority Boarding (FJD 10.00)
-                            </label>
-                            <input type="number"
-                                   id="priority_boarding_quantity"
-                                   name="priority_boarding_quantity"
-                                   min="0"
-                                   max="20"
-                                   value="{{ form_data.priority_boarding_quantity|default:0 }}"
-                                   class="form-input w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300"
-                                   aria-describedby="error-priority_boarding_quantity"
-                                   data-validation="min:0">
-                            <p id="error-priority_boarding_quantity" class="error-message mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
-                        </div>
-                        <div class="form-group">
-                            <label for="cabin_quantity" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">
-                                Cabin (FJD 50.00)
-                            </label>
-                            <input type="number"
-                                   id="cabin_quantity"
-                                   name="cabin_quantity"
-                                   min="0"
-                                   max="5"
-                                   value="{{ form_data.cabin_quantity|default:0 }}"
-                                   class="form-input w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300"
-                                   aria-describedby="error-cabin_quantity"
-                                   data-validation="min:0">
-                            <p id="error-cabin_quantity" class="error-message mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                            <!-- Infant DOB -->
+                            <div class="form-group mt-4" data-for="infant">
+                                <label class="block text-sm font-medium mb-1">Date of Birth *</label>
+                                <input type="date" name="infant_dob_{index}" required
+                                       class="form-input w-full p-2 border rounded">
+                                <p class="error-message text-red-500 text-sm mt-1" id="error-infant_dob_{index}"></p>
+                            </div>
+
+                            <!-- Linked Adult -->
+                            <div class="form-group mt-4" data-for="child-infant">
+                                <label class="block text-sm font-medium mb-1">Accompanying Adult *</label>
+                                <select name="{type}_linked_adult_{index}" required class="form-select w-full p-2 border rounded">
+                                    <option value="">Select adult passenger</option>
+                                </select>
+                                <p class="error-message text-red-500 text-sm mt-1" id="error-{type}_linked_adult_{index}"></p>
+                            </div>
                         </div>
                     </div>
+                </template>
+
+                <div class="form-actions">
+                    <button type="button" class="prev-step btn btn-secondary" data-prev="1">Previous</button>
+                    <button type="button" class="next-step btn btn-primary" data-next="3">Next: Add-Ons</button>
+                </div>
+            </section>
+
+            <!-- STEP 3: Add-ons & Optional Services -->
+            <section class="form-step" data-step="3">
+                <div class="step-description">
+                    <h2 class="sr-only">Step 3: Optional Services</h2>
+                    <p>Add optional services to your booking</p>
                 </div>
 
-                <!-- Vehicle Transport -->
-                <div class="addon-section">
-                    <h3 class="text-lg font-semibold text-var-text-color font-poppins mb-4">
-                        <i class="fas fa-car text-var-step-3-accent"></i>Vehicle Transport
-                    </h3>
-                    <div class="form-checkbox mb-4">
-                        <input type="checkbox"
-                               id="add_vehicle"
-                               name="add_vehicle"
+                <!-- Add-ons Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                    {% for addon in add_ons %}
+                    <div class="addon-card p-4 border rounded-lg hover:shadow-md">
+                        <div class="flex justify-between items-start mb-3">
+                            <div>
+                                <h4 class="font-semibold">{{ addon.label }}</h4>
+                                <p class="text-sm text-gray-600">Per unit</p>
+                            </div>
+                            <span class="text-lg font-bold text-blue-600">FJD {{ addon.price }}</span>
+                        </div>
+                        <input type="number" name="{{ addon.id }}_quantity" min="0" max="{{ addon.max_quantity|default:10 }}"
+                               value="{{ form_data|lookup:addon.id|default:0 }}"
+                               class="w-full p-2 border rounded" placeholder="0">
+                        <p id="error-{{ addon.id }}_quantity" class="error-message text-red-500 text-sm mt-1"></p>
+                    </div>
+                    {% empty %}
+                    <p class="col-span-full text-center text-gray-500 py-8">No add-on services available</p>
+                    {% endfor %}
+                </div>
+
+                <!-- Vehicle Section -->
+                <fieldset class="vehicle-section mb-8 p-4 border rounded-lg">
+                    <legend class="text-lg font-semibold mb-4">Vehicle Transport</legend>
+                    <label class="flex items-center mb-4 cursor-pointer">
+                        <input type="checkbox" id="add_vehicle" name="add_vehicle"
                                {% if form_data.add_vehicle == 'on' %}checked{% endif %}
-                               class="form-checkbox-input mr-2 h-5 w-5 text-var-step-3-accent focus:ring-var-step-3-accent border-var-border-color">
-                        <label for="add_vehicle" class="text-sm font-semibold text-var-text-color font-poppins cursor-pointer">
-                            Add Vehicle (FJD 150.00 base fee + dimensions)
-                        </label>
-                    </div>
-                    <div id="vehicle-fields" class="space-y-4 hidden">
+                               class="mr-2">
+                        <span>Add Vehicle to Booking</span>
+                    </label>
+                    <div id="vehicle-fields" class="{% if not form_data.add_vehicle %}hidden{% endif %} grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div class="form-group">
-                            <label for="vehicle_type" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">Vehicle Type *</label>
-                            <select id="vehicle_type"
-                                    name="vehicles[0][vehicle_type]"
-                                    class="form-select w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300"
-                                    required
-                                    aria-required="true"
-                                    aria-describedby="error-vehicle_type">
-                                <option value="" {% if not form_data.vehicle_type %}selected{% endif %}>Select vehicle type</option>
-                                <option value="car" {% if form_data.vehicle_type == "car" %}selected{% endif %}>Car</option>
-                                <option value="motorcycle" {% if form_data.vehicle_type == "motorcycle" %}selected{% endif %}>Motorcycle</option>
-                                <option value="bicycle" {% if form_data.vehicle_type == "bicycle" %}selected{% endif %}>Bicycle</option>
+                            <label class="block text-sm font-medium mb-2">Vehicle Type *</label>
+                            <select id="vehicle_type" name="vehicle_type" class="form-select w-full">
+                                <option value="">Select type</option>
+                                <option value="car" {% if form_data.vehicle_type == 'car' %}selected{% endif %}>Car/Sedan</option>
+                                <option value="van" {% if form_data.vehicle_type == 'van' %}selected{% endif %}>Van/SUV</option>
+                                <option value="truck" {% if form_data.vehicle_type == 'truck' %}selected{% endif %}>Truck</option>
+                                <option value="motorcycle" {% if form_data.vehicle_type == 'motorcycle' %}selected{% endif %}>Motorcycle</option>
                             </select>
-                            <p id="error-vehicle_type" class="error-message mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                            <p id="error-vehicle_type" class="error-message"></p>
                         </div>
                         <div class="form-group">
-                            <label for="vehicle_dimensions" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">Dimensions (cm) *</label>
-                            <input type="text"
-                                   id="vehicle_dimensions"
-                                   name="vehicles[0][dimensions]"
+                            <label class="block text-sm font-medium mb-2">Dimensions (LxWxH cm) *</label>
+                            <input type="text" id="vehicle_dimensions" name="vehicle_dimensions"
                                    value="{{ form_data.vehicle_dimensions|default:'' }}"
-                                   class="form-input w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300"
-                                   placeholder="e.g., 480x180x150"
-                                   required
-                                   aria-required="true"
-                                   aria-describedby="error-vehicle_dimensions"
-                                   data-validation="required pattern:^\\d+x\\d+x\\d+$">
-                            <p id="error-vehicle_dimensions" class="error-message mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                                   placeholder="480x180x150" class="form-input w-full">
+                            <p id="error-vehicle_dimensions" class="error-message"></p>
                         </div>
                         <div class="form-group">
-                            <label for="vehicle_license_plate" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">License Plate (Optional)</label>
-                            <input type="text"
-                                   id="vehicle_license_plate"
-                                   name="vehicles[0][license_plate]"
+                            <label class="block text-sm font-medium mb-2">License Plate</label>
+                            <input type="text" id="vehicle_license_plate" name="vehicle_license_plate"
                                    value="{{ form_data.vehicle_license_plate|default:'' }}"
-                                   class="form-input w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300"
-                                   aria-describedby="error-vehicle_license_plate">
-                            <p id="error-vehicle_license_plate" class="error-message mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                                   class="form-input w-full">
+                        </div>
+                        <div class="form-group md:col-span-2">
+                            <label class="block text-sm font-medium mb-2">Registration Document</label>
+                            <input type="file" id="vehicle_document" name="vehicle_document"
+                                   accept=".pdf,.jpg,.jpeg,.png" class="form-input w-full">
+                            <div class="file-preview mt-2" id="preview-vehicle_document"></div>
                         </div>
                     </div>
-                </div>
+                </fieldset>
 
-                <!-- Cargo Transport -->
-                <div class="addon-section">
-                    <h3 class="text-lg font-semibold text-var-text-color font-poppins mb-4">
-                        <i class="fas fa-box text-var-step-3-accent"></i>Cargo Transport
-                    </h3>
-                    <div class="form-checkbox mb-4">
-                        <input type="checkbox"
-                               id="add_cargo"
-                               name="add_cargo"
+                <!-- Cargo Section -->
+                <fieldset class="cargo-section p-4 border rounded-lg">
+                    <legend class="text-lg font-semibold mb-4">Cargo Transport</legend>
+                    <label class="flex items-center mb-4 cursor-pointer">
+                        <input type="checkbox" id="add_cargo" name="add_cargo"
                                {% if form_data.add_cargo == 'on' %}checked{% endif %}
-                               class="form-checkbox-input mr-2 h-5 w-5 text-var-step-3-accent focus:ring-var-step-3-accent border-var-border-color">
-                        <label for="add_cargo" class="text-sm font-semibold text-var-text-color font-poppins cursor-pointer">
-                            Add Cargo (FJD 5.00/kg, varies by type)
-                        </label>
-                    </div>
-                    <div id="cargo-fields" class="space-y-4 hidden">
+                               class="mr-2">
+                        <span>Add Cargo to Booking</span>
+                    </label>
+                    <div id="cargo-fields" class="{% if not form_data.add_cargo %}hidden{% endif %} grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div class="form-group">
-                            <label for="cargo_type" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">Cargo Type * (Light: 6.00/kg, Heavy: 10.00/kg, Bulk: 7.50/kg, Livestock: 12.50/kg)</label>
-                            <select id="cargo_type"
-                                    name="cargo[0][cargo_type]"
-                                    class="form-select w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300"
-                                    required
-                                    aria-required="true"
-                                    aria-describedby="error-cargo_type">
-                                <option value="" {% if not form_data.cargo_type %}selected{% endif %}>Select cargo type</option>
-                                <option value="Light Cargo" {% if form_data.cargo_type == "Light Cargo" %}selected{% endif %}>Light Cargo (parcels, boxes, 6.00/kg)</option>
-                                <option value="Heavy Cargo" {% if form_data.cargo_type == "Heavy Cargo" %}selected{% endif %}>Heavy Cargo (machinery, materials, 10.00/kg)</option>
-                                <option value="Bulk Cargo" {% if form_data.cargo_type == "Bulk Cargo" %}selected{% endif %}>Bulk Cargo (fuel, sand, produce, 7.50/kg)</option>
-                                <option value="Livestock" {% if form_data.cargo_type == "Livestock" %}selected{% endif %}>Livestock (cows, pigs, goats, 12.50/kg)</option>
+                            <label class="block text-sm font-medium mb-2">Cargo Type *</label>
+                            <select id="cargo_type" name="cargo_type" class="form-select w-full">
+                                <option value="">Select type</option>
+                                <option value="luggage" {% if form_data.cargo_type == 'luggage' %}selected{% endif %}>Luggage</option>
+                                <option value="equipment" {% if form_data.cargo_type == 'equipment' %}selected{% endif %}>Equipment</option>
+                                <option value="freight" {% if form_data.cargo_type == 'freight' %}selected{% endif %}>Freight</option>
                             </select>
-                            <p id="error-cargo_type" class="error-message mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                            <p id="error-cargo_type" class="error-message"></p>
                         </div>
                         <div class="form-group">
-                            <label for="cargo_weight_kg" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">Weight (kg) *</label>
-                            <input type="number"
-                                   id="cargo_weight_kg"
-                                   name="cargo[0][weight_kg]"
-                                   step="0.01"
-                                   min="0.01"
-                                   max="5000"
-                                   value="{{ form_data.cargo_weight_kg|default:'' }}"
-                                   class="form-input w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300"
-                                   required
-                                   aria-required="true"
-                                   aria-describedby="error-cargo_weight_kg"
-                                   data-validation="required min:0.01">
-                            <p id="error-cargo_weight_kg" class="error-message mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                            <label class="block text-sm font-medium mb-2">Weight (kg) *</label>
+                            <input type="number" id="cargo_weight_kg" name="cargo_weight_kg"
+                                   value="{{ form_data.cargo_weight_kg|default:'' }}" min="0.1" step="0.1"
+                                   class="form-input w-full">
+                            <p id="error-cargo_weight_kg" class="error-message"></p>
                         </div>
                         <div class="form-group">
-                            <label for="cargo_dimensions_cm" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">Dimensions (LxWxH in cm) *</label>
-                            <input type="text"
-                                   id="cargo_dimensions_cm"
-                                   name="cargo[0][dimensions_cm]"
+                            <label class="block text-sm font-medium mb-2">Dimensions (optional)</label>
+                            <input type="text" id="cargo_dimensions_cm" name="cargo_dimensions_cm"
                                    value="{{ form_data.cargo_dimensions_cm|default:'' }}"
-                                   class="form-input w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300"
-                                   placeholder="e.g., 400x180x150"
-                                   required
-                                   aria-required="true"
-                                   aria-describedby="error-cargo_dimensions_cm"
-                                   data-validation="required pattern:^\\d+x\\d+x\\d+$">
-                            <p id="error-cargo_dimensions_cm" class="error-message mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                                   placeholder="100x50x50" class="form-input w-full">
                         </div>
-                        <div class="form-group">
-                            <label for="cargo_license_plate" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">License Plate (Optional)</label>
-                            <input type="text"
-                                   id="cargo_license_plate"
-                                   name="cargo[0][license_plate]"
-                                   value="{{ form_data.cargo_license_plate|default:'' }}"
-                                   class="form-input w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300"
-                                   aria-describedby="error-cargo_license_plate">
-                            <p id="error-cargo_license_plate" class="error-message mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                        <div class="form-group md:col-span-2">
+                            <label class="block text-sm font-medium mb-2">Cargo Document</label>
+                            <input type="file" id="cargo_document" name="cargo_document"
+                                   accept=".pdf,.jpg,.jpeg,.png" class="form-input w-full">
+                            <div class="file-preview mt-2" id="preview-cargo_document"></div>
                         </div>
                     </div>
+                </fieldset>
+
+                <div class="form-actions">
+                    <button type="button" class="prev-step btn btn-secondary" data-prev="2">Previous</button>
+                    <button type="button" class="next-step btn btn-primary" data-next="4">Review & Pay</button>
                 </div>
-                <!-- Meals & Refreshments -->
-                <div class="addon-section">
-                    <h3 class="text-lg font-semibold text-var-text-color font-poppins mb-4">
-                        <i class="fas fa-utensils text-var-step-3-accent"></i>Meals & Refreshments
-                    </h3>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div class="form-group">
-                            <label for="meal_breakfast_quantity" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">Breakfast (FJD 15.00)</label>
-                            <input type="number"
-                                   id="meal_breakfast_quantity"
-                                   name="meal_breakfast_quantity"
-                                   min="0"
-                                   max="50"
-                                   value="{{ form_data.meal_breakfast_quantity|default:0 }}"
-                                   class="form-input w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300"
-                                   aria-describedby="error-meal_breakfast_quantity"
-                                   data-validation="min:0">
-                            <p id="error-meal_breakfast_quantity" class="error-message mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
-                        </div>
-                        <div class="form-group">
-                            <label for="meal_lunch_quantity" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">Lunch (FJD 15.00)</label>
-                            <input type="number"
-                                   id="meal_lunch_quantity"
-                                   name="meal_lunch_quantity"
-                                   min="0"
-                                   max="50"
-                                   value="{{ form_data.meal_lunch_quantity|default:0 }}"
-                                   class="form-input w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300"
-                                   aria-describedby="error-meal_lunch_quantity"
-                                   data-validation="min:0">
-                            <p id="error-meal_lunch_quantity" class="error-message mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
-                        </div>
-                        <div class="form-group">
-                            <label for="meal_dinner_quantity" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">Dinner (FJD 15.00)</label>
-                            <input type="number"
-                                   id="meal_dinner_quantity"
-                                   name="meal_dinner_quantity"
-                                   min="0"
-                                   max="50"
-                                   value="{{ form_data.meal_dinner_quantity|default:0 }}"
-                                   class="form-input w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300"
-                                   aria-describedby="error-meal_dinner_quantity"
-                                   data-validation="min:0">
-                            <p id="error-meal_dinner_quantity" class="error-message mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
-                        </div>
-                        <div class="form-group">
-                            <label for="meal_snack_quantity" class="block text-sm font-semibold text-var-text-color font-poppins mb-2">Snack (FJD 5.00)</label>
-                            <input type="number"
-                                   id="meal_snack_quantity"
-                                   name="meal_snack_quantity"
-                                   min="0"
-                                   max="100"
-                                   value="{{ form_data.meal_snack_quantity|default:0 }}"
-                                   class="form-input w-full p-3 border rounded-lg bg-var-input-bg text-var-text-color focus:outline-none focus:ring-2 focus:ring-var-step-3-accent transition-all duration-300"
-                                   aria-describedby="error-meal_snack_quantity"
-                                   data-validation="min:0">
-                            <p id="error-meal_snack_quantity" class="error-message mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
-                        </div>
+            </section>
+
+            <!-- STEP 4: Review & Payment -->
+            <section class="form-step" data-step="4">
+                <div class="step-description">
+                    <h2 class="sr-only">Step 4: Review & Confirm</h2>
+                    <p>Review your booking and proceed to payment</p>
+                </div>
+
+                <div id="booking-summary" class="mb-8">
+                    <div class="text-center py-12 bg-gray-50 rounded-lg">
+                        <div class="loading-spinner mx-auto mb-4 w-8 h-8 border-4 border-gray-200 border-t-blue-600 rounded-full animate-spin"></div>
+                        <p class="text-gray-600">Loading booking summary...</p>
                     </div>
                 </div>
-                <div class="form-actions mt-6 flex flex-wrap justify-between gap-2 sticky bottom-0 bg-var-card-bg py-4 z-10">
-                    <button type="button"
-                            class="prev-step cta-button bg-gray-500 text-white py-2 px-6 rounded-lg hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 flex items-center transition-all duration-300"
-                            data-prev="2"
-                            aria-busy="false">
-                        <i class="fas fa-arrow-left mr-2"></i>Previous
-                    </button>
-                    <button type="button"
-                            class="next-step cta-button bg-var-button-bg text-white py-2 px-6 rounded-lg hover:bg-var-button-hover focus:outline-none focus:ring-2 focus:ring-var-button-bg flex items-center transition-all duration-300"
-                            data-next="4"
-                            aria-busy="false">
-                        <span class="spinner hidden w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></span>
-                        <i class="fas fa-arrow-right mr-2"></i>Next
-                    </button>
-                </div>
-            </div>
 
-            <!-- Step 4: Summary -->
-            <div class="form-step step-4" data-step="4" aria-busy="false" role="region" aria-labelledby="step4-heading">
-                <h2 id="step4-heading" class="sr-only">Step 4: Summary</h2>
-                <div class="step-description bg-var-step-4-bg p-4 rounded-lg mb-6 text-var-text-color font-poppins">
-                    <p class="text-sm md:text-base">Review your booking details and proceed to payment.</p>
-                </div>
-                <div id="weather-warning" class="mb-6"></div>
-                <div id="summary-section" class="space-y-6" aria-live="polite">
-                    {% if summary %}
-                        <div class="bg-var-card-bg p-4 rounded-lg shadow-sm">
-                            <h3 class="text-lg font-semibold text-var-text-color font-poppins">Schedule</h3>
-                            <p class="text-xs md:text-sm text-var-text-color font-poppins"><strong>Route:</strong> <span id="summary-schedule">{{ summary.schedule.route }}</span></p>
-                            <p class="text-xs md:text-sm text-var-text-color font-poppins"><strong>Departure:</strong> {{ summary.schedule.departure_time }}</p>
-                            <p class="text-xs md:text-sm text-var-text-color font-poppins"><strong>Duration:</strong> <span id="summary-duration">{{ summary.schedule.estimated_duration }}</span> min</p>
-                        </div>
-                        <div class="bg-var-card-bg p-4 rounded-lg shadow-sm">
-                            <h3 class="text-lg font-semibold text-var-text-color font-poppins">Passengers</h3>
-                            <p class="text-xs md:text-sm text-var-text-color font-poppins"><span id="summary-passengers">{{ summary.pricing.adults|add:summary.pricing.children|add:summary.pricing.infants }} total</span></p>
-                            <div id="summary-passenger-breakdown">
-                                {% for passenger in summary.passengers %}
-                                    <p class="text-xs md:text-sm text-var-text-color font-poppins">{{ passenger.type|capfirst }}: {{ passenger.first_name }} {{ passenger.last_name }}{% if passenger.age %} (Age: {{ passenger.age }}){% endif %}{% if passenger.dob %} (DOB: {{ passenger.dob }}){% endif %}</p>
-                                {% empty %}
-                                    <p class="text-xs md:text-sm text-var-text-color font-poppins">No passengers added.</p>
-                                {% endfor %}
-                            </div>
-                        </div>
-                        <div class="bg-var-card-bg p-4 rounded-lg shadow-sm">
-                            <h3 class="text-lg font-semibold text-var-text-color font-poppins">Add-Ons</h3>
-                            <div id="summary-add-ons">
-                                {% for addon in summary.addons %}
-                                    <p class="text-xs md:text-sm text-var-text-color font-poppins">{{ addon.quantity }} x {{ addon.type|title }} (FJD {{ addon.price }})</p>
-                                {% empty %}
-                                    <p class="text-xs md:text-sm text-var-text-color font-poppins">None</p>
-                                {% endfor %}
-                            </div>
-                        </div>
-                        <div class="bg-var-card-bg p-4 rounded-lg shadow-sm">
-                            <h3 class="text-lg font-semibold text-var-text-color font-poppins">Vehicle</h3>
-                            <div id="summary-vehicle">
-                                {% if summary.vehicle %}
-                                    <p class="text-xs md:text-sm text-var-text-color font-poppins">Type: {{ summary.vehicle.type }}</p>
-                                    <p class="text-xs md:text-sm text-var-text-color font-poppins">Dimensions: {{ summary.vehicle.dimensions }}</p>
-                                    <p class="text-xs md:text-sm text-var-text-color font-poppins">License Plate: {{ summary.vehicle.license_plate }}</p>
-                                {% else %}
-                                    <p class="text-xs md:text-sm text-var-text-color font-poppins">None</p>
-                                {% endif %}
-                            </div>
-                        </div>
-                        <div class="bg-var-card-bg p-4 rounded-lg shadow-sm">
-                            <h3 class="text-lg font-semibold text-var-text-color font-poppins">Cargo</h3>
-                            <div id="summary-cargo">
-                                {% if summary.cargo %}
-                                    <p class="text-xs md:text-sm text-var-text-color font-poppins">Type: {{ summary.cargo.type }}</p>
-                                    <p class="text-xs md:text-sm text-var-text-color font-poppins">Weight: {{ summary.cargo.weight_kg }} kg</p>
-                                    <p class="text-xs md:text-sm text-var-text-color font-poppins">License Plate: {{ summary.cargo.license_plate }}</p>
-                                {% else %}
-                                    <p class="text-xs md:text-sm text-var-text-color font-poppins">None</p>
-                                {% endif %}
-                            </div>
-                        </div>
-                        <div class="bg-var-card-bg p-4 rounded-lg shadow-sm">
-                            <h3 class="text-lg font-semibold text-var-text-color font-poppins">Total Cost</h3>
-                            <p class="text-base md:text-lg font-bold text-var-step-4-accent font-poppins">FJD <span id="summary-cost">{{ summary.pricing.total }}</span></p>
-                        </div>
-                    {% else %}
-                        <div class="text-center py-8">
-                            <div class="loading-spinner mx-auto" aria-live="polite"></div>
-                            <p class="mt-4 text-var-text-color font-poppins">Loading booking summary...</p>
-                        </div>
-                    {% endif %}
-                </div>
-
-                <!-- Privacy Consent -->
-                <div class="form-group mt-6">
-                    <div class="form-checkbox">
-                        <input type="checkbox"
-                               id="privacy_consent"
-                               name="privacy_consent"
-                               {% if form_data.privacy_consent == 'on' %}checked{% endif %}
-                               required
-                               class="form-checkbox-input mr-2 h-5 w-5 text-var-step-4-accent focus:ring-var-step-4-accent border-var-border-color"
-                               aria-required="true"
-                               aria-describedby="error-privacy-consent">
-                        <label for="privacy_consent" class="text-sm font-semibold text-var-text-color font-poppins cursor-pointer">
+                <div class="form-group mb-6">
+                    <label class="flex items-start">
+                        <input type="checkbox" id="privacy_consent" name="privacy_consent" required
+                               class="mr-3 mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500">
+                        <span class="text-sm">
                             I agree to the
-                            <a href="{% url 'privacy_policy' %}" target="_blank" rel="noopener" class="underline text-var-step-4-accent hover:text-var-step-4-accent-hover font-semibold">
+                            <a href="{% url 'privacy_policy' %}" target="_blank" class="text-blue-600 hover:underline">
                                 Privacy Policy
                             </a>
                             and
-                            <a href="{% url 'terms_of_service' %}" target="_blank" rel="noopener" class="underline text-var-step-4-accent hover:text-var-step-4-accent-hover font-semibold">
+                            <a href="{% url 'terms_of_service' %}" target="_blank" class="text-blue-600 hover:underline">
                                 Terms of Service
-                            </a>
-                        </label>
-                    </div>
-                    <p id="error-privacy-consent" class="error-message mt-2 text-sm text-var-alert-error-text font-poppins" aria-live="polite"></p>
+                            </a> *
+                        </span>
+                    </label>
+                    <p id="error-privacy_consent" class="error-message text-red-500 text-sm mt-2" aria-live="polite"></p>
                 </div>
 
-                <div class="form-actions mt-6 flex flex-wrap justify-between gap-2 sticky bottom-0 bg-var-card-bg py-4 z-10">
-                    <button type="button"
-                            class="prev-step cta-button bg-gray-500 text-white py-2 px-6 rounded-lg hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 flex items-center transition-all duration-300"
-                            data-prev="3"
-                            aria-busy="false">
-                        <i class="fas fa-arrow-left mr-2"></i>Previous
-                    </button>
-                    <button type="button"
-                            id="proceed-to-payment"
-                            class="cta-button bg-var-step-4-accent text-white py-2 px-6 rounded-lg hover:bg-var-step-4-accent-hover focus:outline-none focus:ring-2 focus:ring-var-step-4-accent flex items-center transition-all duration-300"
-                            aria-busy="false">
-                        <span class="spinner hidden w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></span>
-                        <i class="fas fa-credit-card mr-2"></i>Proceed to Payment
+                <div class="form-actions">
+                    <button type="button" class="prev-step btn btn-secondary" data-prev="3">Previous</button>
+                    <button type="submit" id="submit-booking" class="btn btn-primary">
+                        <span class="spinner hidden mr-2"></span>
+                        Confirm & Pay Securely
                     </button>
                 </div>
-            </div>
+            </section>
         </form>
     </div>
 </main>
+
+    <!-- CRITICAL GLOBAL CONFIGURATION -->
+    <script type="application/javascript">
+    (function() {
+        'use strict';
+
+        try {
+            // --- CSRF token ---
+            const csrfToken = '{{ csrf_token }}';
+            const isAuthenticated = {% if user.is_authenticated %}true{% else %}false{% endif %};
+            const formData = {{ form_data|default:"{}"|safe }};
+            const bookingConfig = {
+                stripeEnabled: {{ stripe_enabled|yesno:"true,false" }},  // Fixed boolean rendering
+                validationEnabled: true,
+                formExists: true,
+                userAuthenticated: isAuthenticated,
+            };
+
+            // Define URLs with fallback
+            window.urls = {
+                getPricing: '{% url "bookings:api_pricing" %}'.trim() || '/bookings/api/pricing/',
+                createCheckoutSession: '{% url "bookings:api_create_checkout_session" %}'.trim() || '/bookings/api/create_checkout_session/'
+            };
+
+            // Validate URLs
+            if (!window.urls.createCheckoutSession || window.urls.createCheckoutSession === 'undefined') {
+                window.urls.createCheckoutSession = '/bookings/api/create_checkout_session/';
+            }
+            if (!window.urls.getPricing || window.urls.getPricing === 'undefined') {
+                window.urls.getPricing = '/bookings/api/pricing/';
+            }
+
+            window.bookingConfig = bookingConfig;
+            window.bookingFormData = formData;
+            window.csrfToken = csrfToken;
+
+            console.log('✅ Global booking config loaded:', {
+                urls: window.urls,
+                config: bookingConfig
+            });
+
+        } catch (err) {
+            console.error('❌ Global config setup failed:', err);
+            // Fallback URLs
+            window.urls = window.urls || {
+                getPricing: '/bookings/api/pricing/',
+                createCheckoutSession: '/bookings/api/create_checkout_session/'
+            };
+            console.log('🔧 Using fallback URLs:', window.urls);
+        }
+    })();
+    </script>
+
 {% endblock %}
 
 {% block extra_js %}
+<!-- 1. STRIPE FIRST (critical dependency) -->
 <script src="https://js.stripe.com/v3/"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/aos/2.3.4/aos.js" integrity="sha512-A7AYk1fGKX6S2SsHywmPkrnzTZHrgiVT7GcQkLGDe2ev0aWb8zejytzS8wjo7PGEXKqJOrjQ4oORtnimIRZBtw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-<script src="{% static 'js/book.js' %}"></script>
-<script>
-    // Initialize Stripe and configure URLs
-    window.stripe = Stripe('{{ stripe_publishable_key|default:"pk_test_your_key_here" }}');
-    window.urls = {
-        validateStep: '{% url "bookings:validate_step" %}',
-        validateFile: '{% url "bookings:validate_file" %}',
-        getPricing: '{% url "bookings:get-pricing" %}',
-        bookings: '{% url "bookings:book_ticket" %}',
-        createCheckoutSession: '{% url "bookings:create_checkout_session" %}',
-        getScheduleUpdates: '{% url "bookings:get_schedule_updates" %}',
-        getWeatherConditions: '{% url "bookings:get_weather_conditions" %}'
-    };
-    window.isAuthenticated = {{ user.is_authenticated|lower }};
-    window.summary = {% if summary %}{{ summary|safe }}{% else %}null{% endif %};
 
-    // Form data for server-side preservation
-    window.initialFormData = {
-        {% if form_data %}
-        step: {{ form_data.step|default:1 }},
-        schedule_id: "{{ form_data.schedule_id|default:'' }}",
-        guest_email: "{{ form_data.guest_email|default:'' }}",
-        adults: {{ form_data.adults|default:1 }},
-        children: {{ form_data.children|default:0 }},
-        infants: {{ form_data.infants|default:0 }},
-        premium_seating_quantity: {{ form_data.premium_seating_quantity|default:0 }},
-        priority_boarding_quantity: {{ form_data.priority_boarding_quantity|default:0 }},
-        cabin_quantity: {{ form_data.cabin_quantity|default:0 }},
-        add_vehicle: {{ form_data.add_vehicle|yesno:"true,false" }},
-        vehicle_type: "{{ form_data.vehicle_type|default:'' }}",
-        vehicle_dimensions: "{{ form_data.vehicle_dimensions|default:'' }}",
-        vehicle_license_plate: "{{ form_data.vehicle_license_plate|default:'' }}",
-        add_cargo: {{ form_data.add_cargo|yesno:"true,false" }},
-        cargo_type: "{{ form_data.cargo_type|default:'' }}",
-        cargo_weight_kg: {{ form_data.cargo_weight_kg|default:0 }},
-        cargo_dimensions_cm: "{{ form_data.cargo_dimensions_cm|default:'' }}",
-        cargo_license_plate: "{{ form_data.cargo_license_plate|default:'' }}",
-        meal_breakfast_quantity: {{ form_data.meal_breakfast_quantity|default:0 }},
-        meal_lunch_quantity: {{ form_data.meal_lunch_quantity|default:0 }},
-        meal_dinner_quantity: {{ form_data.meal_dinner_quantity|default:0 }},
-        meal_snack_quantity: {{ form_data.meal_snack_quantity|default:0 }},
-        privacy_consent: {{ form_data.privacy_consent|yesno:"true,false" }}
-        {% else %}
-        step: 1,
-        adults: 1,
-        children: 0,
-        infants: 0
-        {% endif %}
-    };
-    // Initialize AOS after a short delay for better performance
-    document.addEventListener('DOMContentLoaded', function() {
-        setTimeout(function() {
-            if (typeof AOS !== 'undefined') {
-                AOS.init({
-                    duration: 600,
-                    easing: 'ease-in-out-cubic',
-                    once: true,
-                    offset: 50,
-                    anchorPlacement: 'top-bottom'
-                });
+<!-- 2. AOS -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/aos/2.3.4/aos.js"></script>
+
+<script>
+window.isAuthenticated = {% if user.is_authenticated %}true{% else %}false{% endif %};
+</script>
+
+
+<!-- 3. VALIDATION UTILITIES -->
+<script src="{% static 'js/validation.js' %}"></script>
+
+<!-- 4. MAIN BOOKING LOGIC -->
+<script src="{% static 'js/book.js' %}"></script>
+
+<!-- 5. INITIALIZATION with robust error handling -->
+<script>
+(function() {
+    'use strict';
+
+    let initAttempts = 0;
+    const maxAttempts = 30;
+
+    function initializeBookingSystemSafe() {
+        initAttempts++;
+
+        const checks = {
+            stripe: typeof Stripe !== 'undefined',
+            bookingFn: typeof window.initializeBookingSystem === 'function',
+            validation: !!window.validationUtils,
+            config: !!window.bookingConfig && !!window.urls,
+            formExists: !!document.getElementById('booking-form')
+        };
+
+        console.log(`Init attempt ${initAttempts}:`, checks);
+
+        if (checks.stripe && checks.bookingFn && checks.validation && checks.config && checks.formExists) {
+            try {
+                // Initialize Stripe
+                if ('{{ stripe_publishable_key }}' && Stripe) {
+                    window.stripe = Stripe('{{ stripe_publishable_key }}');
+                    console.log('Stripe initialized');
+                }
+
+                // Initialize AOS
+                if (typeof AOS !== 'undefined') {
+                    AOS.init({ duration: 800, once: true });
+                    console.log('AOS initialized');
+                }
+
+                // Initialize booking system
+                window.initializeBookingSystem();
+                console.log('Booking system fully initialized');
+
+                return true;
+            } catch (error) {
+                console.error('Initialization error:', error);
+                return false;
             }
-        }, 100);
-    });
-    // Handle form submission errors globally
-    window.addEventListener('message', function(event) {
-        if (event.data && event.data.type === 'stripe-error') {
-            const errorDiv = document.createElement('div');
-            errorDiv.className = 'alert error mt-4 p-4 rounded-lg bg-red-50 border border-red-200';
-            errorDiv.innerHTML = `
-                <div class="flex items-center">
-                    <i class="fas fa-exclamation-triangle text-red-500 mr-2"></i>
-                    <div>
-                        <strong>Payment Error:</strong>
-                        <p class="text-sm text-red-700 mt-1">${event.data.error.message}</p>
-                    </div>
-                </div>
-            `;
-            const summarySection = document.getElementById('summary-section');
-            if (summarySection) {
-                summarySection.prepend(errorDiv);
-                setTimeout(() => errorDiv.remove(), 8000);
+        } else if (initAttempts < maxAttempts) {
+            setTimeout(initializeBookingSystemSafe, 200);
+        } else {
+            console.error('Max init attempts reached');
+            // Emergency fallback - show first step
+            const firstStep = document.querySelector('.form-step[data-step="1"]');
+            if (firstStep) {
+                firstStep.classList.add('active');
+                firstStep.style.display = 'block';
             }
+            console.log('Emergency fallback: Step 1 shown');
         }
-    });
+    }
+
+    // Start initialization
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initializeBookingSystemSafe);
+    } else {
+        initializeBookingSystemSafe();
+    }
+
+    // Backup trigger
+    window.addEventListener('load', initializeBookingSystemSafe);
+})();
 </script>
 {% endblock %}
