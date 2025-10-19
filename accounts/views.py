@@ -92,7 +92,7 @@ class LoginView(View):
 def homepage(request):
     now = timezone.now()
     schedules = Schedule.objects.filter(departure_time__gte=now).order_by('departure_time')
-    return render(request, 'home.html', {'schedules': schedules})
+    return render(request, 'home.html', {'bookings': schedules})
 
 
 # Booking History View

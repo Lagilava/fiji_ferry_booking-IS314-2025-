@@ -29,7 +29,7 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument('--reset', action='store_true', help='Full reset of all data')
-        parser.add_argument('--reset-schedules', action='store_true', help='Reset auto-generated schedules only')
+        parser.add_argument('--reset-bookings', action='store_true', help='Reset auto-generated bookings only')
         parser.add_argument('--days-ahead', type=int, default=30, help='Schedule horizon')
         parser.add_argument('--relaxed', action='store_true', help='Skip strict validation')
         parser.add_argument('--debug', action='store_true', help='Verbose debugging')
@@ -69,7 +69,7 @@ class Command(BaseCommand):
         return duration_str[:50]
 
     def realistic_route_configs(self) -> List[Dict]:
-        """Realistic Fiji ferry routes based on actual operators and published schedules."""
+        """Realistic Fiji ferry routes based on actual operators and published bookings."""
         # Sources: Goundar Shipping, Patterson Brothers, public announcements
         return [
             # Goundar Shipping: Suva-Natovi (main departure point)
@@ -155,7 +155,7 @@ class Command(BaseCommand):
     def find_available_departure_slot(self, port: Port, operational_day: date,
                                       preferred_windows: List[str], relaxed: bool = False) -> Optional[datetime]:
         """Find available departure slot respecting port capacity and operating hours."""
-        # Check existing schedules for this port on this day
+        # Check existing bookings for this port on this day
         schedules_today = Schedule.objects.filter(
             operational_day=operational_day,
             route__departure_port=port,
@@ -440,7 +440,7 @@ class Command(BaseCommand):
         weeks = max(1, days_ahead // 7)
         total_target = int(weekly_target * weeks)
 
-        # Count existing auto-generated schedules
+        # Count existing auto-generated bookings
         existing = Schedule.objects.filter(
             route=route,
             status='scheduled',
@@ -751,7 +751,7 @@ class Command(BaseCommand):
                     deleted_count = Schedule.objects.filter(created_by_auto=True).delete()[0]
                     if deleted_count > 0:
                         self.stdout.write(self.style.SUCCESS(
-                            f"🗑️ Reset {deleted_count} auto-generated schedules"
+                            f"🗑️ Reset {deleted_count} auto-generated bookings"
                         ))
 
                 # Phase 2: Deploy infrastructure
@@ -766,7 +766,7 @@ class Command(BaseCommand):
                     self.stdout.write(self.style.ERROR("❌ No routes generated - check port data"))
                     return
 
-                # Phase 4: Generate schedules
+                # Phase 4: Generate bookings
                 self.stdout.write(f"\n📅 Generating {self.days_ahead}-day test schedule horizon...")
                 total_schedules = 0
                 start_date = timezone.now().date()
@@ -776,7 +776,7 @@ class Command(BaseCommand):
 
                     created_for_route = 0
 
-                    # Create regular schedules based on frequency
+                    # Create regular bookings based on frequency
                     for day_offset in range(self.days_ahead):
                         op_day = start_date + timedelta(days=day_offset)
 
@@ -802,7 +802,7 @@ class Command(BaseCommand):
                     created_for_route += min_created
                     total_schedules += min_created
 
-                    self.stdout.write(f"  📊 Created {created_for_route} schedules for route")
+                    self.stdout.write(f"  📊 Created {created_for_route} bookings for route")
 
                 # Phase 5: Validation and analytics
                 if self.validate:
@@ -822,7 +822,7 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.SUCCESS(f"""
 ✅ TEST DATA GENERATION COMPLETE!
 
-📈 {final_stats['total_schedules']} test schedules created
+📈 {final_stats['total_schedules']} test bookings created
 🗺️  {final_stats['routes']} realistic routes
 🚢 {final_stats['ferries']} active vessels  
 🏛️  {final_stats['ports']} ports configured
@@ -855,8 +855,8 @@ class Command(BaseCommand):
 # # Generate with analytics
 # python manage.py populate_data --reset --analytics --days-ahead=60
 #
-# # Reset schedules only (keep routes/ports)
-# python manage.py populate_data --reset-schedules
+# # Reset bookings only (keep routes/ports)
+# python manage.py populate_data --reset-bookings
 #
 # # Debug mode with validation
 # python manage.py populate_data --debug --validate --days-ahead=14

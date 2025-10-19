@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', function() {
-    // Reuse theme colors from admin_custom.js
+    // Reuse theme colors from admin_custom.css
     const theme = window.colors ? window.colors[window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'] : {
         text: '#1f2937',
         warning: '#b91c1c',
@@ -28,12 +28,6 @@ document.addEventListener('DOMContentLoaded', function() {
         return cookieValue;
     }
 
-    // QR Code Scanner Logic
-    let videoStream = null;
-    let isScanning = false;
-    let scanHistory = [];
-    let currentQrToken = null; // Global storage for current QR token
-
     // Load jsQR with fallbacks
     function loadJsQR() {
         return new Promise((resolve, reject) => {
@@ -43,7 +37,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
             const cdnScript = document.createElement('script');
-            cdnScript.src = 'https://unpkg.com/jsqr@1.4.0/dist/jsQR.min.js';
+            cdnScript.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js';
             cdnScript.onload = () => {
                 console.log('jsQR loaded from CDN.');
                 resolve();
@@ -66,139 +60,227 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // Check camera permission
+    async function checkCameraPermission() {
+        if (!navigator.permissions || !navigator.permissions.query) {
+            console.warn('Permissions API not supported. Assuming permission prompt.');
+            return true;
+        }
+        try {
+            const permissionStatus = await navigator.permissions.query({ name: 'camera' });
+            if (permissionStatus.state === 'granted') {
+                console.log('Camera permission already granted.');
+                return true;
+            } else if (permissionStatus.state === 'prompt') {
+                console.log('Camera permission prompt required.');
+                return confirm('This feature requires camera access to scan QR codes. Allow camera access?');
+            } else {
+                console.error('Camera permission denied.');
+                alert('Camera access is required to scan QR codes. Please enable camera permissions in your browser settings.');
+                return false;
+            }
+        } catch (error) {
+            console.error('Error checking camera permission:', error);
+            return true; // Fallback to prompt
+        }
+    }
+
+    // QR Code Scanner Logic
+    let videoStream = null;
+    let isScanning = false;
+    let scanHistory = [];
+    let currentQrToken = null;
+
     function startQRScanner() {
         const video = document.getElementById('qr-video');
         const qrResult = document.getElementById('qr-result');
         const qrError = document.getElementById('qr-error');
         const qrSection = document.getElementById('qrScannerSection');
         const scanOverlay = document.getElementById('qr-scan-overlay');
-        const scanHistoryList = document.getElementById('qr-scan-history');
+        const scanProgress = document.getElementById('qr-scan-progress');
+        const scanFeedback = document.getElementById('qr-scan-feedback');
+        const scanHistoryList = document.querySelector('#qr-scan-history .list-group');
         const closeButton = document.getElementById('qr-close');
 
-        if (!video || !qrResult || !qrError || !qrSection || !scanOverlay || !scanHistoryList || !closeButton) {
+        if (!video || !qrResult || !qrError || !qrSection || !scanOverlay || !scanProgress || !scanFeedback || !scanHistoryList || !closeButton) {
             console.error('QR scanner elements not found:', {
-                video, qrResult, qrError, qrSection, scanOverlay, scanHistoryList, closeButton
+                video, qrResult, qrError, qrSection, scanOverlay, scanProgress, scanFeedback, scanHistoryList, closeButton
             });
-            alert('QR scanner initialization failed. One or more interface elements are missing. Please refresh the page.');
+            alert('QR scanner initialization failed. Required elements are missing. Please refresh the page.');
             return;
         }
 
-        // Show the QR scanner section
-        qrSection.style.display = 'block';
-        qrSection.style.opacity = '0';
-        qrSection.style.transition = 'opacity 0.5s ease-out';
-        setTimeout(() => { qrSection.style.opacity = '1'; }, 10);
-
-        // Reset UI and clear stored token
-        qrResult.style.display = 'none';
-        qrError.style.display = 'none';
-        video.style.display = 'block';
-        scanOverlay.style.display = 'block';
-        isScanning = true;
-        scanHistory = [];
-        scanHistoryList.innerHTML = '';
-        currentQrToken = null; // Clear previous token
-        const hiddenTokenField = document.getElementById('qr-actual-token');
-        if (hiddenTokenField) hiddenTokenField.value = ''; // Clear hidden field
-
-        // Stop any existing stream
-        if (videoStream) {
-            videoStream.getTracks().forEach(track => track.stop());
-            videoStream = null;
-            video.srcObject = null;
-            console.log('Previous camera stream stopped.');
-        }
-
-        // Request camera access
-        navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-            .then(stream => {
-                videoStream = stream;
-                video.srcObject = stream;
-                video.play().catch(err => {
-                    console.error('Error playing video:', err);
-                    qrError.style.display = 'block';
-                    qrError.textContent = 'Unable to start video stream. Please check permissions and try again.';
-                    video.style.display = 'none';
-                    scanOverlay.style.display = 'none';
-                    isScanning = false;
-                });
-                console.log('QR scanner camera started');
-
-                // Scan QR code with optimized canvas
-                const canvas = document.createElement('canvas');
-                const context = canvas.getContext('2d', { willReadFrequently: true });
-                let lastScannedCode = null;
-
-                function scan() {
-                    if (!isScanning) return;
-                    if (video.readyState === video.HAVE_ENOUGH_DATA) {
-                        canvas.width = video.videoWidth;
-                        canvas.height = video.videoHeight;
-                        context.drawImage(video, 0, 0, canvas.width, canvas.height);
-                        const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-                        try {
-                            const code = jsQR(imageData.data, imageData.width, imageData.height);
-                            if (code && code.data && code.data !== lastScannedCode) {
-                                lastScannedCode = code.data;
-                                console.log('QR code scanned:', code.data);
-                                currentQrToken = code.data; // Store globally
-                                validateQRCode(code.data, scanHistoryList);
-                                isScanning = false;
-                                scanOverlay.style.display = 'none';
-                            }
-                            requestAnimationFrame(scan);
-                        } catch (err) {
-                            console.error('Error processing QR code:', err);
-                            qrError.style.display = 'block';
-                            qrError.textContent = 'Error processing QR code. Please try again.';
-                            isScanning = false;
-                            scanOverlay.style.display = 'none';
-                        }
-                    } else {
-                        requestAnimationFrame(scan);
-                    }
-                }
-                scan();
-            })
-            .catch(error => {
-                console.error('Error accessing camera:', error);
+        // Check camera permission
+        checkCameraPermission().then(hasPermission => {
+            if (!hasPermission) {
                 qrError.style.display = 'block';
-                qrError.textContent = 'Unable to access camera. Please check permissions or try another device.';
-                video.style.display = 'none';
-                scanOverlay.style.display = 'none';
-                isScanning = false;
-            });
+                qrError.textContent = 'Camera access denied. Please enable camera permissions and try again.';
+                return;
+            }
 
-        // Handle section close - clears stored data
-        const closeHandler = () => {
+            // Show QR scanner section with smooth transition
+            qrSection.style.display = 'block';
+            qrSection.style.opacity = '0';
+            qrSection.style.transition = 'opacity 0.5s ease-out';
+            setTimeout(() => { qrSection.style.opacity = '1'; }, 10);
+
+            // Reset UI
+            qrResult.style.display = 'none';
+            qrError.style.display = 'none';
+            video.style.display = 'block';
+            scanOverlay.style.display = 'block';
+            scanProgress.style.display = 'block';
+            scanFeedback.style.display = 'block';
+            scanFeedback.textContent = 'Scanning...';
+            const infoColor = theme.info || '#007bff';  // fallback to a default blue
+            scanFeedback.style.background = `rgba(${infoColor.replace('#', '')}, 0.1)`;
+            scanFeedback.style.color = infoColor;
+            scanFeedback.style.color = theme.info;
+            isScanning = true;
+            scanHistory = [];
+            scanHistoryList.innerHTML = '';
+            currentQrToken = null;
+            const hiddenTokenField = document.getElementById('qr-actual-token');
+            if (hiddenTokenField) hiddenTokenField.value = '';
+
+            // Stop any existing stream
             if (videoStream) {
                 videoStream.getTracks().forEach(track => track.stop());
                 videoStream = null;
-                console.log('QR scanner camera stopped');
+                video.srcObject = null;
+                console.log('Previous camera stream stopped.');
             }
-            video.srcObject = null;
-            qrResult.style.display = 'none';
-            qrError.style.display = 'none';
-            scanOverlay.style.display = 'none';
-            isScanning = false;
-            scanHistory = [];
-            scanHistoryList.innerHTML = '';
-            currentQrToken = null; // Clear stored token
-            if (hiddenTokenField) hiddenTokenField.value = ''; // Clear hidden field
-            // Hide the section with fade-out
-            qrSection.style.opacity = '0';
-            setTimeout(() => {
-                qrSection.style.display = 'none';
-                // Restore focus
-                const scanQrButton = document.getElementById('scan-qr-code');
-                if (scanQrButton) scanQrButton.focus();
-            }, 500);
-        };
 
-        // Remove existing listeners to prevent duplicates
-        closeButton.replaceWith(closeButton.cloneNode(true));
-        const newCloseButton = document.getElementById('qr-close');
-        newCloseButton.addEventListener('click', closeHandler);
+            // Request camera access
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } })
+                .then(stream => {
+                    videoStream = stream;
+                    video.srcObject = stream;
+
+                    // Wait for video metadata to load
+                    video.onloadedmetadata = () => {
+                        video.play().catch(err => {
+                            console.error('Error playing video:', err);
+                            qrError.style.display = 'block';
+                            qrError.textContent = `Unable to start video stream: ${err.message}. Please check permissions and try again.`;
+                            video.style.display = 'none';
+                            scanOverlay.style.display = 'none';
+                            scanProgress.style.display = 'none';
+                            scanFeedback.style.display = 'none';
+                            isScanning = false;
+                        });
+                    };
+
+                    console.log('QR scanner camera started');
+
+                    // Scan QR code with optimized performance
+                    const canvas = document.createElement('canvas');
+                    const context = canvas.getContext('2d', { willReadFrequently: true });
+                    let lastScannedCode = null;
+                    let scanAttempts = 0;
+                    const maxAttempts = 300; // Prevent infinite loops
+                    let progress = 0;
+
+                    function scan() {
+                        if (!isScanning || scanAttempts >= maxAttempts) {
+                            if (scanAttempts >= maxAttempts) {
+                                console.warn('Max scan attempts reached. Stopping scan.');
+                                qrError.style.display = 'block';
+                                qrError.textContent = 'Unable to detect QR code after multiple attempts. Please try again.';
+                                stopScanner();
+                            }
+                            return;
+                        }
+
+                        if (typeof jsQR === 'undefined') {
+                            console.error('jsQR is not defined. Cannot scan QR code.');
+                            qrError.style.display = 'block';
+                            qrError.textContent = 'QR scanner library not loaded. Please refresh the page.';
+                            stopScanner();
+                            return;
+                        }
+
+                        if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                            // Dynamic resolution adjustment
+                            const targetWidth = Math.min(video.videoWidth, 640); // Optimize for performance
+                            const targetHeight = Math.min(video.videoHeight, 480);
+                            canvas.width = targetWidth;
+                            canvas.height = targetHeight;
+                            context.drawImage(video, 0, 0, targetWidth, targetHeight);
+
+                            const imageData = context.getImageData(0, 0, targetWidth, targetHeight);
+                            try {
+                                const code = jsQR(imageData.data, targetWidth, targetHeight, {
+                                    inversionAttempts: 'attemptBoth' // Improve detection
+                                });
+                                scanAttempts++;
+
+                                // Update progress bar
+                                progress = Math.min(progress + 2, 100);
+                                scanProgress.querySelector('.progress-bar').style.width = `${progress}%`;
+                                scanFeedback.textContent = `Scanning... (${Math.round(progress)}%)`;
+
+                                if (code && code.data && code.data !== lastScannedCode) {
+                                    lastScannedCode = code.data;
+                                    console.log('QR code scanned:', code.data);
+                                    currentQrToken = code.data;
+                                    validateQRCode(code.data, scanHistoryList);
+                                    stopScanner();
+                                } else {
+                                    requestAnimationFrame(scan);
+                                }
+                            } catch (err) {
+                                console.error('Error processing QR code:', err);
+                                scanAttempts++;
+                                requestAnimationFrame(scan);
+                            }
+                        } else {
+                            requestAnimationFrame(scan);
+                        }
+                    }
+
+                    function stopScanner() {
+                        isScanning = false;
+                        scanOverlay.style.display = 'none';
+                        scanProgress.style.display = 'none';
+                        scanFeedback.style.display = 'none';
+                        if (videoStream) {
+                            videoStream.getTracks().forEach(track => track.stop());
+                            videoStream = null;
+                            video.srcObject = null;
+                        }
+                    }
+
+                    scan();
+                })
+                .catch(error => {
+                    console.error('Error accessing camera:', error);
+                    qrError.style.display = 'block';
+                    qrError.textContent = `Unable to access camera: ${error.message}. Please check permissions or try another device.`;
+                    video.style.display = 'none';
+                    scanOverlay.style.display = 'none';
+                    scanProgress.style.display = 'none';
+                    scanFeedback.style.display = 'none';
+                    isScanning = false;
+                });
+
+            // Handle section close
+            const closeHandler = () => {
+                stopScanner();
+                qrResult.style.display = 'none';
+                qrError.style.display = 'none';
+                qrSection.style.opacity = '0';
+                setTimeout(() => {
+                    qrSection.style.display = 'none';
+                    const scanQrButton = document.getElementById('scan-qr-code');
+                    if (scanQrButton) scanQrButton.focus();
+                }, 500);
+            };
+
+            closeButton.replaceWith(closeButton.cloneNode(true));
+            const newCloseButton = document.getElementById('qr-close');
+            newCloseButton.addEventListener('click', closeHandler);
+        });
     }
 
     function validateQRCode(qrToken, scanHistoryList) {
@@ -216,18 +298,16 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error('QR result elements not found:', {
                 qrResult, qrError, qrTicketId, qrBookingId, qrPassenger, qrRoute, qrBookingDate, qrTicketStatus
             });
-            alert('QR scanner result elements missing. Please refresh the page.');
+            showToast('error', 'QR scanner result elements missing. Please refresh the page.');
             return;
         }
 
-        // Store the actual QR token in hidden field and global variable
         if (hiddenTokenField) {
             hiddenTokenField.value = qrToken;
         }
         currentQrToken = qrToken;
         console.log('Stored QR token:', qrToken);
 
-        // Show loading state
         qrError.style.display = 'none';
         qrResult.style.display = 'none';
 
@@ -250,9 +330,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 qrError.textContent = data.error;
                 qrResult.style.display = 'none';
                 console.error('QR validation error:', data.error);
-                // Clear stored token on validation error
                 if (hiddenTokenField) hiddenTokenField.value = '';
                 currentQrToken = null;
+                showToast('error', data.error);
             } else {
                 qrResult.style.display = 'block';
                 qrError.style.display = 'none';
@@ -263,48 +343,37 @@ document.addEventListener('DOMContentLoaded', function() {
                 qrBookingDate.textContent = data.booking_date ? new Date(data.booking_date).toLocaleString() : 'N/A';
                 qrTicketStatus.textContent = data.status || 'N/A';
 
-                // Visual success feedback
-                qrResult.style.border = '2px solid #28a745';
+                // Visual feedback
+                qrResult.style.border = `2px solid ${theme.success}`;
                 qrResult.style.borderRadius = '8px';
                 qrResult.style.padding = '10px';
-                qrResult.style.backgroundColor = '#d4edda';
+                qrResult.style.background = `rgba(${theme.success.replace('#', '')}, 0.1)`;
                 qrResult.style.transition = 'all 0.3s ease';
-
                 setTimeout(() => {
                     qrResult.style.border = '';
                     qrResult.style.borderRadius = '';
                     qrResult.style.padding = '';
-                    qrResult.style.backgroundColor = '';
+                    qrResult.style.background = '';
                 }, 2000);
 
                 console.log('QR code validated successfully:', data);
+                showToast('success', 'QR code scanned successfully!');
 
-                // Enable/disable buttons based on current status (using 'active' not 'unused')
+                // Update button states
                 const markUsedBtn = document.getElementById('qr-mark-used');
                 const markUnusedBtn = document.getElementById('qr-mark-unused');
                 const viewBookingBtn = document.getElementById('qr-view-booking');
-                const logActivityBtn = document.getElementById('qr-log-activity');
 
                 if (markUsedBtn) {
                     markUsedBtn.disabled = data.status === 'used';
-                    if (data.status === 'used') {
-                        markUsedBtn.style.opacity = '0.6';
-                        markUsedBtn.title = 'Ticket already marked as used';
-                    } else {
-                        markUsedBtn.style.opacity = '1';
-                        markUsedBtn.title = 'Mark this ticket as used';
-                    }
+                    markUsedBtn.style.opacity = data.status === 'used' ? '0.6' : '1';
+                    markUsedBtn.title = data.status === 'used' ? 'Ticket already marked as used' : 'Mark this ticket as used';
                 }
 
                 if (markUnusedBtn) {
                     markUnusedBtn.disabled = data.status === 'active';
-                    if (data.status === 'active') {
-                        markUnusedBtn.style.opacity = '0.6';
-                        markUnusedBtn.title = 'Ticket is already active';
-                    } else {
-                        markUnusedBtn.style.opacity = '1';
-                        markUnusedBtn.title = 'Mark this ticket as active/unused';
-                    }
+                    markUnusedBtn.style.opacity = data.status === 'active' ? '0.6' : '1';
+                    markUnusedBtn.title = data.status === 'active' ? 'Ticket is already active' : 'Mark this ticket as active/unused';
                 }
 
                 if (viewBookingBtn) {
@@ -312,17 +381,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     viewBookingBtn.style.opacity = data.booking_id ? '1' : '0.6';
                 }
 
-                if (logActivityBtn) {
-                    logActivityBtn.disabled = false;
-                    logActivityBtn.style.opacity = '1';
-                }
-
                 // Add to scan history
                 const scanTime = new Date().toLocaleString();
                 scanHistory.push({ ticket_id: data.ticket_id, status: data.status, time: scanTime, qr_token: qrToken });
                 const historyItem = document.createElement('li');
                 historyItem.className = 'list-group-item';
-                historyItem.style.cssText = `color: ${theme.text}; font-size: 0.9rem; border-left: 4px solid ${theme.success}; padding-left: 10px;`;
+                historyItem.style.cssText = `color: ${theme.text}; font-size: 0.9rem; border-left: 4px solid ${theme.success}; padding-left: 10px; background: ${theme.background};`;
                 historyItem.innerHTML = `
                     <strong>Scanned:</strong> Ticket #${data.ticket_id || 'N/A'}
                     <span class="badge bg-${data.status === 'used' ? 'success' : data.status === 'active' ? 'primary' : 'secondary'}">${data.status || 'N/A'}</span>
@@ -336,42 +400,65 @@ document.addEventListener('DOMContentLoaded', function() {
             qrError.textContent = 'Error validating QR code. Please try again.';
             qrResult.style.display = 'none';
             console.error('Error validating QR code:', error);
-            // Clear stored token on error
             if (hiddenTokenField) hiddenTokenField.value = '';
             currentQrToken = null;
+            showToast('error', 'Error validating QR code. Please try again.');
         });
+    }
+
+    // Toast notification for better UX
+    function showToast(type, message) {
+        const toast = document.createElement('div');
+        const bgColor = type === 'success' ? theme.success : theme.warning;
+        toast.style.cssText = `
+            position: fixed; top: 20px; right: 20px; background: ${bgColor};
+            color: white; padding: 15px 20px; border-radius: 5px; z-index: 9999;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15); transform: translateX(400px);
+            transition: transform 0.3s ease; font-size: 0.9rem; max-width: 300px;
+        `;
+        toast.textContent = message;
+        document.body.appendChild(toast);
+        setTimeout(() => { toast.style.transform = 'translateX(0)'; }, 100);
+        setTimeout(() => {
+            toast.style.transform = 'translateX(400px)';
+            setTimeout(() => document.body.removeChild(toast), 300);
+        }, 3000);
     }
 
     function updateTicketStatus(newStatus) {
         const qrResult = document.getElementById('qr-result');
         const qrError = document.getElementById('qr-error');
         const qrTicketStatus = document.getElementById('qr-ticket-status');
-        const scanHistoryList = document.getElementById('qr-scan-history');
+        const scanHistoryList = document.querySelector('#qr-scan-history .list-group');
         const hiddenTokenField = document.getElementById('qr-actual-token');
 
         if (!qrResult || !qrError || !qrTicketStatus || !scanHistoryList || !hiddenTokenField) {
             console.error('QR update elements not found:', {
                 qrResult, qrError, qrTicketStatus, scanHistoryList, hiddenTokenField
             });
-            alert('QR scanner update elements missing. Please refresh the page.');
+            showToast('error', 'QR scanner update elements missing. Please refresh the page.');
             return;
         }
 
-        const actualQrToken = hiddenTokenField.value;
-        if (!actualQrToken) {
+        const qrToken = hiddenTokenField.value;
+        if (!qrToken) {
             console.error('No QR token available for status update');
             qrError.style.display = 'block';
             qrError.textContent = 'No QR token available. Please scan a ticket first.';
+            showToast('error', 'No QR token available. Please scan a ticket first.');
             return;
         }
 
-        console.log(`Updating ticket status for QR token: ${actualQrToken} to ${newStatus}`);
+        console.log(`Updating ticket status for QR token: ${qrToken} to ${newStatus}`);
 
         // Show loading state
         qrError.style.display = 'none';
         const originalStatusText = qrTicketStatus.textContent;
         qrTicketStatus.textContent = `Updating to ${newStatus}...`;
+        qrTicketStatus.style.color = theme.info;
+        qrTicketStatus.style.fontWeight = 'bold';
 
+        // Mimic change_list.js fetchJsonAndUpdate
         fetch('/admin/scan-qr-code/', {
             method: 'POST',
             headers: {
@@ -379,10 +466,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 'X-CSRFToken': getCookie('csrftoken'),
                 'X-Requested-With': 'XMLHttpRequest'
             },
-            body: JSON.stringify({
-                qr_token: actualQrToken,
-                ticket_status: newStatus
-            })
+            body: JSON.stringify({ qr_token: qrToken, ticket_status: newStatus })
         })
         .then(response => {
             if (!response.ok) {
@@ -393,76 +477,67 @@ document.addEventListener('DOMContentLoaded', function() {
             return response.json();
         })
         .then(data => {
-            if (data.error) {
+            if (data.exists !== undefined && !data.exists) {
                 qrError.style.display = 'block';
-                qrError.textContent = data.error;
-                qrTicketStatus.textContent = originalStatusText; // Restore original
-                console.error('Ticket status update error:', data.error);
-            } else {
-                qrError.style.display = 'none';
-                qrTicketStatus.textContent = data.status || 'N/A';
-
-                // Visual success feedback
-                qrTicketStatus.style.color = theme.success;
-                qrTicketStatus.style.fontWeight = 'bold';
-                setTimeout(() => {
-                    qrTicketStatus.style.color = '';
-                    qrTicketStatus.style.fontWeight = '';
-                }, 2000);
-
-                console.log(`Ticket status updated to ${newStatus}:`, data);
-
-                // Update button states
-                const markUsedBtn = document.getElementById('qr-mark-used');
-                const markUnusedBtn = document.getElementById('qr-mark-unused');
-                if (markUsedBtn) {
-                    markUsedBtn.disabled = data.status === 'used';
-                    markUsedBtn.style.opacity = data.status === 'used' ? '0.6' : '1';
-                }
-                if (markUnusedBtn) {
-                    markUnusedBtn.disabled = data.status === 'active';
-                    markUnusedBtn.style.opacity = data.status === 'active' ? '0.6' : '1';
-                }
-
-                // Update scan history
-                const scanTime = new Date().toLocaleString();
-                scanHistory.push({ ticket_id: actualQrToken, status: data.status, time: scanTime });
-                const historyItem = document.createElement('li');
-                historyItem.className = 'list-group-item';
-                historyItem.style.cssText = `color: ${theme.text}; font-size: 0.9rem; border-left: 4px solid ${theme.success}; padding-left: 10px; background-color: ${theme.background};`;
-                historyItem.innerHTML = `
-                    <strong>Updated:</strong> Ticket status changed to
-                    <span class="badge bg-${data.status === 'used' ? 'success' : 'primary'}">${data.status}</span>
-                    <small class="text-muted float-end">${scanTime}</small>
-                `;
-                scanHistoryList.prepend(historyItem);
-
-                // Notify user with better UX
-                const toast = document.createElement('div');
-                toast.style.cssText = `
-                    position: fixed; top: 20px; right: 20px; background: ${theme.success};
-                    color: white; padding: 15px 20px; border-radius: 5px; z-index: 9999;
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.15); transform: translateX(400px);
-                    transition: transform 0.3s ease;
-                `;
-                toast.textContent = `Ticket status updated to ${data.status} ✓`;
-                document.body.appendChild(toast);
-
-                setTimeout(() => { toast.style.transform = 'translateX(0)'; }, 100);
-                setTimeout(() => {
-                    toast.style.transform = 'translateX(400px)';
-                    setTimeout(() => document.body.removeChild(toast), 300);
-                }, 3000);
-
-                // Update recent bookings table
-                updateRecentBookingsTable();
+                qrError.textContent = `Ticket ${qrToken} no longer exists.`;
+                qrTicketStatus.textContent = originalStatusText;
+                qrTicketStatus.style.color = '';
+                qrTicketStatus.style.fontWeight = '';
+                console.warn(`Ticket ${qrToken} no longer exists`);
+                showToast('error', `Ticket ${qrToken} no longer exists.`);
+                return;
             }
+
+            qrError.style.display = 'none';
+            qrTicketStatus.textContent = data.status || 'N/A';
+            qrTicketStatus.style.color = theme.success;
+            qrTicketStatus.style.fontWeight = 'bold';
+            setTimeout(() => {
+                qrTicketStatus.style.color = '';
+                qrTicketStatus.style.fontWeight = '';
+            }, 2000);
+
+            console.log(`Ticket status updated to ${newStatus}:`, data);
+            showToast('success', `Ticket status updated to ${data.status} ✓`);
+
+            // Update button states
+            const markUsedBtn = document.getElementById('qr-mark-used');
+            const markUnusedBtn = document.getElementById('qr-mark-unused');
+            if (markUsedBtn) {
+                markUsedBtn.disabled = data.status === 'used';
+                markUsedBtn.style.opacity = data.status === 'used' ? '0.6' : '1';
+                markUsedBtn.title = data.status === 'used' ? 'Ticket already marked as used' : 'Mark this ticket as used';
+            }
+            if (markUnusedBtn) {
+                markUnusedBtn.disabled = data.status === 'active';
+                markUnusedBtn.style.opacity = data.status === 'active' ? '0.6' : '1';
+                markUnusedBtn.title = data.status === 'active' ? 'Ticket is already active' : 'Mark this ticket as active/unused';
+            }
+
+            // Update scan history
+            const scanTime = new Date().toLocaleString();
+            scanHistory.push({ ticket_id: qrToken, status: data.status, time: scanTime });
+            const historyItem = document.createElement('li');
+            historyItem.className = 'list-group-item';
+            historyItem.style.cssText = `color: ${theme.text}; font-size: 0.9rem; border-left: 4px solid ${theme.success}; padding-left: 10px; background: ${theme.background};`;
+            historyItem.innerHTML = `
+                <strong>Updated:</strong> Ticket status changed to
+                <span class="badge bg-${data.status === 'used' ? 'success' : 'primary'}">${data.status}</span>
+                <small class="text-muted float-end">${scanTime}</small>
+            `;
+            scanHistoryList.prepend(historyItem);
+
+            // Update recent bookings table
+            updateRecentBookingsTable();
         })
         .catch(error => {
             qrError.style.display = 'block';
             qrError.textContent = error.message || 'Error updating ticket status. Please try again.';
-            qrTicketStatus.textContent = originalStatusText; // Restore original
+            qrTicketStatus.textContent = originalStatusText;
+            qrTicketStatus.style.color = '';
+            qrTicketStatus.style.fontWeight = '';
             console.error('Error updating ticket status:', error);
+            showToast('error', error.message || 'Error updating ticket status.');
         });
     }
 
@@ -506,61 +581,7 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .catch(error => {
             console.error('Error updating recent bookings:', error);
-        });
-    }
-
-    function logActivity(qrToken) {
-        const qrError = document.getElementById('qr-error');
-        const scanHistoryList = document.getElementById('qr-scan-history');
-
-        if (!qrError || !scanHistoryList) {
-            console.error('QR log elements not found:', { qrError, scanHistoryList });
-            alert('QR scanner log elements missing. Please refresh the page.');
-            return;
-        }
-
-        fetch('/admin/log-qr-scan/', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': getCookie('csrftoken'),
-                'X-Requested-With': 'XMLHttpRequest'
-            },
-            body: JSON.stringify({ qr_token: qrToken })
-        })
-        .then(response => {
-            if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
-            return response.json();
-        })
-        .then(data => {
-            if (data.error) {
-                qrError.style.display = 'block';
-                qrError.textContent = data.error;
-                console.error('Activity log error:', data.error);
-            } else {
-                qrError.style.display = 'none';
-                console.log('Activity logged:', data);
-
-                // Update scan history
-                const scanTime = new Date().toLocaleString();
-                scanHistory.push({ ticket_id: qrToken, status: 'logged', time: scanTime });
-                const historyItem = document.createElement('li');
-                historyItem.className = 'list-group-item';
-                historyItem.style.cssText = `color: ${theme.info}; font-size: 0.9rem; border-left: 4px solid ${theme.info}; padding-left: 10px;`;
-                historyItem.innerHTML = `
-                    <strong>Activity Logged:</strong> Scan recorded
-                    <small class="text-muted float-end">${scanTime}</small>
-                `;
-                scanHistoryList.prepend(historyItem);
-
-                // Success notification
-                alert('Scan activity logged successfully.');
-            }
-        })
-        .catch(error => {
-            qrError.style.display = 'block';
-            qrError.textContent = 'Error logging activity. Please try again.';
-            console.error('Error logging activity:', error);
+            showToast('error', 'Error updating recent bookings table.');
         });
     }
 
@@ -580,12 +601,12 @@ document.addEventListener('DOMContentLoaded', function() {
                         qrError.style.display = 'block';
                         qrError.textContent = 'Failed to load QR scanner library. Please check your network and try again.';
                     }
-                    alert('Failed to load QR scanner library. Please check your network or ensure the jsQR library is available.');
+                    showToast('error', 'Failed to load QR scanner library.');
                 });
         });
     }
 
-    // UPDATED: Mark as Used button - only passes status
+    // Mark as Used button
     const markUsedBtn = document.getElementById('qr-mark-used');
     if (markUsedBtn) {
         markUsedBtn.addEventListener('click', () => {
@@ -595,7 +616,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // UPDATED: Mark as Active button - uses 'active' status
+    // Mark as Active button
     const markUnusedBtn = document.getElementById('qr-mark-unused');
     if (markUnusedBtn) {
         markUnusedBtn.addEventListener('click', () => {
@@ -613,26 +634,12 @@ document.addEventListener('DOMContentLoaded', function() {
             if (bookingId && bookingId !== 'N/A') {
                 window.location.href = `/admin/bookings/booking/${bookingId}/change/`;
             } else {
-                alert('No valid booking ID available.');
+                showToast('error', 'No valid booking ID available.');
             }
         });
     }
 
-    // UPDATED: Log Activity button - uses hidden field
-    const logActivityBtn = document.getElementById('qr-log-activity');
-    if (logActivityBtn) {
-        logActivityBtn.addEventListener('click', () => {
-            const hiddenTokenField = document.getElementById('qr-actual-token');
-            const actualQrToken = hiddenTokenField ? hiddenTokenField.value : null;
-            if (actualQrToken) {
-                logActivity(actualQrToken);
-            } else {
-                alert('No valid QR token available. Please scan a ticket first.');
-            }
-        });
-    }
-
-    // Scan Again button - clears previous data
+    // Scan Again button
     const scanAgainBtn = document.getElementById('qr-scan-again');
     if (scanAgainBtn) {
         scanAgainBtn.addEventListener('click', () => {
@@ -640,20 +647,25 @@ document.addEventListener('DOMContentLoaded', function() {
             const qrError = document.getElementById('qr-error');
             const video = document.getElementById('qr-video');
             const scanOverlay = document.getElementById('qr-scan-overlay');
+            const scanProgress = document.getElementById('qr-scan-progress');
+            const scanFeedback = document.getElementById('qr-scan-feedback');
             const hiddenTokenField = document.getElementById('qr-actual-token');
-            const scanHistoryList = document.getElementById('qr-scan-history');
+            const scanHistoryList = document.querySelector('#qr-scan-history .list-group');
 
-            if (!qrResult || !qrError || !video || !scanOverlay || !scanHistoryList) {
+            if (!qrResult || !qrError || !video || !scanOverlay || !scanProgress || !scanFeedback || !scanHistoryList) {
                 console.error('QR scan again elements not found');
-                alert('QR scanner elements missing for scan again. Please refresh the page.');
+                showToast('error', 'QR scanner elements missing for scan again.');
                 return;
             }
 
-            // Clear previous data for new scan
             qrResult.style.display = 'none';
             qrError.style.display = 'none';
             video.style.display = 'block';
             scanOverlay.style.display = 'block';
+            scanProgress.style.display = 'block';
+            scanProgress.querySelector('.progress-bar').style.width = '0%';
+            scanFeedback.style.display = 'block';
+            scanFeedback.textContent = 'Scanning...';
             isScanning = true;
             currentQrToken = null;
             if (hiddenTokenField) hiddenTokenField.value = '';
@@ -662,9 +674,9 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Initialize Tooltips with Tippy.js for buttons
+    // Initialize Tooltips with Tippy.js
     if (typeof tippy !== 'undefined') {
-        tippy('#qr-mark-used, #qr-mark-unused, #qr-view-booking, #qr-log-activity, #qr-scan-again, #qr-close, #scan-qr-code', {
+        tippy('#qr-mark-used, #qr-mark-unused, #qr-view-booking, #qr-scan-again, #qr-close, #scan-qr-code', {
             content: element => element?.getAttribute('data-tippy-content') || element?.getAttribute('aria-label') || 'Action',
             theme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
             placement: 'top',

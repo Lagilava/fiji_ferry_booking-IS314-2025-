@@ -9,7 +9,7 @@ websocket_urlpatterns = [
     # Model-specific endpoints (optional) - UNCHANGED
     re_path(r'ws/admin/tickets/$', AdminDashboardConsumer.as_asgi()),
     re_path(r'ws/admin/bookings/$', AdminDashboardConsumer.as_asgi()),
-    re_path(r'ws/admin/schedules/$', AdminDashboardConsumer.as_asgi()),
+    re_path(r'ws/admin/bookings/$', AdminDashboardConsumer.as_asgi()),
 
     # NEW: Admin ChangeList WebSocket endpoints
     # Generic endpoint that accepts app_label and model as query params or path

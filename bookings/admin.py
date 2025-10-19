@@ -126,7 +126,7 @@ class AdminEnhancements:
                 'timestamp': now.isoformat()
             })
 
-        # Delayed schedules
+        # Delayed bookings
         delayed = Schedule.objects.filter(
             status='delayed',
             departure_time__gte=now - timedelta(hours=2)
@@ -223,7 +223,7 @@ class AdminEnhancements:
     @staticmethod
     @transaction.atomic
     def bulk_reschedule_schedules(schedules, new_departure_time):
-        """Bulk reschedule schedules with real-time notifications."""
+        """Bulk reschedule bookings with real-time notifications."""
         updated = 0
         for schedule in schedules:
             schedule.departure_time = new_departure_time
@@ -244,7 +244,7 @@ class AdminEnhancements:
                     'notification': {
                         'type': 'bulk_operation',
                         'title': 'Bulk Reschedule Completed',
-                        'message': f'{updated} schedules rescheduled successfully',
+                        'message': f'{updated} bookings rescheduled successfully',
                         'severity': 'success',
                         'timestamp': timezone.now().isoformat()
                     }
@@ -410,7 +410,6 @@ class CustomAdminSite(admin.AdminSite):
         except Exception as e:
             logger.error(f"Export error: {str(e)}")
             return JsonResponse({'error': str(e)}, status=500)
-
 
     def get_changelist_context(self, cl):
         """Get safe, serializable context for WebSocket change list"""
@@ -600,7 +599,7 @@ class CustomAdminSite(admin.AdminSite):
             return JsonResponse({"error": f"Server error: {str(e)}"}, status=500)
 
     def bulk_reschedule_view(self, request):
-        """Bulk reschedule schedules via AJAX."""
+        """Bulk reschedule bookings via AJAX."""
         if request.method != 'POST':
             return JsonResponse({'error': 'POST required'}, status=405)
 
@@ -627,10 +626,10 @@ class CustomAdminSite(admin.AdminSite):
             schedules = Schedule.objects.filter(id__in=schedule_ids)
             updated_count = AdminEnhancements.bulk_reschedule_schedules(schedules, new_departure_time)
 
-            logger.info(f"Bulk rescheduled {updated_count} schedules")
+            logger.info(f"Bulk rescheduled {updated_count} bookings")
             return JsonResponse({
                 'status': 'success',
-                'message': f'Successfully rescheduled {updated_count} schedules',
+                'message': f'Successfully rescheduled {updated_count} bookings',
                 'updated_count': updated_count
             })
 
@@ -645,7 +644,7 @@ class CustomAdminSite(admin.AdminSite):
         try:
             data = {
                 'bookings': AdminEnhancements.get_realtime_bookings(),
-                'schedules': AdminEnhancements.get_realtime_schedules(),
+                'bookings': AdminEnhancements.get_realtime_schedules(),
                 'alerts': AdminEnhancements.get_critical_alerts(),
                 'payments': AdminEnhancements.get_realtime_payments(),
                 'notifications': AdminEnhancements.check_for_notifications(request.user),
@@ -1247,9 +1246,34 @@ class AddOnInline(admin.TabularInline):
         clear_analytics_cache()
 
 
+class EnhancedModelAdmin(admin.ModelAdmin):
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path('<path:object_id>/json/', self.admin_site.admin_view(self.json_view),
+                 name=f'{self.model._meta.model_name}_json'),
+        ]
+        return custom_urls + urls
+
+    def json_view(self, request, object_id):
+        obj = self.get_object(request, object_id)
+        if obj is None:
+            return JsonResponse({'exists': False, 'matches_filters': False})
+
+        cl = self.get_changelist_instance(request)
+        queryset = cl.get_queryset(request)
+        matches_filters = queryset.filter(pk=object_id).exists()
+
+        data = {
+            'exists': True,
+            'matches_filters': matches_filters,
+        }
+        return JsonResponse(data)
+
+
 # Register models with custom admin site
 @admin.register(Port, site=admin_site)
-class PortAdmin(admin.ModelAdmin):
+class PortAdmin(EnhancedModelAdmin):
     list_display = ('name', 'lat', 'lng', 'operating_hours_start', 'operating_hours_end', 'berths')
     list_filter = ('tide_sensitive', 'night_ops_allowed')
     search_fields = ('name',)
@@ -1264,7 +1288,7 @@ class PortAdmin(admin.ModelAdmin):
 
 
 @admin.register(Cargo, site=admin_site)
-class CargoAdmin(admin.ModelAdmin):
+class CargoAdmin(EnhancedModelAdmin):
     list_display = ('booking', 'cargo_type', 'weight_kg', 'dimensions_cm', 'license_plate', 'price')
     list_filter = ('cargo_type',)
     search_fields = ('cargo_type', 'license_plate')
@@ -1285,7 +1309,7 @@ class CargoAdmin(admin.ModelAdmin):
 
 
 @admin.register(Ferry, site=admin_site)
-class FerryAdmin(admin.ModelAdmin):
+class FerryAdmin(EnhancedModelAdmin):
     list_display = ('name', 'operator', 'capacity', 'is_active', 'home_port', 'cruise_speed_knots')
     list_filter = ('is_active', 'home_port')
     search_fields = ('name', 'operator')
@@ -1307,7 +1331,7 @@ class FerryAdmin(admin.ModelAdmin):
 
 
 @admin.register(Route, site=admin_site)
-class RouteAdmin(admin.ModelAdmin):
+class RouteAdmin(EnhancedModelAdmin):
     list_display = ('departure_port', 'destination_port', 'distance_km', 'estimated_duration', 'base_fare',
                     'service_tier')
     list_filter = ('service_tier', 'departure_port', 'destination_port')
@@ -1324,7 +1348,7 @@ class RouteAdmin(admin.ModelAdmin):
 
 
 @admin.register(WeatherCondition, site=admin_site)
-class WeatherConditionAdmin(admin.ModelAdmin):
+class WeatherConditionAdmin(EnhancedModelAdmin):
     list_display = ('route', 'port', 'temperature', 'wind_speed', 'precipitation_probability', 'condition',
                     'updated_at')
     list_filter = ('condition', 'port')
@@ -1357,7 +1381,7 @@ class WeatherConditionAdmin(admin.ModelAdmin):
 
 
 @admin.register(Schedule, site=admin_site)
-class ScheduleAdmin(admin.ModelAdmin):
+class ScheduleAdmin(EnhancedModelAdmin):
     list_display = ('ferry', 'route', 'departure_time', 'arrival_time', 'available_seats', 'status', 'real_time_status',
                     'operational_day')
     list_filter = ('status', 'ferry', 'route', 'operational_day')
@@ -1410,7 +1434,7 @@ class ScheduleAdmin(admin.ModelAdmin):
 
 
 @admin.register(Booking, site=admin_site)
-class BookingAdmin(admin.ModelAdmin):
+class BookingAdmin(EnhancedModelAdmin):
     list_display = ('id', 'user_email', 'schedule', 'booking_date', 'passenger_adults', 'passenger_children',
                     'passenger_infants', 'total_price', 'status')
     list_filter = ('status', 'schedule__route', 'booking_date')
@@ -1605,7 +1629,7 @@ class BookingAdmin(admin.ModelAdmin):
 
 
 @admin.register(Passenger, site=admin_site)
-class PassengerAdmin(admin.ModelAdmin):
+class PassengerAdmin(EnhancedModelAdmin):
     list_display = ('booking', 'first_name', 'last_name', 'passenger_type', 'age', 'date_of_birth',
                     'linked_adult_display')
     list_filter = ('passenger_type',)
@@ -1635,7 +1659,7 @@ class PassengerAdmin(admin.ModelAdmin):
 
 
 @admin.register(Vehicle, site=admin_site)
-class VehicleAdmin(admin.ModelAdmin):
+class VehicleAdmin(EnhancedModelAdmin):
     list_display = ('booking', 'vehicle_type', 'dimensions', 'license_plate', 'price')
     list_filter = ('vehicle_type',)
     search_fields = ('license_plate', 'booking__id')
@@ -1659,7 +1683,7 @@ class VehicleAdmin(admin.ModelAdmin):
 
 
 @admin.register(AddOn, site=admin_site)
-class AddOnAdmin(admin.ModelAdmin):
+class AddOnAdmin(EnhancedModelAdmin):
     list_display = ('booking', 'get_add_on_type_display', 'quantity', 'price')
     list_filter = ('add_on_type',)
     search_fields = ('booking__id', 'add_on_type')
@@ -1683,7 +1707,7 @@ class AddOnAdmin(admin.ModelAdmin):
 
 
 @admin.register(Payment, site=admin_site)
-class PaymentAdmin(admin.ModelAdmin):
+class PaymentAdmin(EnhancedModelAdmin):
     list_display = ('booking', 'payment_method', 'amount', 'payment_status', 'payment_date')
     list_filter = ('payment_method', 'payment_status')
     search_fields = ('booking__id', 'transaction_id', 'session_id')
@@ -1722,7 +1746,7 @@ class PaymentAdmin(admin.ModelAdmin):
 
 
 @admin.register(Ticket, site=admin_site)
-class TicketAdmin(admin.ModelAdmin):
+class TicketAdmin(EnhancedModelAdmin):
     list_display = ('booking', 'passenger', 'ticket_status', 'issued_at', 'qr_token')
     list_filter = (TicketStatusFilter, 'ticket_status')
     search_fields = ('booking__id', 'passenger__first_name', 'passenger__last_name', 'qr_token')
@@ -1833,7 +1857,7 @@ class TicketAdmin(admin.ModelAdmin):
 
 
 @admin.register(MaintenanceLog, site=admin_site)
-class MaintenanceLogAdmin(admin.ModelAdmin):
+class MaintenanceLogAdmin(EnhancedModelAdmin):
     list_display = ('ferry', 'maintenance_date', 'completed_at', 'maintenance_interval_days')
     list_filter = ('ferry', 'maintenance_date')
     search_fields = ('ferry__name',)
@@ -1868,8 +1892,9 @@ class MaintenanceLogAdmin(admin.ModelAdmin):
             )
         logger.info("Cache invalidated after MaintenanceLog update")
 
+
 @admin.register(ServicePattern, site=admin_site)
-class ServicePatternAdmin(admin.ModelAdmin):
+class ServicePatternAdmin(EnhancedModelAdmin):
     list_display = ('route', 'get_weekday_display', 'window', 'target_departures')
     list_filter = ('weekday', 'route')
     search_fields = ('route__departure_port__name', 'route__destination_port__name')
@@ -1886,9 +1911,11 @@ class ServicePatternAdmin(admin.ModelAdmin):
         clear_analytics_cache()
         logger.info("Cache invalidated after ServicePattern update")
 
+
 # Signal handlers for real-time updates
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
+
 
 @receiver([post_save, post_delete], sender=Booking)
 @receiver([post_save, post_delete], sender=Payment)
@@ -1910,6 +1937,7 @@ def trigger_realtime_updates(sender, instance, **kwargs):
                 'timestamp': timezone.now().isoformat()
             }
         )
+
 
 # Background task management
 async def periodic_admin_updates():
@@ -1950,6 +1978,7 @@ async def periodic_admin_updates():
             logger.error(f"Periodic update error: {str(e)}", exc_info=True)
 
         await asyncio.sleep(300)  # Run every 5 minutes
+
 
 def start_admin_background_tasks():
     """Start background tasks for admin enhancements."""

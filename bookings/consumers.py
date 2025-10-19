@@ -1,6 +1,8 @@
 import json
 import logging
 import asyncio
+import redis
+from django.core.cache import cache
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from asgiref.sync import sync_to_async
@@ -17,11 +19,34 @@ from django.dispatch import receiver
 
 logger = logging.getLogger(__name__)
 
+# Redis connection for rate limiting and banning
+redis_client = redis.Redis.from_url('redis://localhost:6379/0')
+
 
 class AdminDashboardConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         self.user = self.scope["user"]
-        if self.user.is_anonymous or not self.user.is_staff:
+        client_ip = self.scope['client'][0]
+
+        # Check for IP ban
+        ban_key = f"ws:ban:{client_ip}"
+        if redis_client.exists(ban_key):
+            await self.close(code=1008)
+            logger.warning(f"Banned IP {client_ip} attempted connection")
+            return
+
+        # Track anonymous connection attempts
+        if self.user.is_anonymous:
+            attempt_key = f"ws:attempt:{client_ip}"
+            attempts = redis_client.incr(attempt_key)
+            redis_client.expire(attempt_key, 300)  # 5-minute window
+            if attempts > 5:
+                redis_client.setex(ban_key, 300, 1)  # 5-minute ban
+                await self.close(code=1008)
+                logger.warning(f"IP {client_ip} banned after {attempts} attempts")
+                return
+
+        if not self.user.is_staff:
             await self.close()
             logger.warning(f"Unauthorized WebSocket connection attempt by {self.scope.get('user', 'anonymous')}")
             return
@@ -37,11 +62,9 @@ class AdminDashboardConsumer(AsyncWebsocketConsumer):
     async def disconnect(self, close_code):
         """Safe disconnect with attribute checks"""
         try:
-            # Only attempt group discard if attributes exist
             if (hasattr(self, 'group_name') and
                     hasattr(self, 'channel_name') and
                     hasattr(self, 'channel_layer')):
-
                 await self.channel_layer.group_discard(self.group_name, self.channel_name)
                 user_info = getattr(self, 'user', None)
                 if user_info and hasattr(user_info, 'username'):
@@ -53,7 +76,6 @@ class AdminDashboardConsumer(AsyncWebsocketConsumer):
         except Exception as e:
             logger.error(f"Error during disconnect: {str(e)}")
         finally:
-            # Ensure cleanup even if errors occur
             pass
 
     @database_sync_to_async
@@ -61,7 +83,7 @@ class AdminDashboardConsumer(AsyncWebsocketConsumer):
         """Sync wrapper for initial data"""
         return {
             'bookings': AdminEnhancements.get_realtime_bookings(),
-            'schedules': AdminEnhancements.get_realtime_schedules(),
+            'bookings': AdminEnhancements.get_realtime_schedules(),
             'alerts': AdminEnhancements.get_critical_alerts(),
             'payments': AdminEnhancements.get_realtime_payments(),
             'timestamp': timezone.now().isoformat()
@@ -85,10 +107,25 @@ class AdminDashboardConsumer(AsyncWebsocketConsumer):
             }))
 
     async def receive(self, text_data):
-        """Handle messages from admin clients"""
+        """Handle messages from admin clients with rate limiting"""
         try:
+            # Rate limiting
+            rate_key = f"ws:rate:{self.channel_name}"
+            count = redis_client.incr(rate_key)
+            if count == 1:
+                redis_client.expire(rate_key, 60)  # 1-minute window
+            if count > 100:
+                await self.close(code=1008)
+                logger.warning(f"Rate limit exceeded for {self.channel_name}: {count} messages")
+                return
+
             data = json.loads(text_data)
             action = data.get('action')
+
+            # Handle ping-pong for heartbeats
+            if data.get('type') == 'ping':
+                await self.send(text_data=json.dumps({'type': 'pong'}))
+                return
 
             if action == 'refresh_weather':
                 await self.broadcast_weather_update()
@@ -99,8 +136,16 @@ class AdminDashboardConsumer(AsyncWebsocketConsumer):
 
         except json.JSONDecodeError:
             logger.error(f"Invalid JSON received: {text_data}")
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': 'Invalid JSON format'
+            }))
         except Exception as e:
             logger.error(f"WebSocket receive error: {str(e)}")
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': f'Server error: {str(e)}'
+            }))
 
     async def broadcast_weather_update(self):
         """Broadcast weather updates to all admin clients"""
@@ -133,7 +178,6 @@ class AdminDashboardConsumer(AsyncWebsocketConsumer):
         except Exception as e:
             logger.error(f"Cache clear error: {str(e)}")
 
-    # Message handlers for broadcasting
     async def model_update(self, event):
         """Handle generic model updates"""
         await self.send(text_data=json.dumps({
@@ -146,11 +190,9 @@ class AdminDashboardConsumer(AsyncWebsocketConsumer):
     async def ticket_update(self, event):
         ticket_id = event.get('ticket_id') or event.get('instance_id')
         new_status = event.get('new_status', 'unknown')
-
         if ticket_id is None:
             logger.error(f"Missing ticket ID in ticket_update event: {event}")
             return
-
         await self.send(text_data=json.dumps({
             'type': 'ticket_update',
             'ticket_id': ticket_id,
@@ -159,7 +201,6 @@ class AdminDashboardConsumer(AsyncWebsocketConsumer):
             'timestamp': event.get('timestamp'),
             'message': f"Ticket {ticket_id} updated to {new_status}"
         }))
-
         logger.info(f"Ticket update broadcast: {ticket_id} -> {new_status}")
 
     async def booking_update(self, event):
@@ -184,9 +225,8 @@ class AdminDashboardConsumer(AsyncWebsocketConsumer):
             'schedule_id': schedule_id,
             'status': event.get('status'),
             'available_seats': event.get('available_seats'),
-            'timestamp': event.get('timestamp')
+            'timestamp': event['timestamp']
         }))
-
 
     async def weather_alerts_update(self, event):
         """Handle weather alerts"""
@@ -210,14 +250,13 @@ class AdminDashboardConsumer(AsyncWebsocketConsumer):
             'booking_id': event.get('booking_id'),
             'status': event.get('status'),
             'amount': event.get('amount'),
-            'timestamp': event.get('timestamp')
+            'timestamp': event['timestamp']
         }))
         logger.info(f"Payment update broadcast: booking {event.get('booking_id')} -> {event.get('status')}")
 
     async def handleMessage(self, data):
         """Enhanced message handling for change list integration"""
         message_type = data.get('type')
-
         if message_type == 'join_changelist':
             await self.handleJoinChangeList(data)
         elif message_type == 'request_changelist_sync':
@@ -225,7 +264,6 @@ class AdminDashboardConsumer(AsyncWebsocketConsumer):
         elif message_type == 'selection_change':
             await self.broadcastSelectionChange(data)
         else:
-            # Existing handlers
             if data.get('action') == 'refresh_weather':
                 await self.broadcast_weather_update()
 
@@ -247,7 +285,6 @@ class AdminDashboardConsumer(AsyncWebsocketConsumer):
         model = data.get('model')
         app_label = data.get('app_label')
         filters = data.get('filters', {})
-
         group_name = f"admin_changelist_{app_label}_{model}"
         await self.channel_layer.group_send(
             group_name,
@@ -277,23 +314,37 @@ class AdminDashboardConsumer(AsyncWebsocketConsumer):
 
 
 class AdminChangeListConsumer(AsyncWebsocketConsumer):
-    """
-    WebSocket consumer for real-time admin change list updates
-    """
-
     async def connect(self):
         self.user = self.scope["user"]
-        if self.user.is_anonymous or not self.user.is_staff:
+        client_ip = self.scope['client'][0]
+
+        # Check for IP ban
+        ban_key = f"ws:ban:{client_ip}"
+        if redis_client.exists(ban_key):
+            await self.close(code=1008)
+            logger.warning(f"Banned IP {client_ip} attempted ChangeList connection")
+            return
+
+        # Track anonymous connection attempts
+        if self.user.is_anonymous:
+            attempt_key = f"ws:attempt:{client_ip}"
+            attempts = redis_client.incr(attempt_key)
+            redis_client.expire(attempt_key, 300)  # 5-minute window
+            if attempts > 5:
+                redis_client.setex(ban_key, 300, 1)  # 5-minute ban
+                await self.close(code=1008)
+                logger.warning(f"IP {client_ip} banned after {attempts} attempts")
+                return
+
+        if not self.user.is_staff:
             await self.close()
             logger.warning(f"Unauthorized ChangeList WebSocket connection by {self.scope.get('user', 'anonymous')}")
             return
 
-        # Safe extraction of model info
         try:
             self.app_label = (self.scope['url_route']['kwargs'].get('app_label') or
                               self.scope['query_string'].decode().split('app_label=')[1].split('&')[0]
                               if 'app_label=' in self.scope['query_string'].decode() else None)
-
             self.model_name = (self.scope['url_route']['kwargs'].get('model') or
                                self.scope['query_string'].decode().split('model=')[1].split('&')[0]
                                if 'model=' in self.scope['query_string'].decode() else None)
@@ -314,27 +365,21 @@ class AdminChangeListConsumer(AsyncWebsocketConsumer):
             return
 
         self.group_name = f"admin_changelist_{self.app_label}_{self.model_name}"
-
-        # Set these attributes explicitly for safe disconnect
         self.filters = {}
         self.user_filters = {}
 
         try:
             await self.channel_layer.group_add(self.group_name, self.channel_name)
             await self.accept()
-
             logger.info(
                 f"Admin ChangeList WebSocket connected: {self.user.username} for {self.app_label}.{self.model_name}")
 
-            # Send connection confirmation
             await self.send(text_data=json.dumps({
                 'type': 'connection_confirmed',
                 'model': self.model_name,
                 'app_label': self.app_label,
                 'timestamp': timezone.now().isoformat()
             }))
-
-            # Send initial sync
             await self.send_initial_sync()
 
         except Exception as e:
@@ -344,21 +389,16 @@ class AdminChangeListConsumer(AsyncWebsocketConsumer):
     async def disconnect(self, close_code):
         """Safe disconnect for ChangeList consumer"""
         try:
-            # Check if group_name exists before attempting discard
             if (hasattr(self, 'group_name') and
                     hasattr(self, 'channel_name') and
                     hasattr(self, 'channel_layer')):
-
                 await self.channel_layer.group_discard(self.group_name, self.channel_name)
                 user_info = getattr(self, 'user', None)
                 app_label = getattr(self, 'app_label', 'unknown')
                 model_name = getattr(self, 'model_name', 'unknown')
-
                 if user_info and hasattr(user_info, 'username'):
                     logger.info(
-                        f"Admin ChangeList WebSocket disconnected: {user_info.username} "
-                        f"for {app_label}.{model_name}"
-                    )
+                        f"Admin ChangeList WebSocket disconnected: {user_info.username} for {app_label}.{model_name}")
                 else:
                     logger.info(f"ChangeList WebSocket disconnected for {app_label}.{model_name}")
             else:
@@ -367,11 +407,25 @@ class AdminChangeListConsumer(AsyncWebsocketConsumer):
             logger.error(f"Error during ChangeList disconnect: {str(e)}")
 
     async def receive(self, text_data):
-        """Handle messages from admin change list clients"""
+        """Handle messages from admin change list clients with rate limiting"""
         try:
-            data = json.loads(text_data)
-            message_type = data.get('type')
+            # Rate limiting
+            rate_key = f"ws:rate:{self.channel_name}"
+            count = redis_client.incr(rate_key)
+            if count == 1:
+                redis_client.expire(rate_key, 60)  # 1-minute window
+            if count > 100:
+                await self.close(code=1008)
+                logger.warning(f"Rate limit exceeded for {self.channel_name}: {count} messages")
+                return
 
+            # Handle ping-pong for heartbeats
+            data = json.loads(text_data)
+            if data.get('type') == 'ping':
+                await self.send(text_data=json.dumps({'type': 'pong'}))
+                return
+
+            message_type = data.get('type')
             logger.debug(f"Received {message_type} from {self.user.username}: {data}")
 
             if message_type == 'connection':
@@ -414,21 +468,13 @@ class AdminChangeListConsumer(AsyncWebsocketConsumer):
             model_admin = admin.site._registry.get(self.model)
             if not model_admin:
                 return [], []
-
-            # Create mock request for admin context
             request = HttpRequest()
             request.user = self.user
-
-            # Apply filters if provided
             queryset = model_admin.get_queryset(request)
-
             if filters:
-                # Apply search and filter conditions
                 if filters.get('q'):
                     search_results = model_admin.get_search_results(request, queryset, filters['q'])
                     queryset = queryset.filter(search_results)
-
-            # Get field structure for table display
             fields = []
             for field in model_admin.list_display:
                 if callable(field):
@@ -444,10 +490,8 @@ class AdminChangeListConsumer(AsyncWebsocketConsumer):
                     'name': field_name,
                     'verbose_name': verbose_name
                 })
-
-            # Serialize objects for WebSocket
             objects = []
-            for obj in queryset[:100]:  # Limit for performance
+            for obj in queryset[:100]:
                 obj_data = {
                     'id': obj.pk,
                     'fields': {}
@@ -461,9 +505,7 @@ class AdminChangeListConsumer(AsyncWebsocketConsumer):
                     except Exception:
                         obj_data['fields'][field['name']] = 'N/A'
                 objects.append(obj_data)
-
             return objects, fields
-
         except Exception as e:
             logger.error(f"Error getting filtered queryset: {str(e)}")
             return [], []
@@ -482,7 +524,6 @@ class AdminChangeListConsumer(AsyncWebsocketConsumer):
         try:
             filters = data.get('filters', {})
             objects, fields = await database_sync_to_async(self.get_filtered_queryset)(filters)
-
             await self.send(text_data=json.dumps({
                 'type': 'full_sync',
                 'objects': objects,
@@ -490,9 +531,7 @@ class AdminChangeListConsumer(AsyncWebsocketConsumer):
                 'total_count': len(objects),
                 'timestamp': timezone.now().isoformat()
             }))
-
             logger.info(f"Full sync sent to {self.user.username}: {len(objects)} {self.model_name} objects")
-
         except Exception as e:
             logger.error(f"Full sync error: {str(e)}")
             await self.send(text_data=json.dumps({
@@ -520,15 +559,13 @@ class AdminChangeListConsumer(AsyncWebsocketConsumer):
 
     async def send_initial_sync(self):
         """Send initial data sync after connection"""
-        await asyncio.sleep(0.5)  # Brief delay for client setup
+        await asyncio.sleep(0.5)
         await self.handle_request_sync({'filters': {}})
 
-    # Message handlers for broadcasting updates
     async def model_update(self, event):
         """Broadcast model updates to matching clients"""
         if not self.user.is_staff:
             return
-
         try:
             await self.send(text_data=json.dumps({
                 'type': 'model_update',
@@ -537,9 +574,7 @@ class AdminChangeListConsumer(AsyncWebsocketConsumer):
                 'objects': event.get('objects', []),
                 'timestamp': event['timestamp']
             }))
-
             logger.debug(f"Model update broadcast to {self.user.username}: {event['action']} on {event['model']}")
-
         except Exception as e:
             logger.error(f"Model update broadcast error: {str(e)}")
 
@@ -573,21 +608,17 @@ class AdminChangeListConsumer(AsyncWebsocketConsumer):
         }))
 
 
-# Signal handlers for real-time updates
 @receiver([post_save, post_delete], dispatch_uid="admin_changelist_signals")
 def broadcast_model_changes(sender, instance, **kwargs):
     """Broadcast model changes to admin change list WebSocket - safer version"""
     if not hasattr(instance, '_broadcast_to_changelist') or not getattr(instance, '_broadcast_to_changelist', False):
         return
-
     try:
         channel_layer = get_channel_layer()
         if channel_layer:
             model_name = instance._meta.model_name
             app_label = instance._meta.app_label
             group_name = f"admin_changelist_{app_label}_{model_name}"
-
-            # Determine action
             if kwargs.get('created'):
                 action = 'create'
             elif 'signal' in kwargs and kwargs['signal'].__name__ == 'post_delete':
@@ -595,11 +626,9 @@ def broadcast_model_changes(sender, instance, **kwargs):
             else:
                 action = 'update'
 
-            # Use sync_to_async for channel layer operations
             @sync_to_async
             def safe_broadcast():
                 try:
-                    # Create async task for broadcasting
                     async def broadcast_update():
                         await channel_layer.group_send(
                             group_name,
@@ -619,37 +648,30 @@ def broadcast_model_changes(sender, instance, **kwargs):
                             }
                         )
 
-                    # Run in event loop if available
                     try:
                         loop = asyncio.get_running_loop()
                         loop.create_task(broadcast_update())
                     except RuntimeError:
-                        # No running loop, use sync fallback
                         pass
-
                 except Exception as e:
                     logger.error(f"Failed to broadcast model change: {str(e)}")
 
             safe_broadcast()
-
     except Exception as e:
         logger.error(f"Error in broadcast_model_changes: {str(e)}")
 
 
-# Utility function to mark instances for broadcasting
 def mark_for_broadcast(instance):
     """Mark instance for WebSocket broadcasting"""
     setattr(instance, '_broadcast_to_changelist', True)
     return instance
 
 
-# Admin action decorator for real-time updates
 def broadcast_admin_action(action_func):
     """Decorator to broadcast admin actions"""
 
     def wrapper(modeladmin, request, queryset):
         result = action_func(modeladmin, request, queryset)
-
         try:
             channel_layer = get_channel_layer()
             if channel_layer:
@@ -677,15 +699,12 @@ def broadcast_admin_action(action_func):
                             loop.create_task(broadcast_action())
                         except RuntimeError:
                             pass
-
                     except Exception as e:
                         logger.error(f"Error broadcasting admin action: {str(e)}")
 
                 safe_broadcast()
-
         except Exception as e:
             logger.error(f"Error broadcasting admin action: {str(e)}")
-
         return result
 
     return wrapper

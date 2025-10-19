@@ -80,3 +80,7 @@ def dict_get(d, key):
     if not isinstance(d, dict):
         return ""
     return d.get(key, "")
+
+@register.filter
+def zip(a, b):
+    return zip(a, b)

@@ -29,7 +29,7 @@ CSRF_TRUSTED_ORIGINS = [
 SITE_URL = config('SITE_URL', default='http://localhost:8000')
 
 CELERY_BEAT_SCHEDULE = {
-    'update-schedules-every-minute': {
+    'update-bookings-every-minute': {
         'task': 'bookings.tasks.update_schedules_status',
         'schedule': crontab(minute='*/5'),
     },
@@ -210,7 +210,7 @@ CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # For real-time tasks
 ADMIN_ENHANCEMENTS_ENABLED = config('ADMIN_ENHANCEMENTS_ENABLED', default=True, cast=bool)
 ADMIN_BACKGROUND_TASKS = config('ADMIN_BACKGROUND_TASKS', default=not DEBUG, cast=bool)
 ADMIN_WEBSOCKET_ENABLED = config('ADMIN_WEBSOCKET_ENABLED', default=True, cast=bool)
-ADMIN_WEBSOCKET_PING_INTERVAL = config('ADMIN_WS_PING_INTERVAL', default=30, cast=int)
+ADMIN_WEBSOCKET_PING_INTERVAL = config('ADMIN_WS_PING_INTERVAL', default=10, cast=int)
 ADMIN_WEBSOCKET_TIMEOUT = config('ADMIN_WS_TIMEOUT', default=20, cast=int)
 
 ADMIN_ENHANCEMENTS = {

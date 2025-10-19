@@ -1,5 +1,19 @@
 {% extends "admin/base_site.html" %}
-{% load static %}
+{% load static i18n %}
+
+{% block extrastyle %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'vendor/select2/css/select2.min.css' %}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" integrity="sha512-Kc323vGBEqzTmouAECnVceyQqyqdsSiqLQISBL29aUW4U/M7pSPA/gEUZQqv1cwx4OnYxTxve5UMg5GT6L4JJg==" crossorigin="anonymous">
+    <link rel="stylesheet" href="{% static 'css/jazzmin_color_overrides.css' %}">
+    <link rel="stylesheet" href="{% static 'css/admin_custom.css' %}">
+    <link rel="stylesheet" href="{% static 'css/admin_dashboard.css' %}">
+    <link rel="stylesheet" href="{% static 'css/qr_scanner_advanced.css' %}">
+{% endblock %}
+
+{% block bodyclass %}{{ block.super }} jazzmin-admin{% endblock %}
 
 {% block content %}
     <div class="dashboard-container">
@@ -109,7 +123,7 @@
                         <div class="progress-bar bg-success" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
                     </div>
                     <!-- Live Feedback Indicator -->
-                    <div id="qr-scan-feedback" class="qr-feedback" style="display: none; position: absolute; top: 1rem; right: 1rem; padding: 0.5rem 1rem; background: var(--secondary); color: var(--text); border-radius: 0.375rem; font-size: 0.9rem;">
+                    <div id="qr-scan-feedback" class="qr-feedback" style="display: none; position: absolute; top: 1rem; right: 1rem; padding: 0.5rem 1rem; border-radius: 0.375rem; font-size: 0.9rem;">
                         Scanning...
                     </div>
                 </div>
@@ -237,8 +251,8 @@
                         </select>
                         <select class="form-select date-range-filter" data-chart-id="utilizationChart" aria-label="Select date range for utilization chart">
                             <option value="7">Last 7 Days</option>
-                            <option value="30">Last 30 Days</option>
-                            <option value="all" selected>All Time</option>
+                            <option value="30" selected>Last 30 Days</option>
+                            <option value="all">All Time</option>
                         </select>
                         <button class="btn btn-secondary refresh-chart" data-chart-id="utilizationChart" aria-label="Refresh utilization chart" data-tippy-content="Refresh utilization chart">
                             <i class="fas fa-sync-alt"></i> Refresh
@@ -444,28 +458,38 @@
             }
         });
     </script>
+    <!-- Fonts & Icons -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+
+    <!-- Libraries (deferred safe) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js" defer></script>
     <script src="https://unpkg.com/@popperjs/core@2" defer></script>
     <script src="https://unpkg.com/tippy.js@6" defer></script>
-    <script src="https://unpkg.com/jsqr@1.4.0/dist/jsQR.min.js" defer></script>
+
+    <!-- jsQR: Load with safe CDN + local fallback -->
     <script>
-        // Dynamic fallback to local jsQR
-        document.addEventListener('DOMContentLoaded', function() {
-            if (typeof jsQR === 'undefined') {
-                console.warn('jsQR CDN failed. Attempting to load local jsQR.');
-                const script = document.createElement('script');
-                script.src = "{% static 'js/jsQR.min.js' %}";
-                script.onload = function() { console.log('Local jsQR loaded successfully.'); };
-                script.onerror = function() { console.error('Failed to load local jsQR.'); };
-                document.head.appendChild(script);
-            }
-        });
+        (function() {
+            // Create the CDN script element
+            var jsqrCDN = document.createElement('script');
+            jsqrCDN.src = "https://unpkg.com/jsqr@1.4.0/dist/jsQR.min.js";
+            jsqrCDN.onload = function() {
+                console.log('jsQR loaded successfully from CDN.');
+            };
+            jsqrCDN.onerror = function() {
+                console.warn('CDN jsQR failed. Loading local jsQR...');
+                var jsqrLocal = document.createElement('script');
+                jsqrLocal.src = "{% static 'js/jsQR.min.js' %}";
+                jsqrLocal.onload = function() { console.log('Local jsQR loaded successfully.'); };
+                jsqrLocal.onerror = function() { console.error('Failed to load local jsQR.'); };
+                document.head.appendChild(jsqrLocal);
+            };
+            document.head.appendChild(jsqrCDN);
+        })();
     </script>
-    <link rel="stylesheet" href="{% static 'css/admin_custom.css' %}">
-    <link rel="stylesheet" href="{% static 'css/admin_dashboard.css' %}">
-    <link rel="stylesheet" href="{% static 'css/qr_scanner_advanced.css' %}">
+
+
+    <!-- Custom scripts (deferred, safe because jsQR is already loaded) -->
     <script src="{% static 'js/admin_custom.js' %}" id="chartScript" defer></script>
     <script src="{% static 'js/qr_scanner.js' %}" defer></script>
 {% endblock %}

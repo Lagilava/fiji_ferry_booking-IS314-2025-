@@ -125,7 +125,7 @@ class AdminEnhancements:
                 'timestamp': now.isoformat()
             })
 
-        # Delayed schedules
+        # Delayed bookings
         delayed = Schedule.objects.filter(
             status='delayed',
             departure_time__gte=now - timedelta(hours=2)
@@ -213,7 +213,7 @@ class AdminDashboardConsumer(AsyncWebsocketConsumer):
         data = {
             'type': 'initial_data',
             'bookings': await AdminEnhancements.get_realtime_bookings(),
-            'schedules': await AdminEnhancements.get_realtime_schedules(),
+            'bookings': await AdminEnhancements.get_realtime_schedules(),
             'alerts': await AdminEnhancements.get_critical_alerts(),
             'payments': await AdminEnhancements.get_realtime_payments(),
             'timestamp': timezone.now().isoformat()
@@ -265,7 +265,7 @@ class AdminDashboardConsumer(AsyncWebsocketConsumer):
         """Send specific data types to client."""
         if data_type == 'bookings':
             data = {'type': 'booking_update', 'data': await AdminEnhancements.get_realtime_bookings()}
-        elif data_type == 'schedules':
+        elif data_type == 'bookings':
             data = {'type': 'schedule_update', 'data': await AdminEnhancements.get_realtime_schedules()}
         else:
             data = {'type': 'error', 'message': 'Unknown data type'}
@@ -355,7 +355,7 @@ def realtime_dashboard_data(request):
     """Provide real-time dashboard data for WebSocket fallback."""
     data = {
         'bookings': AdminEnhancements.get_realtime_bookings(),
-        'schedules': AdminEnhancements.get_realtime_schedules(),
+        'bookings': AdminEnhancements.get_realtime_schedules(),
         'alerts': AdminEnhancements.get_critical_alerts(),
         'payments': AdminEnhancements.get_realtime_payments(),
         'timestamp': timezone.now().isoformat()
@@ -420,7 +420,7 @@ def admin_health_check(request):
 # Bulk operations with real-time feedback
 @transaction.atomic
 def bulk_reschedule_schedules(schedules, new_departure_time):
-    """Bulk reschedule schedules with real-time notifications."""
+    """Bulk reschedule bookings with real-time notifications."""
     updated = 0
     for schedule in schedules:
         schedule.departure_time = new_departure_time
@@ -436,7 +436,7 @@ def bulk_reschedule_schedules(schedules, new_departure_time):
     notification = {
         'type': 'bulk_operation',
         'title': 'Bulk Reschedule Completed',
-        'message': f'{updated} schedules rescheduled successfully',
+        'message': f'{updated} bookings rescheduled successfully',
         'severity': 'success',
         'timestamp': timezone.now().isoformat()
     }

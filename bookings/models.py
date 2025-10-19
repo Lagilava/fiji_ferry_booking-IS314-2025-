@@ -135,7 +135,7 @@ class WeatherCondition(models.Model):
 
 class Schedule(models.Model):
     ferry = models.ForeignKey('Ferry', on_delete=models.CASCADE)
-    route = models.ForeignKey('Route', on_delete=models.CASCADE, related_name='schedules')
+    route = models.ForeignKey('Route', on_delete=models.CASCADE, related_name='bookings')
     departure_time = models.DateTimeField()
     arrival_time = models.DateTimeField()
     estimated_duration = models.CharField(

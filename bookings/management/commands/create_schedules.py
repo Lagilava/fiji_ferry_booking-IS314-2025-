@@ -8,7 +8,7 @@ from django.db import transaction
 
 
 class Command(BaseCommand):
-    help = 'Auto-create schedules for all ferries, starting two days from now.'
+    help = 'Auto-create bookings for all ferries, starting two days from now.'
 
     def haversine(self, lat1, lon1, lat2, lon2):
         """Calculate distance between two points using Haversine formula."""
@@ -57,4 +57,4 @@ class Command(BaseCommand):
                     self.stdout.write(
                         self.style.SUCCESS(f'Created schedule: {route} with ferry {ferry.name} on {start_date}'))
 
-            self.stdout.write(self.style.SUCCESS('All schedules created successfully.'))
+            self.stdout.write(self.style.SUCCESS('All bookings created successfully.'))

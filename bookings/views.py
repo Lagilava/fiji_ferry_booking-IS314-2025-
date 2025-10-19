@@ -410,7 +410,7 @@ def calculate_total_price(adults, children, infants, schedule, add_cargo, cargo_
 
 def routes_api(request):
     try:
-        routes = Route.objects.select_related('departure_port', 'destination_port').prefetch_related('schedules').all()
+        routes = Route.objects.select_related('departure_port', 'destination_port').prefetch_related('bookings').all()
         routes_data = [
             {
                 'id': route.id,
@@ -664,7 +664,7 @@ def homepage(request):
     remaining_schedules = max(0, total_schedules_count - len(displayed_schedules))
 
     context = {
-        'schedules': displayed_schedules,  # Limited for performance
+        'bookings': displayed_schedules,  # Limited for performance
         'total_schedules': total_schedules_count,  # Total available count
         'remaining_schedules': remaining_schedules,  # Pre-calculated for template
         'routes': routes[:10],
@@ -767,7 +767,7 @@ def get_schedule_updates(request):
         departure_time__gt=now
     ).select_related('ferry', 'route__departure_port', 'route__destination_port').order_by('departure_time')
     data = {
-        'schedules': [
+        'bookings': [
             {
                 'id': s.id,
                 'route_id': s.route.id,
@@ -1285,7 +1285,7 @@ def book_ticket(request):
     to_port = request.GET.get('to_port', '').strip().lower()
     step = safe_int(request.GET.get('step', 1))
 
-    # Query schedules for GET requests
+    # Query bookings for GET requests
     available_schedules = Schedule.objects.filter(
         status='scheduled',
         departure_time__gt=timezone.now()
@@ -1307,8 +1307,8 @@ def book_ticket(request):
             route__destination_port__name__iexact=to_port
         )
         if not available_schedules.exists():
-            logger.warning(f"No schedules found for to_port={to_port}")
-            messages.error(request, f"No schedules available for destination: {to_port.capitalize()}.")
+            logger.warning(f"No bookings found for to_port={to_port}")
+            messages.error(request, f"No bookings available for destination: {to_port.capitalize()}.")
 
     # Define add-ons
     add_ons = [
@@ -1427,7 +1427,7 @@ def book_ticket(request):
                 summary = None
 
         return render(request, 'bookings/book.html', {
-            'schedules': available_schedules,
+            'bookings': available_schedules,
             'user': request.user,
             'form_data': form_data,
             'debug': settings.DEBUG,

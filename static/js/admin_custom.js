@@ -4,46 +4,54 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log('Dashboard already initialized, skipping.');
         return;
     }
+
+    // Check if this is the dashboard page
+    if (window.location.pathname !== '/admin/') {
+        console.log('Not on dashboard page, skipping dashboard initialization.');
+        return;
+    }
+
     console.log("Custom admin JS loaded - Initializing enhanced dashboard");
     window.chartInitialized = true;
 
-    // Color schemes
+    // Get CSS custom properties for theme
+    const rootStyle = getComputedStyle(document.documentElement);
     const colors = {
         light: {
-            bookings: { express: '#26a69a', standard: '#4fc3f7', border: '#1e40af' },
+            bookings: { express: '#26a69a', standard: '#4fc3f7', border: rootStyle.getPropertyValue('--primary').trim() },
             utilization: ['#26a69a', '#4fc3f7', '#81d4fa', '#ffb300', '#e0f7fa'],
-            revenue: { revenue: { background: 'rgba(38, 166, 154, 0.3)', border: '#26a69a', point: '#ffffff' }, bookings: { background: 'rgba(79, 195, 247, 0.3)', border: '#4fc3f7', point: '#ffffff' } },
-            payment: ['#26a69a', '#ffb300', '#b91c1c'],
+            revenue: {
+                revenue: { background: 'rgba(38, 166, 154, 0.3)', border: '#26a69a', point: '#ffffff' },
+                bookings: { background: 'rgba(79, 195, 247, 0.3)', border: '#4fc3f7', point: '#ffffff' }
+            },
+            payment: ['#26a69a', '#ffb300', rootStyle.getPropertyValue('--warning').trim()],
             userGrowth: { background: 'rgba(171, 71, 188, 0.3)', border: '#ab47bc', point: '#ffffff' },
             topCustomers: ['#26a69a', '#4fc3f7', '#81d4fa', '#ffb300', '#e0f7fa'],
             weather: ['#4fc3f7', '#26a69a', '#81d4fa', '#0288d1', '#b3e5fc'],
-            tooltip: { background: 'rgba(31, 41, 55, 0.9)', text: '#ffffff', body: '#e5e7eb', border: '#1e40af' },
-            text: '#1f2937',
-            background: '#f8fafc',
-            chartBg: '#ffffff',
-            warning: '#b91c1c',
-            success: '#047857',
-            primaryHover: '#2563eb',
-            muted: '#6b7280',
-            secondaryHover: '#d1d5db'
+            tooltip: {
+                background: rootStyle.getPropertyValue('--secondary').trim(),
+                text: rootStyle.getPropertyValue('--text').trim(),
+                body: rootStyle.getPropertyValue('--muted').trim(),
+                border: rootStyle.getPropertyValue('--border').trim()
+            }
         },
         dark: {
-            bookings: { express: '#26a69a', standard: '#4fc3f7', border: '#60a5fa' },
+            bookings: { express: '#26a69a', standard: '#4fc3f7', border: rootStyle.getPropertyValue('--primary').trim() },
             utilization: ['#26a69a', '#4fc3f7', '#81d4fa', '#ffb300', '#b0bec5'],
-            revenue: { revenue: { background: 'rgba(38, 166, 154, 0.4)', border: '#26a69a', point: '#e5e7eb' }, bookings: { background: 'rgba(79, 195, 247, 0.4)', border: '#4fc3f7', point: '#e5e7eb' } },
-            payment: ['#26a69a', '#ffb300', '#f87171'],
-            userGrowth: { background: 'rgba(171, 71, 188, 0.4)', border: '#ab47bc', point: '#e5e7eb' },
+            revenue: {
+                revenue: { background: 'rgba(38, 166, 154, 0.4)', border: '#26a69a', point: rootStyle.getPropertyValue('--text').trim() },
+                bookings: { background: 'rgba(79, 195, 247, 0.4)', border: '#4fc3f7', point: rootStyle.getPropertyValue('--text').trim() }
+            },
+            payment: ['#26a69a', '#ffb300', rootStyle.getPropertyValue('--warning').trim()],
+            userGrowth: { background: 'rgba(171, 71, 188, 0.4)', border: '#ab47bc', point: rootStyle.getPropertyValue('--text').trim() },
             topCustomers: ['#26a69a', '#4fc3f7', '#81d4fa', '#ffb300', '#b0bec5'],
             weather: ['#4fc3f7', '#26a69a', '#81d4fa', '#0288d1', '#b3e5fc'],
-            tooltip: { background: '#374151', text: '#ffffff', body: '#e5e7eb', border: '#4b5563' },
-            text: '#e5e7eb',
-            background: '#1f2937',
-            chartBg: '#374151',
-            warning: '#f87171',
-            success: '#10b981',
-            primaryHover: '#93c5fd',
-            muted: '#9ca3af',
-            secondaryHover: '#4b5563'
+            tooltip: {
+                background: rootStyle.getPropertyValue('--secondary').trim(),
+                text: rootStyle.getPropertyValue('--text').trim(),
+                body: rootStyle.getPropertyValue('--muted').trim(),
+                border: rootStyle.getPropertyValue('--border').trim()
+            }
         }
     };
 
@@ -137,24 +145,18 @@ document.addEventListener('DOMContentLoaded', function() {
             return null;
         }
         wrapper.innerHTML = `
-            <div class="chart-loading" style="text-align: center; color: ${theme.text}; font-size: 1rem; padding: 2rem; height: 100%; display: flex; align-items: center; justify-content: center; background-color: ${theme.chartBg}; border-radius: 8px;">
+            <div class="chart-loading">
                 <i class="fas fa-spinner fa-spin"></i> Loading ${chartName}...
             </div>`;
         if (!data.datasets || data.datasets.length === 0 || !data.labels || data.labels.length === 0) {
             console.warn(`Chart not initialized: ${chartName} - No valid data or labels`);
             wrapper.innerHTML = `
-                <div style="text-align: center; color: ${theme.text}; font-size: 1rem; padding: 2rem; height: 100%; display: flex; align-items: center; justify-content: center; background-color: ${theme.chartBg}; border-radius: 8px;">
-                    No ${chartName} data available
-                </div>`;
+                <div class="chart-error">No ${chartName} data available</div>`;
             return null;
         }
         const canvas = document.createElement('canvas');
         canvas.id = wrapper.getAttribute('data-chart-id') || chartName.toLowerCase().replace(/\s+/g, '-');
-        canvas.style.width = '100%';
-        canvas.style.height = '100%';
-        canvas.style.minHeight = '400px';
-        canvas.style.maxHeight = '450px';
-        canvas.style.backgroundColor = theme.chartBg;
+        canvas.className = 'chart-canvas';
         wrapper.innerHTML = '';
         wrapper.appendChild(canvas);
         const ctx = canvas.getContext('2d');
@@ -174,11 +176,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (updatedOptions.scales[scaleKey]) {
                     updatedOptions.scales[scaleKey].ticks = {
                         ...updatedOptions.scales[scaleKey].ticks,
-                        color: theme.text,
+                        color: rootStyle.getPropertyValue('--text').trim(),
                         font: { size: 12 }
                     };
                     if (updatedOptions.scales[scaleKey].title) {
-                        updatedOptions.scales[scaleKey].title.color = theme.text;
+                        updatedOptions.scales[scaleKey].title.color = rootStyle.getPropertyValue('--text').trim();
                     }
                 }
             });
@@ -199,12 +201,12 @@ document.addEventListener('DOMContentLoaded', function() {
         if (updatedOptions.plugins.legend) {
             updatedOptions.plugins.legend.labels = {
                 ...updatedOptions.plugins.legend.labels,
-                color: theme.text,
+                color: rootStyle.getPropertyValue('--text').trim(),
                 font: { size: 14 }
             };
         }
         if (updatedOptions.plugins.title) {
-            updatedOptions.plugins.title.color = theme.text;
+            updatedOptions.plugins.title.color = rootStyle.getPropertyValue('--text').trim();
             updatedOptions.plugins.title.font = { size: 16, weight: '600' };
         }
 
@@ -253,7 +255,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const csrfToken = getCookie('csrftoken');
         if (!csrfToken) {
             console.error(`CSRF token not found for ${url}`);
-            widget.innerHTML = `<p style="color: ${theme.warning}; text-align: center;">Error: CSRF token missing.</p>`;
+            widget.innerHTML = `<div class="widget-error">Error: CSRF token missing.</div>`;
             if (spinner) spinner.classList.add('hidden');
             return;
         }
@@ -278,7 +280,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.warn(`Retrying fetch for ${url} in ${delay}ms... (${retries} retries left)`);
                 setTimeout(() => window.fetchWidgetData(url, widget, retries - 1, delay * 1.5), delay);
             } else {
-                widget.innerHTML = `<p style="color: ${theme.warning}; text-align: center;">Error loading widget: ${error.message}.</p>`;
+                widget.innerHTML = `<div class="widget-error">Error loading widget: ${error.message}.</div>`;
                 if (spinner) spinner.classList.add('hidden');
             }
         });
@@ -367,7 +369,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             <p class="stat-label">Pending Payments</p>
                         </div>
                     </div>
-                    <small class="text-muted">Updated: ${data.updated_at ? new Date(data.updated_at).toLocaleString() : 'N/A'}</small>
+                    <small class="last-updated">Updated: ${data.updated_at ? new Date(data.updated_at).toLocaleString() : 'N/A'}</small>
                 `;
             } else if (widgetId === 'weather_alerts') {
                 let alertsHtml = `
@@ -377,16 +379,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             <i class="fas fa-sync-alt hidden" id="weather-alerts-spinner"></i> Refresh
                         </button>
                     </div>
-                    <div class="weather-alerts-list" aria-live="polite" style="
-                        max-height: 320px;
-                        overflow-y: auto;
-                        scrollbar-width: thin;
-                        scrollbar-color: ${theme.muted} ${theme.chartBg};
-                        background: ${theme.chartBg};
-                        border: 1px solid ${theme.border};
-                        border-radius: 8px;
-                        animation: fadeIn 0.5s ease-out;
-                    ">
+                    <div class="weather-alerts-list" aria-live="polite">
                 `;
 
                 // Merge both possible alert arrays
@@ -395,7 +388,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     : (Array.isArray(data.data) ? data.data : []);
 
                 if (alerts.length > 0) {
-                    alertsHtml += '<ul class="list-group" style="list-style: none; padding: 0; margin: 0;">';
+                    alertsHtml += '<ul class="list-group">';
                     alerts.forEach(alert => {
                         let port = 'Unknown';
                         let condition = 'N/A';
@@ -426,40 +419,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
                         let badgeHtml = '';
                         if (alert.severity === 'high') {
-                            badgeHtml = `<span class="badge bg-danger" style="
-                                background: ${theme.warning};
-                                color: #ffffff;
-                                padding: 0.4rem 0.8rem;
-                                border-radius: 6px;
-                                font-weight: 500;
-                            ">High Risk</span>`;
+                            badgeHtml = `<span class="badge bg-danger">High Risk</span>`;
                         } else if (alert.severity === 'medium') {
-                            badgeHtml = `<span class="badge bg-warning" style="
-                                background: #ffb300;
-                                color: #000000;
-                                padding: 0.4rem 0.8rem;
-                                border-radius: 6px;
-                                font-weight: 500;
-                            ">Medium Risk</span>`;
+                            badgeHtml = `<span class="badge bg-warning">Medium Risk</span>`;
                         } else if (alert.warning) {
-                            badgeHtml = `<span class="badge bg-danger" style="
-                                background: ${theme.warning};
-                                color: #ffffff;
-                                padding: 0.4rem 0.8rem;
-                                border-radius: 6px;
-                                font-weight: 500;
-                            ">${alert.warning}</span>`;
+                            badgeHtml = `<span class="badge bg-danger">${alert.warning}</span>`;
                         }
 
                         alertsHtml += `
-                            <li class="list-group-item weather-alert-item" style="
-                                padding: 1rem;
-                                border-bottom: 1px solid ${theme.border};
-                                color: ${theme.text};
-                                font-size: 0.95rem;
-                                transition: background 0.2s ease, transform 0.2s ease;
-                                animation: fadeIn 0.5s ease-out;
-                            ">
+                            <li class="list-group-item weather-alert-item">
                                 <strong>${port}</strong>: ${condition}
                                 (Wind: ${wind} km/h, Temp: ${temp}°C, Precip: ${precip}%)
                                 ${badgeHtml}
@@ -467,50 +435,27 @@ document.addEventListener('DOMContentLoaded', function() {
                     });
                     alertsHtml += '</ul>';
                 } else {
-                    alertsHtml += `<div class="weather-alert-item" style="
-                        padding: 1rem;
-                        color: ${theme.text};
-                        font-size: 0.95rem;
-                        animation: fadeIn 0.5s ease-out;
-                    ">No critical weather alerts at this time.</div>`;
+                    alertsHtml += `<div class="weather-alert-item">No critical weather alerts at this time.</div>`;
                 }
 
                 alertsHtml += `</div>
-                    <small class="text-muted last-updated" style="
-                        color: ${theme.muted};
-                        font-size: 0.85rem;
-                        margin-top: 1rem;
-                        display: block;
-                        text-align: right;
-                    ">
-                        Last updated: <span id="weather-last-updated">${data.timestamp || data.updated_at ? new Date(data.timestamp || data.updated_at).toLocaleString() : 'N/A'}</span>
-                    </small>`;
+                    <small class="last-updated">Last updated: <span id="weather-last-updated">${data.timestamp || data.updated_at ? new Date(data.timestamp || data.updated_at).toLocaleString() : 'N/A'}</span></small>`;
 
                 widget.innerHTML = alertsHtml;
 
                 // Hover effect for alert items
                 widget.querySelectorAll('.weather-alert-item').forEach(item => {
                     item.addEventListener('mouseenter', () => {
-                        item.style.background = theme.secondaryHover;
-                        item.style.transform = 'translateX(5px)';
+                        item.classList.add('hovered');
                     });
                     item.addEventListener('mouseleave', () => {
-                        item.style.background = 'none';
-                        item.style.transform = 'none';
+                        item.classList.remove('hovered');
                     });
                 });
-
-                // Scrollbar style for WebKit
-                const alertList = widget.querySelector('.weather-alerts-list');
-                if (alertList) {
-                    alertList.style.setProperty('--webkit-scrollbar-width', '8px');
-                    alertList.style.setProperty('--webkit-scrollbar-thumb-background', theme.muted);
-                    alertList.style.setProperty('--webkit-scrollbar-thumb-border-radius', '4px');
-                }
             }
         } catch (error) {
             console.error(`Error updating widget content for ${widgetId}:`, error);
-            widget.innerHTML = `<p style="color: ${theme.warning}; text-align: center;">Error rendering widget: ${error.message}.</p>`;
+            widget.innerHTML = `<div class="widget-error">Error rendering widget: ${error.message}.</div>`;
         }
     }
 
@@ -568,6 +513,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const baseRetryDelay = 5000;
 
     function initializeWebSocket() {
+        if (window.__IS_CHANGE_LIST__) {
+            console.log('Skipping WebSocket initialization in change list page');
+            return;
+        }
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            console.log('WebSocket already initialized and open');
+            return;
+        }
         if (wsRetryCount >= maxRetries) {
             console.error('Max WebSocket retries reached. Falling back to HTTP polling.');
             document.querySelectorAll('.jazzmin-widget').forEach(widget => {
@@ -619,24 +572,6 @@ document.addEventListener('DOMContentLoaded', function() {
                             console.log('Recent bookings table updated via WebSocket.');
                         }
                     }
-
-                } else if (data.type === 'schedule_update') {
-                    // Handle schedule updates
-                    const row = document.querySelector(`#schedule-${data.schedule_id}`);
-                    if (row) {
-                        const seatsElem = row.querySelector('.available-seats');
-                        const statusElem = row.querySelector('.status');
-                        if (seatsElem) seatsElem.textContent = data.available_seats;
-                        if (statusElem) statusElem.textContent = data.status;
-                    }
-
-                    // Optionally update dashboard charts
-                    if (window.updateDashboard) {
-                        window.updateDashboard('ferry_utilization', data);
-                    }
-
-                    console.log('Schedule updated via WebSocket:', data);
-
                 } else {
                     console.warn('Unknown WebSocket message type:', data.type);
                 }
@@ -644,7 +579,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.error('Error parsing WebSocket message:', e);
             }
         };
-
 
         ws.onclose = (event) => {
             console.log(`WebSocket disconnected: Code ${event.code}, Reason: ${event.reason}`);
@@ -938,7 +872,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 setTimeout(() => debouncedFetchAndUpdateChart(chartId, daysValue, retries - 1, delay * 1.5), delay);
             } else {
                 if (spinner) spinner.classList.remove('animate-spin');
-                wrapper.innerHTML = `<div style="text-align: center; color: ${theme.warning}; font-size: 1rem; padding: 2rem; height: 100%; display: flex; align-items: center; justify-content: center; background-color: ${theme.chartBg}; border-radius: 8px;">Error loading chart data: ${error.message}</div>`;
+                wrapper.innerHTML = `<div class="chart-error">Error loading chart data: ${error.message}</div>`;
             }
         });
     }, 300);
@@ -1052,13 +986,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 setTimeout(() => initializeDataTables(retries - 1, delay * 1.5), delay);
                 return;
             } else {
-                console.error('DataTables failed to load.');
+                console.error('DataTables failed to load after retries.');
                 const table = document.getElementById('recent-bookings-table');
                 if (table) {
                     table.style.display = 'none';
                     const fallback = document.createElement('div');
+                    fallback.className = 'table-error';
                     fallback.textContent = 'Error loading bookings table.';
-                    fallback.style.cssText = `color: ${theme.warning}; padding: 2rem; background-color: ${theme.background}; border-radius: 8px; text-align: center;`;
                     table.parentElement.appendChild(fallback);
                 }
                 return;
@@ -1067,6 +1001,10 @@ document.addEventListener('DOMContentLoaded', function() {
         const dataElement = document.getElementById('recent-bookings-data');
         if (!dataElement) {
             console.error('Recent bookings data element not found.');
+            return;
+        }
+        if ($.fn.DataTable.isDataTable('#recent-bookings-table')) {
+            console.log('DataTable already initialized for #recent-bookings-table, skipping.');
             return;
         }
         try {
@@ -1098,7 +1036,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         { width: '10%', targets: 4 }
                     ]
                 });
-                console.log('DataTables initialized successfully.');
+                console.log('DataTables initialized successfully for #recent-bookings-table.');
             })(window.jQuery);
         } catch (error) {
             console.error('Error initializing DataTables:', error);
@@ -1124,6 +1062,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Initialize dashboard
     function initializeDashboard() {
+        if (window.dashboardInitialized) {
+            console.log('Dashboard already initialized, skipping.');
+            return;
+        }
+        window.dashboardInitialized = true;
         console.log('Initializing dashboard');
         lazyLoadWidgets();
         initializeDataTables();

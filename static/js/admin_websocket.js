@@ -1,7 +1,6 @@
 // Global WebSocket Manager for Jazzmin Admin
 class AdminWebSocketManager {
     constructor() {
-        // Skip initialization on change list pages
         if (window.__SKIP_DASHBOARD_INIT__ || window.__IS_CHANGE_LIST__) {
             console.log('⏭️ Skipping WebSocket manager init - change list page detected');
             this.disabled = true;
@@ -15,6 +14,10 @@ class AdminWebSocketManager {
         this.isConnected = false;
         this.reconnectTimeout = null;
         this.pendingMessages = [];
+        this.heartbeatInterval = null;
+        this.heartbeatTimeout = null;
+        this.PING_INTERVAL = window.PING_INTERVAL || 30000;
+        this.PING_TIMEOUT = this.PING_INTERVAL * 2;
         this.callbacks = {
             connected: [],
             disconnected: [],
@@ -23,7 +26,6 @@ class AdminWebSocketManager {
             booking: [],
             ticket: [],
             cache: [],
-            // Add change list specific callbacks
             changelist: []
         };
 
@@ -32,10 +34,10 @@ class AdminWebSocketManager {
 
     init() {
         if (this.disabled) return;
-
         this.connect();
         this.setupEventListeners();
         this.createStatusIndicator();
+        this.startHeartbeat();
     }
 
     getWebSocketUrl() {
@@ -43,13 +45,35 @@ class AdminWebSocketManager {
         return `${protocol}//${window.location.host}/ws/admin/dashboard/`;
     }
 
+    startHeartbeat() {
+        if (this.disabled) return;
+        this.heartbeatInterval = setInterval(() => {
+            if (this.isConnected) {
+                this.send({ type: 'ping', timestamp: new Date().toISOString() });
+                this.heartbeatTimeout = setTimeout(() => {
+                    console.warn('Heartbeat timeout - no pong received');
+                    this.ws.close();
+                }, this.PING_TIMEOUT);
+            }
+        }, this.PING_INTERVAL);
+    }
+
+    stopHeartbeat() {
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = null;
+        }
+        if (this.heartbeatTimeout) {
+            clearTimeout(this.heartbeatTimeout);
+            this.heartbeatTimeout = null;
+        }
+    }
+
     connect() {
         if (this.disabled) return;
-
         if (this.ws && (this.ws.readyState === WebSocket.CONNECTING || this.ws.readyState === WebSocket.OPEN)) {
             return;
         }
-
         if (this.retryCount >= this.maxRetries) {
             console.warn('Max WebSocket retries reached. Starting polling fallback.');
             this.startPollingFallback();
@@ -65,35 +89,33 @@ class AdminWebSocketManager {
             this.retryCount = 0;
             this.isConnected = true;
             this.updateStatus(true);
-
-            // Send pending messages
             this.pendingMessages.forEach(msg => this.ws.send(msg));
             this.pendingMessages = [];
-
-            // Send join message with page type
+            const userId = document.currentScript ? document.currentScript.getAttribute('data-user-id') || 0 : 0;
+            const perms = document.currentScript ? JSON.parse(document.currentScript.getAttribute('data-perms') || '{}') : {};
             this.send({
                 type: 'join',
-                user_id: {{ user.id|default:0 }},
+                user_id: userId,
                 path: window.location.pathname,
                 is_changelist: window.__IS_CHANGE_LIST__ || false,
-                permissions: {{ perms|safe }}
+                permissions: perms
             });
-
             this.callbacks.connected.forEach(cb => cb(event));
             document.dispatchEvent(new CustomEvent('admin-ws-connected'));
+            this.startHeartbeat();
         };
 
         this.ws.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data);
+                if (data.type === 'pong') {
+                    clearTimeout(this.heartbeatTimeout);
+                    this.heartbeatTimeout = null;
+                    return;
+                }
                 this.handleMessage(data);
-
-                // Always call message callbacks
                 this.callbacks.message.forEach(cb => cb(data));
-
-                // Forward to change list handler if it exists and message is relevant
-                if (window.changeListWS &&
-                    (data.model || data.app_label || data.type.includes('changelist'))) {
+                if (window.changeListWS && (data.model || data.app_label || data.type.includes('changelist'))) {
                     window.changeListWS.handleMessage(data);
                 }
             } catch (e) {
@@ -105,6 +127,7 @@ class AdminWebSocketManager {
             console.log(`🔌 WebSocket Closed: ${event.code} - ${event.reason}`);
             this.isConnected = false;
             this.updateStatus(false);
+            this.stopHeartbeat();
             this.callbacks.disconnected.forEach(cb => cb(event));
             document.dispatchEvent(new CustomEvent('admin-ws-disconnected'));
             this.scheduleReconnect();
@@ -114,17 +137,15 @@ class AdminWebSocketManager {
             console.error('WebSocket Error:', error);
             this.isConnected = false;
             this.updateStatus(false);
+            this.stopHeartbeat();
         };
     }
 
     scheduleReconnect() {
         if (this.disabled) return;
-
         if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
-
         const delay = this.baseDelay * Math.pow(2, this.retryCount);
         this.retryCount++;
-
         console.log(`🔄 Reconnecting in ${delay}ms (attempt ${this.retryCount}/${this.maxRetries})`);
         this.reconnectTimeout = setTimeout(() => {
             this.connect();
@@ -136,15 +157,12 @@ class AdminWebSocketManager {
             console.warn('WebSocket manager disabled, cannot send message:', data.type);
             return false;
         }
-
         const message = JSON.stringify({ ...data, timestamp: new Date().toISOString() });
-
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
             this.pendingMessages.push(message);
             console.log('📋 Message queued:', data.type);
             return false;
         }
-
         try {
             this.ws.send(message);
             return true;
@@ -157,68 +175,49 @@ class AdminWebSocketManager {
 
     handleMessage(data) {
         if (this.disabled) return;
-
         console.log('📨 WS Message:', data.type, data);
-
-        // Handle change list specific messages (forward to changeListWS if exists)
-        if (data.type === 'request_changelist_sync' ||
-            data.type === 'selection_change' ||
-            (data.model && data.app_label)) {
-            // These are primarily handled by changeListWS
+        if (data.type === 'request_changelist_sync' || data.type === 'selection_change' || (data.model && data.app_label)) {
             return;
         }
-
-        // Route to specific handlers
         switch (data.type) {
             case 'weather_alerts':
                 this.callbacks.weather.forEach(cb => cb(data));
                 this.showNotification('🌤️ Weather Alert', 'Weather conditions updated', 'info');
                 break;
-
             case 'booking_update':
                 this.callbacks.booking.forEach(cb => cb(data));
                 this.showNotification('🎫 Booking',
                     `${data.action || 'updated'} - ${data.booking_id ? `Booking #${data.booking_id}` : data.count ? `${data.count} bookings` : 'updated'}`,
                     'primary');
                 break;
-
             case 'ticket_update':
                 this.showNotification('🎟️ Ticket',
                     `Status: ${data.new_status || data.action || 'updated'}`,
                     data.new_status === 'used' ? 'success' : 'info');
                 break;
-
             case 'cache_cleared':
                 this.callbacks.cache.forEach(cb => cb(data));
                 this.showNotification('🔄 Cache', 'Analytics cache refreshed', 'warning');
-                // Only refresh dashboard on actual dashboard page
                 if (window.location.pathname === '/admin/' || window.location.pathname === '/admin') {
                     if (typeof refreshDashboard === 'function') refreshDashboard();
                 }
                 break;
-
             case 'connection_confirmed':
                 this.sendInitialDataRequest();
                 break;
-
             case 'error':
                 console.error('WebSocket Error:', data.message);
                 this.showNotification('❌ Connection Error', data.message || 'WebSocket connection failed', 'danger');
                 break;
-
             case 'model_update':
             case 'schedule_update':
             case 'payment_update':
             case 'weather_alert':
-                // These are handled by specific change list instances or dashboard
                 break;
-
             default:
                 console.log('Unknown message type, dispatching as event:', data.type);
                 break;
         }
-
-        // Always trigger custom events for other components to listen
         document.dispatchEvent(new CustomEvent(`admin-ws-${data.type}`, { detail: data }));
     }
 
@@ -227,15 +226,12 @@ class AdminWebSocketManager {
     }
 
     showNotification(title, message, type = 'info') {
-        // Don't show notifications on change list pages to avoid spam
         if (window.__IS_CHANGE_LIST__) return;
-
         const container = document.getElementById('realtime-notifications');
         if (!container) {
             this.createNotificationToast(title, message, type);
             return;
         }
-
         const notification = document.createElement('div');
         notification.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
         notification.style.cssText = `
@@ -251,10 +247,7 @@ class AdminWebSocketManager {
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
         `;
-
         container.appendChild(notification);
-
-        // Auto-dismiss
         setTimeout(() => {
             if (notification.parentNode) {
                 const bsAlert = bootstrap.Alert.getOrCreateInstance(notification);
@@ -272,7 +265,6 @@ class AdminWebSocketManager {
             container.style.zIndex = '9999';
             document.body.appendChild(container);
         }
-
         const toast = document.createElement('div');
         toast.className = `toast align-items-center text-white bg-${type} border-0`;
         toast.role = 'alert';
@@ -284,13 +276,10 @@ class AdminWebSocketManager {
                 <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
             </div>
         `;
-
         const container = document.getElementById('realtime-notifications');
         container.appendChild(toast);
-
         const bsToast = new bootstrap.Toast(toast);
         bsToast.show();
-
         toast.addEventListener('hidden.bs.toast', () => {
             if (container.children.length === 0) {
                 container.remove();
@@ -299,11 +288,9 @@ class AdminWebSocketManager {
     }
 
     createStatusIndicator() {
-        // Don't create duplicate indicators on change list pages (they have their own)
         if (document.getElementById('ws-status-indicator') || window.__IS_CHANGE_LIST__) {
             return;
         }
-
         const indicator = document.createElement('div');
         indicator.id = 'ws-status-indicator';
         indicator.className = 'ws-status ws-disconnected position-fixed';
@@ -315,18 +302,15 @@ class AdminWebSocketManager {
         `;
         indicator.innerHTML = '<i class="fas fa-wifi-slash me-1"></i> Offline';
         indicator.title = 'WebSocket Status - Click to reconnect';
-
         indicator.addEventListener('click', () => {
             this.reconnect();
         });
-
         document.body.appendChild(indicator);
         this.statusIndicator = indicator;
     }
 
     updateStatus(connected) {
         if (this.disabled || !this.statusIndicator) return;
-
         if (connected) {
             this.statusIndicator.className = 'ws-status ws-connected';
             this.statusIndicator.style.background = 'rgba(16,185,129,0.1)';
@@ -338,28 +322,23 @@ class AdminWebSocketManager {
             this.statusIndicator.style.borderColor = '#ef4444';
             this.statusIndicator.innerHTML = '<i class="fas fa-wifi-slash me-1"></i> Offline';
         }
-
-        // Notify change list components
         document.dispatchEvent(new CustomEvent(connected ? 'admin-ws-connected' : 'admin-ws-disconnected'));
     }
 
     setupEventListeners() {
         if (this.disabled) return;
-
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden && !this.isConnected) {
                 this.connect();
             }
         });
-
         window.addEventListener('online', () => this.connect());
         window.addEventListener('offline', () => {
             if (this.ws) this.ws.close();
         });
-
         window.addEventListener('beforeunload', () => {
             if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                this.send({ type: 'leave', user_id: {{ user.id|default:0 }} });
+                this.send({ type: 'leave', user_id: document.currentScript ? document.currentScript.getAttribute('data-user-id') || 0 : 0 });
             }
         });
     }
@@ -374,7 +353,6 @@ class AdminWebSocketManager {
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) return;
-
                     Object.keys(data).forEach(key => {
                         document.dispatchEvent(new CustomEvent(`admin-fallback-${key}`, { detail: data[key] }));
                     });
@@ -384,7 +362,6 @@ class AdminWebSocketManager {
         }, 30000);
     }
 
-    // Event registration methods
     on(event, callback) {
         if (this.disabled) return;
         if (this.callbacks[event]) {
@@ -406,15 +383,21 @@ class AdminWebSocketManager {
     }
 }
 
-// Initialize conditionally
-if (!window.__SKIP_DASHBOARD_INIT__) {
-    window.adminWS = new AdminWebSocketManager();
-    window.AdminWebSocketManager = window.adminWS;
-} else {
-    console.log('WebSocket manager skipped for change list page');
-}
+document.addEventListener('DOMContentLoaded', () => {
+    try {
+        if (!window.__SKIP_DASHBOARD_INIT__) {
+            window.adminWS = new AdminWebSocketManager();
+            window.AdminWebSocketManager = window.adminWS;
+            console.log('AdminWebSocketManager initialized after DOM ready');
+        } else {
+            console.log('WebSocket manager skipped for change list page');
+        }
+    } catch (error) {
+        console.error('Failed to initialize AdminWebSocketManager:', error);
+    }
+});
 
-// Auto-initialize with safety checks
+
 document.addEventListener('DOMContentLoaded', () => {
     if (!window.__SKIP_DASHBOARD_INIT__ && window.adminWS && !window.adminWS.isConnected) {
         setTimeout(() => {
@@ -425,7 +408,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-// Global CSS for status indicators (idempotent)
 if (!document.querySelector('#ws-global-styles')) {
     const style = document.createElement('style');
     style.id = 'ws-global-styles';

@@ -4,7 +4,7 @@ from schedules.models import Schedule
 
 
 class Command(BaseCommand):
-    help = 'Updates schedules that have departed.'
+    help = 'Updates bookings that have departed.'
 
     def handle(self, *args, **kwargs):
         now = timezone.now()
@@ -14,5 +14,5 @@ class Command(BaseCommand):
         ).update(status='departed')
 
         self.stdout.write(
-            self.style.SUCCESS(f'{updated_count} schedules updated successfully.')
+            self.style.SUCCESS(f'{updated_count} bookings updated successfully.')
         )
