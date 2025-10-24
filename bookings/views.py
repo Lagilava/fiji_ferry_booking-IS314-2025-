@@ -1,3 +1,4 @@
+import base64
 import datetime
 import hashlib
 import io, os
@@ -7,15 +8,21 @@ import re
 import time
 import uuid
 from decimal import Decimal, ROUND_HALF_UP
+from email.mime.image import MIMEImage
 from io import BytesIO
 
 from django.contrib.admin.views.decorators import staff_member_required
+from django.core.files.storage import default_storage
+from django.db import transaction
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 import stripe
 import qrcode
 import requests
 from reportlab.lib.units import mm
+from reportlab.lib.utils import ImageReader
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 from django.conf import settings
 from django.contrib import messages
@@ -23,7 +30,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile, File
-from django.core.mail import send_mail
+from django.core.mail import send_mail, EmailMultiAlternatives
 from django.core.validators import FileExtensionValidator
 from django.db.models import Subquery, Max, OuterRef, Prefetch
 from django.http import JsonResponse, HttpResponseForbidden, StreamingHttpResponse, HttpResponse, FileResponse
@@ -1122,6 +1129,75 @@ def check_schedule_availability(request):
         return JsonResponse({'valid': False, 'error': 'Server error'}, status=500)
 
 
+@require_GET
+def api_bookings(request):
+    """
+    API: /bookings/api/bookings/?route=...&date=...
+    Returns filtered schedules with full route name.
+    """
+    route_param = request.GET.get('route', '').strip()
+    date_str = request.GET.get('date')
+
+    logger.debug(f"[api_bookings] route_param={route_param}, date_str={date_str}")
+
+    # Base queryset
+    qs = Schedule.objects.select_related(
+        'ferry', 'route', 'route__departure_port', 'route__destination_port'
+    )
+
+    # Filter by date
+    if date_str:
+        try:
+            target_date = timezone.datetime.strptime(date_str, '%Y-%m-%d').date()
+            qs = qs.filter(departure_time__date=target_date)
+        except ValueError:
+            logger.warning(f"Invalid date format: {date_str}")
+            return JsonResponse({"schedules": []})
+    else:
+        # Default: today
+        qs = qs.filter(departure_time__date=timezone.now().date())
+
+    # Filter by route
+    if route_param:
+        # Normalize: handle URL encoding
+        route_clean = route_param.replace('+', ' ').strip()
+
+        # Try exact match first
+        qs = qs.filter(
+            Q(route__departure_port__name__iexact=route_clean.split(' to ')[0].strip()) |
+            Q(route__name__iexact=route_clean) |
+            Q(route__slug__iexact=route_clean.replace(' ', '-').lower())
+        )
+
+        # Fallback: partial match
+        if not qs.exists():
+            departure = route_clean.split(' to ')[0].strip()
+            qs = Schedule.objects.select_related(
+                'ferry', 'route', 'route__departure_port', 'route__destination_port'
+            ).filter(
+                route__departure_port__name__icontains=departure,
+                departure_time__date=target_date if date_str else timezone.now().date()
+            )
+
+    # Final filter: only scheduled + has seats
+    qs = qs.filter(status='scheduled', available_seats__gt=0).order_by('departure_time')
+
+    schedules = []
+    for s in qs:
+        route_name = f"{s.route.departure_port.name} to {s.route.destination_port.name}"
+        schedules.append({
+            "id": s.id,
+            "ferry_name": s.ferry.name,
+            "departure_time": s.departure_time.isoformat(),
+            "available_seats": s.available_seats,
+            "status": s.status,
+            "route": route_name
+        })
+
+    logger.debug(f"[api_bookings] Found {len(schedules)} schedules")
+    return JsonResponse({"schedules": schedules})
+
+
 @require_POST
 @csrf_protect
 def create_checkout_session(request):
@@ -1567,222 +1643,230 @@ def view_tickets(request, booking_id):
 
 
 
+def _load_image(path):
+    """Safely load image or return None."""
+    if path and os.path.exists(path):
+        try:
+            return ImageReader(path)
+        except Exception:
+            pass
+    return None
+
+
 def booking_pdf(request, booking_id):
     booking = get_object_or_404(Booking, id=booking_id)
-    tickets = list(booking.tickets.all())
+    tickets = list(booking.tickets.all().order_by('passenger__first_name'))
 
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
 
-    # Palette & tokens
+    # ----------------------- Palette -----------------------
     BRAND_PRIMARY = colors.HexColor("#0EA5E9")
-    BRAND_DARK = colors.HexColor("#0B3C5D")
-    TEXT_PRIMARY = colors.HexColor("#1F2937")
-    TEXT_MUTED = colors.HexColor("#4B5563")
-    BORDER = colors.HexColor("#E5E7EB")
-    CARD_BG = colors.white
+    BRAND_DARK   = colors.HexColor("#1E40AF")
+    TEXT_PRIMARY = colors.HexColor("#111827")
+    TEXT_MUTED   = colors.HexColor("#6B7280")
+    BORDER       = colors.HexColor("#E5E7EB")
+    BG_CARD      = colors.HexColor("#FFFFFF")
 
-    logo_path = os.path.join(settings.BASE_DIR, "static/logo.png")
-    has_logo = os.path.exists(logo_path)
+    # ----------------------- Logo -----------------------
+    logo_path = os.path.join(settings.BASE_DIR, "static", "logo.png")
+    logo_img = _load_image(logo_path)
 
-    # Typography helpers
-    def set_h1():
-        p.setFillColor(BRAND_DARK)
-        p.setFont("Helvetica-Bold", 18)
-
-    def set_h2():
-        p.setFillColor(BRAND_DARK)
-        p.setFont("Helvetica-Bold", 12)
-
-    def set_lbl():
-        p.setFillColor(TEXT_MUTED)
-        p.setFont("Helvetica", 9)
-
-    def set_val():
-        p.setFillColor(TEXT_PRIMARY)
-        p.setFont("Helvetica-Bold", 10.5)
-
-    def set_small():
-        p.setFillColor(TEXT_MUTED)
-        p.setFont("Helvetica-Oblique", 8.5)
+    # ----------------------- Helpers -----------------------
+    def font(name, size):
+        p.setFont(name, size)
 
     def fmt_dt(dt):
-        try:
-            return dt.strftime("%a, %d %b %Y %H:%M")
-        except Exception:
-            return str(dt) if dt is not None else "—"
+        return dt.strftime("%a, %d %b %Y %H:%M") if dt else "—"
 
-    def safe_draw_image(path, x, y, w, h, preserve_aspect=True, mask='auto'):
-        try:
-            if path and os.path.exists(path):
-                p.drawImage(path, x, y, width=w, height=h,
-                            preserveAspectRatio=preserve_aspect, mask=mask, anchor='c')
-                return True
-        except Exception:
-            pass
-        return False
+    def draw_row(x, y, label, value, gap=5*mm, colon=True):
+        p.setFillColor(TEXT_MUTED)
+        font("Helvetica", 9)
+        txt = f"{label}{':' if colon else ''}"
+        p.drawString(x, y, txt)
+        w = p.stringWidth(txt, "Helvetica", 9)
+        p.setFillColor(TEXT_PRIMARY)
+        font("Helvetica-Bold", 10)
+        p.drawString(x + w + gap, y, value or "—")
 
-    # Inline label:value row on one baseline
-    def draw_row(x, y, label, value, gap=6*mm, colon=True):
-        set_lbl()
-        lbl_text = f"{label}{':' if colon else ''}"
-        p.drawString(x, y, lbl_text)
-        lbl_w = p.stringWidth(lbl_text, "Helvetica", 9)
-        set_val()
-        p.drawString(x + lbl_w + gap, y, value if value else "—")
-
-    def draw_header():
-        # Brand band
-        band_h = 28 * mm
-        p.setFillColor(BRAND_PRIMARY)
-        p.rect(0, height - band_h, width, band_h, stroke=0, fill=1)
-
-        # Logo
-        if has_logo:
-            logo_h = 16 * mm
-            logo_w = 48 * mm
-            safe_draw_image(logo_path, 15 * mm, height - (band_h/2) - (logo_h/2),
-                            logo_w, logo_h, preserve_aspect=True)
-
-        # Title
-        title_x = (has_logo and 70 * mm) or 15 * mm
-        p.setFillColor(colors.white)
-        p.setFont("Helvetica-Bold", 18)
-        p.drawString(title_x, height - 17 * mm, "Fiji Ferry Boarding Pass")
-        p.setFont("Helvetica", 10.5)
-        p.drawString(title_x, height - 23 * mm, f"Booking #{booking.id}")
-
-    def draw_footer():
-        p.setStrokeColor(BORDER)
-        p.setLineWidth(0.5)
-        p.line(15 * mm, 18 * mm, width - 15 * mm, 18 * mm)
-        set_small()
-        p.drawString(15 * mm, 13 * mm, "Please present this boarding pass with a valid ID when boarding.")
-        p.drawString(15 * mm, 9 * mm, "For assistance, contact support@fijiferry.example")
-
+    # ----------------------- Subtle Watermark (Text) -----------------------
     def draw_watermark():
-        # Replace emoji with text watermark (prevents missing glyphs)
         p.saveState()
         p.setFillColor(BRAND_PRIMARY)
         try:
-            p.setFillAlpha(0.06)  # not all renderers support alpha; safe if ignored
+            p.setFillAlpha(0.05)
         except Exception:
             pass
-        p.translate(width * 0.75, height * 0.25)
-        p.rotate(15)
-        p.setFont("Helvetica-Bold", 90)
+        p.translate(width * 0.7, height * 0.3)
+        p.rotate(30)
+        font("Helvetica-Bold", 80)
         p.drawCentredString(0, 0, "FIJI FERRY")
         p.restoreState()
 
-    def draw_ticket_card(t):
-        margin_x = 15 * mm
-        top_y = height - 40 * mm
-        card_w = width - (2 * margin_x)
-        card_h = 140 * mm
-        card_y = top_y - card_h
+    # ----------------------- Header -----------------------
+    def draw_header():
+        band_h = 28*mm
+        p.setFillColor(BRAND_PRIMARY)
+        p.rect(0, height-band_h, width, band_h, stroke=0, fill=1)
+        p.setFillColor(BRAND_DARK)
+        p.rect(0, height-band_h, width, band_h/2, stroke=0, fill=1)
 
-        # Card background
-        p.setFillColor(CARD_BG)
+        if logo_img:
+            logo_w, logo_h = 48*mm, 16*mm
+            p.drawImage(logo_img,
+                        15*mm,
+                        height - band_h/2 - logo_h/2,
+                        width=logo_w, height=logo_h,
+                        preserveAspectRatio=True)
+
+        title_x = 70*mm if logo_img else 15*mm
+        p.setFillColor(colors.white)
+        font("Helvetica-Bold", 19)
+        p.drawString(title_x, height - 16*mm, "Fiji Ferry")
+        font("Helvetica", 11)
+        p.drawString(title_x, height - 22*mm, f"Booking #{booking.id}")
+
+    # ----------------------- Footer -----------------------
+    def draw_footer():
+        p.setStrokeColor(BORDER)
+        p.setLineWidth(0.5)
+        p.line(15*mm, 20*mm, width-15*mm, 20*mm)
+
+        p.setFillColor(TEXT_MUTED)
+        font("Helvetica", 8)
+        p.drawString(15*mm, 15*mm,
+                     "Present this boarding pass with a valid photo ID.")
+        p.drawString(15*mm, 11*mm,
+                     "support@fijiferry.example • +679 738 8496")
+
+    # ----------------------- Ticket Card -----------------------
+    def draw_ticket_card(t, start_y):
+        margin = 15*mm
+        card_w = width - 2*margin
+        card_h = 130*mm
+        card_y = start_y - card_h
+
+        # Card
+        p.setFillColor(BG_CARD)
         p.setStrokeColor(BORDER)
         p.setLineWidth(0.8)
-        p.roundRect(margin_x, card_y, card_w, card_h, 6 * mm, stroke=1, fill=1)
+        p.roundRect(margin, card_y, card_w, card_h, 8*mm, stroke=1, fill=1)
 
         # Brand stripe
         p.setFillColor(BRAND_PRIMARY)
-        p.rect(margin_x, card_y + card_h - (6 * mm), card_w, 6 * mm, stroke=0, fill=1)
+        p.rect(margin, card_y + card_h - 6*mm, card_w, 6*mm, stroke=0, fill=1)
 
-        # Header text
-        set_h1()
-        p.drawString(margin_x + 10 * mm, card_y + card_h - 14 * mm, f"Ticket #{t.id}")
-        set_small()
-        p.drawString(margin_x + 10 * mm, card_y + card_h - 20 * mm, f"Issued {fmt_dt(getattr(t, 'issued_at', None))}")
+        # Header
+        p.setFillColor(BRAND_DARK)
+        font("Helvetica-Bold", 15)
+        p.drawString(margin + 12*mm, card_y + card_h - 15*mm, f"Ticket #{t.id}")
+
+        p.setFillColor(TEXT_MUTED)
+        font("Helvetica-Oblique", 9)
+        issued = getattr(t, 'created_at', None) or getattr(t, 'issued_at', None)
+        p.drawString(margin + 12*mm, card_y + card_h - 22*mm,
+                     f"Issued {fmt_dt(issued)}")
 
         # Columns
-        col_gap = 12 * mm
-        inner_margin = 12 * mm
-        col_w = (card_w - (inner_margin * 2) - col_gap) / 2
-        left_x = margin_x + inner_margin
+        col_gap = 12*mm
+        inner = 12*mm
+        col_w = (card_w - inner*2 - col_gap) / 2
+        left_x = margin + inner
         right_x = left_x + col_w + col_gap
-        base_y = card_y + card_h - 30 * mm
-        row_h = 8.5 * mm
+        row_h = 8*mm
+        y = card_y + card_h - 32*mm
 
-        # Passenger column
-        set_h2()
-        p.drawString(left_x, base_y, "Passenger")
-        y = base_y - 7 * mm
+        # Passenger
+        p.setFillColor(BRAND_DARK)
+        font("Helvetica-Bold", 11)
+        p.drawString(left_x, y, "Passenger")
+        y -= 6*mm
 
         passenger = getattr(t, 'passenger', None)
-        full_name = ""
+        name = "—"
+        ptype = ""
         if passenger:
-            fn = getattr(passenger, 'first_name', '') or ''
-            ln = getattr(passenger, 'last_name', '') or ''
-            full_name = (fn + " " + ln).strip()
-        passenger_type = (getattr(passenger, 'passenger_type', '') or '').title()
+            name = f"{passenger.first_name or ''} {passenger.last_name or ''}".strip()
+            ptype = getattr(passenger, 'get_passenger_type_display', lambda: "—")()
 
-        draw_row(left_x, y, "Name", full_name); y -= row_h
-        draw_row(left_x, y, "Passenger Type", passenger_type); y -= row_h
-        draw_row(left_x, y, "Booking ID", f"#{t.booking.id}"); y -= row_h
-        draw_row(left_x, y, "Status", str(t.ticket_status).title())
+        draw_row(left_x, y, "Name", name); y -= row_h
+        draw_row(left_x, y, "Type", ptype); y -= row_h
+        draw_row(left_x, y, "Booking", f"#{booking.id}"); y -= row_h
+        draw_row(left_x, y, "Status", t.ticket_status.title())
 
-        # Divider
-        p.setStrokeColor(BORDER)
-        p.setLineWidth(0.6)
-        p.line(left_x + col_w + (col_gap/2), card_y + inner_margin,
-               left_x + col_w + (col_gap/2), card_y + card_h - inner_margin)
+        # Schedule
+        p.setFillColor(BRAND_DARK)
+        font("Helvetica-Bold", 11)
+        p.drawString(right_x, card_y + card_h - 38*mm, "Schedule")
+        y2 = card_y + card_h - 44*mm
 
-        # Schedule column
-        set_h2()
-        p.drawString(right_x, base_y, "Schedule")
-        y2 = base_y - 7 * mm
-
-        sched = getattr(getattr(t, 'booking', None), 'schedule', None)
-        ferry = getattr(getattr(sched, 'ferry', None), 'name', '') if sched else ''
-        route = getattr(sched, 'route', None)
+        sched = getattr(booking, 'schedule', None)
+        ferry_name = getattr(getattr(sched, 'ferry', None), 'name', "—")
         route_str = "—"
-        if route:
-            dep_port = getattr(route, 'departure_port', '—')
-            dest_port = getattr(route, 'destination_port', '—')
-            route_str = f"{dep_port} → {dest_port}"
-        dep_dt = getattr(sched, 'departure_time', None) if sched else None
-        arr_dt = getattr(sched, 'arrival_time', None) if sched else None
+        if sched and getattr(sched, 'route', None):
+            dep = getattr(sched.route.departure_port, 'name', '—')
+            dest = getattr(sched.route.destination_port, 'name', '—')
+            route_str = f"{dep} → {dest}"
 
-        draw_row(right_x, y2, "Ferry", ferry); y2 -= row_h
+        draw_row(right_x, y2, "Ferry", ferry_name); y2 -= row_h
         draw_row(right_x, y2, "Route", route_str); y2 -= row_h
-        draw_row(right_x, y2, "Departure", fmt_dt(dep_dt)); y2 -= row_h
-        draw_row(right_x, y2, "Arrival", fmt_dt(arr_dt))
+        draw_row(right_x, y2, "Departure", fmt_dt(getattr(sched, 'departure_time', None))); y2 -= row_h
+        draw_row(right_x, y2, "Arrival", fmt_dt(getattr(sched, 'arrival_time', None)))
 
-        # QR area
+        # QR Code
         qr = getattr(t, 'qr_code', None)
-        if qr:
+        if qr and hasattr(qr, 'path') and qr.path and os.path.exists(qr.path):
+            qr_size = 48*mm
+            qr_x = right_x + col_w - qr_size - 2*mm
+            qr_y = card_y + 12*mm
+
+            p.setStrokeColor(BORDER)
+            p.setLineWidth(1)
+            p.roundRect(qr_x - 4*mm, qr_y - 4*mm,
+                        qr_size + 8*mm, qr_size + 8*mm,
+                        4*mm, stroke=1, fill=0)
+
             try:
-                qr_size = 38 * mm
-                qr_x = right_x + col_w - qr_size
-                qr_y = card_y + inner_margin
-                p.setStrokeColor(BORDER)
-                p.setLineWidth(0.6)
-                p.roundRect(qr_x - 3*mm, qr_y - 3*mm, qr_size + 6*mm, qr_size + 6*mm, 3*mm, stroke=1, fill=0)
-                safe_draw_image(qr.path, qr_x, qr_y, qr_size, qr_size, preserve_aspect=True)
-                set_small()
-                p.drawRightString(qr_x + qr_size, qr_y - 6*mm, "Scan to validate")
+                p.drawImage(_load_image(qr.path),
+                            qr_x, qr_y,
+                            width=qr_size, height=qr_size,
+                            preserveAspectRatio=True)
             except Exception:
-                pass
+                p.setFillColor(colors.red)
+                font("Helvetica", 8)
+                p.drawString(qr_x, qr_y, "QR Error")
 
-        # Card micro-footer
-        set_small()
-        p.drawString(left_x, card_y + 8 * mm, "This ticket is valid only for the specified sailing and passenger.")
+            p.setFillColor(TEXT_MUTED)
+            font("Helvetica", 9)
+            p.drawCentredString(qr_x + qr_size/2, qr_y - 8*mm, "Scan at check-in")
 
-    # One ticket per page
-    for t in tickets:
+        # Note
+        p.setFillColor(TEXT_MUTED)
+        font("Helvetica", 8)
+        p.drawString(margin + 12*mm, card_y + 8*mm,
+                     "Valid only for listed passenger and sailing.")
+
+        return card_y - 15*mm
+
+    # ----------------------- Build PDF -----------------------
+    y_cursor = height - 40*mm
+
+    for idx, ticket in enumerate(tickets):
+        if idx > 0:
+            p.showPage()
+            y_cursor = height - 40*mm
+
         draw_header()
-        draw_watermark()   # text watermark; no emoji glyphs
-        draw_ticket_card(t)
+        draw_watermark()  # Safe text watermark
+        y_cursor = draw_ticket_card(ticket, y_cursor)
         draw_footer()
-        p.showPage()
 
     p.save()
     buffer.seek(0)
-    return FileResponse(buffer, as_attachment=True, filename=f"Booking_{booking.id}_Tickets.pdf")
+    return FileResponse(buffer,
+                        as_attachment=True,
+                        filename=f"FijiFerry_Booking_{booking.id}_Tickets.pdf")
 
 
 @login_required
@@ -2041,17 +2125,18 @@ def payment_success(request):
 
             payment.save()
 
-        # --- Ticket generation ---
+        # --- Ticket generation with QR codes ---
+        tickets = []
         if Ticket.objects.filter(booking=booking).count() == booking.passengers.count():
             logger.info(f"Tickets already generated for booking {booking.id}")
-            messages.success(request, f'Booking #{booking.id} confirmed! Tickets already generated.')
+            tickets = list(Ticket.objects.filter(booking=booking))
         else:
             if not booking.passengers.exists():
                 logger.error(f"No passengers found for booking {booking.id}")
                 messages.error(request, "No passengers associated with booking. Please contact support.")
                 return redirect('bookings:booking_history')
 
-            logger.debug(f"Starting ticket generation for booking {booking.id}, passenger count: {booking.passengers.count()}")
+            logger.debug(f"Starting ticket generation for booking {booking.id}")
             for passenger in booking.passengers.all():
                 if not Ticket.objects.filter(booking=booking, passenger=passenger).exists():
                     try:
@@ -2064,35 +2149,31 @@ def payment_success(request):
                         ticket.full_clean()
                         ticket.save()
 
-                        qr_data = request.build_absolute_uri(reverse('bookings:view_ticket', args=[ticket.qr_token]))
-                        qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_L)
-                        qr.add_data(qr_data)
+                        # Generate QR code
+                        qr_url = request.build_absolute_uri(reverse('bookings:view_ticket', args=[ticket.qr_token]))
+                        qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=10, border=4)
+                        qr.add_data(qr_url)
                         qr.make(fit=True)
                         img = qr.make_image(fill_color="black", back_color="white")
                         buffer = BytesIO()
                         img.save(buffer, format='PNG')
-                        try:
-                            ticket.qr_code.save(f"ticket_{ticket.id}.png", ContentFile(buffer.getvalue()), save=True)
-                            logger.debug(f"Generated ticket {ticket.id} for passenger {passenger.id}")
-                        except Exception as e:
-                            logger.error(f"Error saving QR code for ticket {ticket.id}: {str(e)}")
-                            ticket.delete()
-                            messages.error(request, "Error saving ticket QR code. Please contact support.")
-                            return redirect('bookings:booking_history')
-                    except ValidationError as ve:
-                        logger.error(f"Validation error for ticket, passenger {passenger.id}: {str(ve)}")
-                        messages.error(request, "Error generating tickets: Invalid ticket data. Please contact support.")
-                        return redirect('bookings:booking_history')
+                        qr_image = buffer.getvalue()
+                        buffer.close()
+
+                        # Save QR to model
+                        ticket.qr_code.save(f"qr_{ticket.id}.png", ContentFile(qr_image), save=True)
+                        tickets.append(ticket)
+                        logger.debug(f"Generated ticket {ticket.id} for passenger {passenger.id}")
                     except Exception as e:
                         logger.error(f"Error generating ticket for passenger {passenger.id}: {str(e)}")
                         messages.error(request, "Error generating tickets. Please contact support.")
                         return redirect('bookings:booking_history')
 
-        # --- Confirmation email (professional; includes vehicles & cargo; light Fijian formality) ---
+        # --- Prepare email with embedded QR codes ---
         try:
             guest_name = _display_name(booking.user) or "Valued Guest"
 
-            # Arrival & duration
+            # Trip details
             estimated_duration = booking.schedule.route.estimated_duration
             arrival_str = "N/A"
             duration_str = "N/A"
@@ -2100,263 +2181,285 @@ def payment_success(request):
                 estimated_arrival = booking.schedule.departure_time + estimated_duration
                 arrival_str = estimated_arrival.strftime("%A, %B %d, %Y at %H:%M")
                 total_minutes = int(estimated_duration.total_seconds() / 60)
-                hours = total_minutes // 60
-                minutes = total_minutes % 60
-                duration_str = f"{hours} hours {minutes} minutes" if minutes else f"{hours} hours"
+                hours, minutes = divmod(total_minutes, 60)
+                duration_str = f"{hours}h {minutes}m" if minutes else f"{hours}h"
 
             dep_port = booking.schedule.route.departure_port.name
             dest_port = booking.schedule.route.destination_port.name
-            vessel   = booking.schedule.ferry.name
-            depart   = booking.schedule.departure_time.strftime("%A, %B %d, %Y at %H:%M")
+            vessel = booking.schedule.ferry.name
+            depart = booking.schedule.departure_time.strftime("%A, %B %d, %Y at %H:%M")
             total_str = fmt_fjd(booking.total_price)
 
+            # Passenger details
             passenger_details = [
                 f"{p.first_name} {p.last_name} ({p.get_passenger_type_display()})"
                 for p in booking.passengers.all()
             ]
 
-            # Build optional sections for plain text
-            vehicles_text = ""
+            # Optional sections (vehicles, cargo, add-ons)
+            def _section_html(title, rows):
+                if not rows:
+                    return ""
+                return f'''
+                    <tr><td colspan="2" style="padding:0 0 8px 0;">
+                        <h3 style="margin:24px 0 8px;font-size:15px;font-weight:700;color:#111827;
+                                  border-left:4px solid #3b82f6;padding-left:8px;">{title}</h3>
+                    </td></tr>
+                    <tr><td colspan="2" style="padding:0;">
+                        <table style="width:100%;border-collapse:separate;border-spacing:0 6px;">
+                            {''.join(rows)}
+                        </table>
+                    </td></tr>
+                '''
+
+            # Vehicles
+            vehicle_rows = []
+            for v in booking.vehicles.all():
+                vehicle_rows.extend([
+                    f'<tr><td style="width:40%;color:#6b7280;background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">Type</td>'
+                    f'<td style="background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">{v.get_vehicle_type_display()}</td></tr>',
+                    f'<tr><td style="color:#6b7280;background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">Dimensions</td>'
+                    f'<td style="background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">{v.dimensions}</td></tr>',
+                    f'<tr><td style="color:#6b7280;background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">License Plate</td>'
+                    f'<td style="background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">{v.license_plate or "N/A"}</td></tr>',
+                    f'<tr><td style="color:#6b7280;background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">Price</td>'
+                    f'<td style="background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">{fmt_fjd(v.price)}</td></tr>',
+                    '<tr><td colspan="2" style="background:transparent;border:none;padding:4px;"></td></tr>',
+                ])
+            vehicles_html = _section_html("Vehicles", vehicle_rows)
+
+            # Cargo
+            cargo_rows = []
+            for c in booking.cargo.all():
+                cargo_rows.extend([
+                    f'<tr><td style="width:40%;color:#6b7280;background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">Type</td>'
+                    f'<td style="background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">{c.get_cargo_type_display()}</td></tr>',
+                    f'<tr><td style="color:#6b7280;background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">Weight</td>'
+                    f'<td style="background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">{c.weight_kg} kg</td></tr>',
+                    f'<tr><td style="color:#6b7280;background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">Dimensions</td>'
+                    f'<td style="background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">{c.dimensions_cm or "N/A"}</td></tr>',
+                    f'<tr><td style="color:#6b7280	background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">License Plate</td>'
+                    f'<td style="background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">{c.license_plate or "N/A"}</td></tr>',
+                    f'<tr><td style="color:#6b7280	background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">Price</td>'
+                    f'<td style="background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">{fmt_fjd(c.price)}</td></tr>',
+                    '<tr><td colspan="2" style="background:transparent;border:none;padding:4px;"></td></tr>',
+                ])
+            cargo_html = _section_html("Cargo", cargo_rows)
+
+            # Add-ons
+            addon_rows = []
+            for a in booking.add_ons.all():
+                qty = getattr(a, "quantity", 1) or 1
+                addon_rows.append(
+                    f'<tr><td style="width:40%;color:#6b7280;background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">'
+                    f'{a.get_add_on_type_display()}</td>'
+                    f'<td style="background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">x{qty} — {fmt_fjd(a.price)}</td></tr>'
+                )
+            addons_html = _section_html("Add-ons", addon_rows)
+
+            # --- Generate QR code images for email (base64) ---
+            qr_images = {}
+            for ticket in tickets:
+                if ticket.qr_code:
+                    with default_storage.open(ticket.qr_code.name, 'rb') as img_file:
+                        qr_images[ticket.id] = base64.b64encode(img_file.read()).decode('utf-8')
+
+            # --- Plain-text fallback ---
+            email_text = f"""Bula {guest_name},
+
+Vinaka vakalevu! Your booking is confirmed.
+
+Booking ID: {booking.id}
+Route: {dep_port} → {dest_port}
+Vessel: {vessel}
+Departure: {depart}
+Est. Arrival: {arrival_str}
+Duration: {duration_str}
+
+Passengers:
+""" + "\n".join(f"- {p}" for p in passenger_details) + "\n\n"
+
             if booking.vehicles.exists():
-                v_lines = []
-                for v in booking.vehicles.all():
-                    v_lines.extend([
-                        f"- Type: {v.get_vehicle_type_display()}",
-                        f"  Dimensions: {v.dimensions}",
-                        f"  License Plate: {v.license_plate or 'N/A'}",
-                        f"  Price: {fmt_fjd(v.price)}",
-                    ])
-                vehicles_text = "Vehicles:\n" + "\n".join(v_lines) + "\n\n"
-
-            cargo_text = ""
+                email_text += "Vehicles:\n" + "\n".join(
+                    f"- {v.get_vehicle_type_display()} | {v.dimensions} | {v.license_plate or 'N/A'} | {fmt_fjd(v.price)}"
+                    for v in booking.vehicles.all()
+                ) + "\n\n"
             if booking.cargo.exists():
-                c_lines = []
-                for c in booking.cargo.all():
-                    c_lines.extend([
-                        f"- Type: {c.get_cargo_type_display()}",
-                        f"  Weight: {c.weight_kg} kg",
-                        f"  Dimensions: {c.dimensions_cm or 'N/A'}",
-                        f"  License Plate: {c.license_plate or 'N/A'}",
-                        f"  Price: {fmt_fjd(c.price)}",
-                    ])
-                cargo_text = "Cargo:\n" + "\n".join(c_lines) + "\n\n"
-
-            addons_text = ""
+                email_text += "Cargo:\n" + "\n".join(
+                    f"- {c.get_cargo_type_display()} | {c.weight_kg} kg | {c.dimensions_cm or 'N/A'} | {fmt_fjd(c.price)}"
+                    for c in booking.cargo.all()
+                ) + "\n\n"
             if booking.add_ons.exists():
-                a_lines = []
-                for a in booking.add_ons.all():
-                    qty = getattr(a, "quantity", 1) or 1
-                    a_lines.append(f"- {a.get_add_on_type_display()} (x{qty}): {fmt_fjd(a.price)}")
-                addons_text = "Add-ons:\n" + "\n".join(a_lines) + "\n\n"
+                email_text += "Add-ons:\n" + "\n".join(
+                    f"- {a.get_add_on_type_display()} (x{getattr(a, 'quantity', 1)}) | {fmt_fjd(a.price)}"
+                    for a in booking.add_ons.all()
+                ) + "\n\n"
 
-            # Plain text (Fijian greeting/closing; detailed sections)
-            email_text = (
-                f"Bula {guest_name},\n\n"
-                f"Vinaka vakalevu for your booking. We are pleased to confirm that your payment "
-                f"has been received and your journey is confirmed.\n\n"
-                f"Booking ID: {booking.id}\n"
-                f"Route: {dep_port} \u2192 {dest_port}\n"
-                f"Vessel: {vessel}\n"
-                f"Departure: {depart}\n"
-                f"Estimated Arrival: {arrival_str}\n"
-                f"Estimated Duration: {duration_str}\n\n"
-                f"Passengers:\n" + "\n".join([f"- {pd}" for pd in passenger_details]) + "\n\n"
-                + vehicles_text
-                + cargo_text
-                + addons_text +
-                f"Total Amount Paid: {total_str}\n"
-                f"Payment Method: Stripe\n"
-                f"Status: Completed\n\n"
-                f"View your tickets: {request.build_absolute_uri(reverse('bookings:view_tickets', args=[booking.id]))}\n\n"
-                f"Please arrive 30–60 minutes before departure for check-in and boarding, and bring a valid photo ID. "
-                f"If travelling with a vehicle, ensure your vehicle documents are available for inspection.\n\n"
-                f"For assistance, email support@yourferryservice.com or call +679-7388496.\n\n"
-                f"Vinaka vakalevu, and safe travels,\n"
-                f"Fiji Ferry Service Team"
-            )
+            email_text += f"""Total Paid: {total_str}
+View Tickets: {request.build_absolute_uri(reverse('bookings:view_tickets', args=[booking.id]))}
 
-            # HTML blocks for vehicles/cargo/add-ons
-            vehicles_html = ""
-            if booking.vehicles.exists():
-                rows = []
-                for v in booking.vehicles.all():
-                    rows.append(f"""
-                        <tr><td>Type</td><td>{v.get_vehicle_type_display()}</td></tr>
-                        <tr><td>Dimensions</td><td>{v.dimensions}</td></tr>
-                        <tr><td>License Plate</td><td>{v.license_plate or 'N/A'}</td></tr>
-                        <tr><td>Price</td><td>{fmt_fjd(v.price)}</td></tr>
-                        <tr class="spacer"><td colspan="2"></td></tr>
-                    """)
-                vehicles_html = f"""
-                    <h3 class="section-title">Vehicles</h3>
-                    <table class="info-table">{''.join(rows)}</table>
-                """
+Please arrive 30–60 minutes early. Bring photo ID.
 
-            cargo_html = ""
-            if booking.cargo.exists():
-                rows = []
-                for c in booking.cargo.all():
-                    rows.append(f"""
-                        <tr><td>Type</td><td>{c.get_cargo_type_display()}</td></tr>
-                        <tr><td>Weight</td><td>{c.weight_kg} kg</td></tr>
-                        <tr><td>Dimensions</td><td>{c.dimensions_cm or 'N/A'}</td></tr>
-                        <tr><td>License Plate</td><td>{c.license_plate or 'N/A'}</td></tr>
-                        <tr><td>Price</td><td>{fmt_fjd(c.price)}</td></tr>
-                        <tr class="spacer"><td colspan="2"></td></tr>
-                    """)
-                cargo_html = f"""
-                    <h3 class="section-title">Cargo</h3>
-                    <table class="info-table">{''.join(rows)}</table>
-                """
+Support: support@yourferryservice.com | +679-738-8496
 
-            addons_html = ""
-            if booking.add_ons.exists():
-                rows = []
-                for a in booking.add_ons.all():
-                    qty = getattr(a, "quantity", 1) or 1
-                    rows.append(f"<tr><td>{a.get_add_on_type_display()}</td><td>x{qty} — {fmt_fjd(a.price)}</td></tr>")
-                addons_html = f"""
-                    <h3 class="section-title">Add-ons</h3>
-                    <table class="info-table">{''.join(rows)}</table>
-                """
+Vinaka vakalevu,
+Fiji Ferry Service Team
+"""
 
-            # Polished HTML (inline CSS)
+            # --- HTML Email with embedded QR codes ---
+            wave_svg = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMDAiIGhlaWdodD0iMTAwIiB2aWV3Qm94PSIwIDAgMjAwIDEwMCIgZmlsbD0ibm9uZSI+PHBhdGggZD0iTTAgNTBDMTYgNTAgMjQgNjUgMzUgNzBDNDYgODAgNTUgODUgNjUgODVDNzUgODUgODQgODAgOTUgNzBDMTA2IDY1IDExNiA1NSAxMzAgNTBDMTQ0IDQ1IDE1NiA0MCAxNzAgNDBDMTA0IDQwIDEwMCA0NSAqMTAwIDUwQzEwMCA1NSA5NiA2MCA5MCA2NUM4MyA3MCA3NSA3NSA2NSA3NUM1NSA3NSA0NSA3MCAzNSA2NUMyNSA2MCAxNiA1NSAwIDUwWiIgZmlsbD0iIzBlYTVlOSIgZmlsbC1vcGFjaXR5PSIwLjA1Ii8+PC9zdmc+"
+
+            # QR ticket rows
+            qr_rows = []
+            for ticket in tickets:
+                passenger = ticket.passenger
+                name = f"{passenger.first_name} {passenger.last_name}"
+                qr_cid = f"qr_{ticket.id}"
+                qr_data = qr_images.get(ticket.id)
+                qr_img = f'<img src="cid:{qr_cid}" alt="QR Code for {name}" style="width:150px;height:150px;margin:10px auto;display:block;border:1px solid #ddd;border-radius:8px;">' if qr_data else '<p style="color:#ef4444;">QR code unavailable</p>'
+                qr_rows.append(f'''
+                    <tr>
+                        <td style="padding:16px 0;text-align:center;">
+                            <p style="margin-bottom:8px;font-weight:600;color:#111827;">{name} ({passenger.get_passenger_type_display()})</p>
+                            {qr_img}
+                            <p style="margin:8px 0 0;font-size:12px;color:#6b7280;">Scan at check-in</p>
+                        </td>
+                    </tr>
+                ''')
+
             email_html = f"""
 <!doctype html>
 <html>
 <head>
-  <meta charset="utf-8">
-  <title>Booking Confirmation #{booking.id}</title>
-  <style>
-    body {{
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
-      background: #f6f8fb; margin:0; padding:0; color:#1f2937;
-    }}
-    .container {{
-      max-width: 680px; margin: 32px auto; background:#ffffff; border-radius:16px;
-      box-shadow: 0 10px 30px rgba(2,6,23,0.06); overflow:hidden; border:1px solid #eef2f7;
-    }}
-    .header {{
-      padding: 20px 24px; background: linear-gradient(135deg,#0ea5e9,#6366f1);
-      color:#fff; display:flex; align-items:center; gap:12px;
-    }}
-    .header h1 {{ font-size:18px; font-weight:700; margin:0; }}
-    .content {{ padding: 24px; }}
-    .hello {{ margin:0 0 16px 0; font-size:16px; }}
-    .lead {{ margin:0 0 20px 0; color:#475569; }}
-    .section-title {{
-      font-size:15px; font-weight:700; margin: 24px 0 8px; color:#111827;
-      border-left:4px solid #3b82f6; padding-left:8px;
-    }}
-    .info-grid {{
-      display:grid; grid-template-columns: 160px 1fr; gap:8px 16px;
-      background:#f9fafb; border:1px solid #eef2f7; border-radius:12px; padding:16px;
-    }}
-    .label {{ color:#6b7280; }}
-    .value {{ color:#111827; font-weight:600; }}
-    .info-table {{ width:100%; border-collapse:separate; border-spacing:0 6px; }}
-    .info-table td {{ background:#f9fafb; padding:10px 12px; border:1px solid #eef2f7; }}
-    .info-table tr td:first-child {{ width:40%; color:#6b7280; }}
-    .info-table .spacer td {{ background:transparent; border:none; padding:4px; }}
-    .badge {{
-      display:inline-block; padding:6px 10px; border-radius:999px; font-size:12px; font-weight:700;
-      background:#ecfeff; color:#155e75; border:1px solid #a5f3fc;
-    }}
-    .total {{
-      display:flex; justify-content:space-between; align-items:center;
-      background:#f3f4f6; border:1px solid #e5e7eb; border-radius:12px; padding:14px 16px; margin-top:8px;
-    }}
-    .total .amount {{ font-size:20px; font-weight:800; color:#111827; }}
-    .cta {{
-      display:block; text-align:center; margin:24px 0 8px 0;
-      background:#2563eb; color:#fff; text-decoration:none;
-      padding:12px 16px; border-radius:10px; font-weight:700;
-    }}
-    .footer {{
-      color:#6b7280; font-size:12px; padding: 0 24px 24px 24px; text-align:center;
-    }}
-    a {{ color:#2563eb; text-decoration:none; }}
-  </style>
+<meta charset="utf-8">
+<title>Booking Confirmation #{booking.id}</title>
+<style>
+  body {{margin:0;padding:0;background:#f6f8fb;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#1f2937;background-image:url('{wave_svg}');background-repeat:repeat-x;background-position:bottom;}}
+  .container {{max-width:680px;margin:32px auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 10px 30px rgba(2,6,23,.06);border:1px solid #eef2f7;}}
+  .header {{background:linear-gradient(135deg,#0ea5e9,#6366f1);color:#fff;padding:24px;display:flex;align-items:center;gap:12px;}}
+  .content {{padding:28px;}}
+  .hello {{margin:0 0 12px;font-size:17px;font-weight:600;}}
+  .lead {{margin:0 0 24px;color:#475569;line-height:1.5;}}
+  .section {{margin-bottom:28px;}}
+  .section-title {{font-size:15px;font-weight:700;margin:0 0 8px;color:#111827;border-left:4px solid #3b82f6;padding-left:8px;}}
+  .grid {{display:grid;grid-template-columns:160px 1fr;gap:6px 16px;background:#f9fafb;border:1px solid #eef2f7;border-radius:12px;padding:16px;}}
+  .label {{color:#6b7280;}}
+  .value {{color:#111827;font-weight:600;}}
+  .badge {{display:inline-block;padding:5px 10px;border-radius:999px;font-size:12px;font-weight:700;background:#ecfeff;color:#155e75;border:1px solid #a5f3fc;}}
+  .total-box {{display:flex;justify-content:space-between;align-items:center;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-top:12px;}}
+  .total-amount {{font-size:20px;font-weight:800;color:#111827;}}
+  .cta {{display:block;text-align:center;margin:28px 0 0;background:#2563eb;color:#fff;text-decoration:none;padding:13px 16px;border-radius:10px;font-weight:700;}}
+  .footer {{margin-top:32px;padding-top:20px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;text-align:center;}}
+  .qr-table {{width:100%;border-collapse:separate;border-spacing:0 12px;}}
+  a {{color:#2563eb;text-decoration:none;}}
+</style>
 </head>
 <body>
-  <div class="container">
-    <div class="header">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path d="M3 18c3 0 3-2 6-2s3 2 6 2 3-2 6-2" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
-        <path d="M10 14l3-7 3 7" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-      <h1>Booking Confirmation #{booking.id}</h1>
-    </div>
-    <div class="content">
-      <p class="hello">Bula {guest_name},</p>
-      <p class="lead">Vinaka vakalevu for your booking. Your payment has been received and your trip is confirmed. Here are your details:</p>
+<div class="container">
+  <div class="header">
+    <svg viewBox="0 0 24 24" fill="none" width="22" height="22">
+      <path d="M3 18c3 0 3-2 6-2s3 2 6 2 3-2 6-2" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+      <path d="M10 14l3-7 3 7" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <h1 style="margin:0;font-size:18px;font-weight:700;">Booking Confirmation #{booking.id}</h1>
+  </div>
 
+  <div class="content">
+    <p class="hello">Bula {guest_name},</p>
+    <p class="lead">Vinaka vakalevu! Your payment is confirmed and your journey is booked.</p>
+
+    <div class="section">
       <h3 class="section-title">Trip Details</h3>
-      <div class="info-grid">
+      <div class="grid">
         <div class="label">Route</div><div class="value">{dep_port} → {dest_port}</div>
         <div class="label">Vessel</div><div class="value">{vessel}</div>
         <div class="label">Departure</div><div class="value">{depart}</div>
-        <div class="label">Estimated Arrival</div><div class="value">{arrival_str}</div>
+        <div class="label">Est. Arrival</div><div class="value">{arrival_str}</div>
         <div class="label">Duration</div><div class="value">{duration_str}</div>
-        <div class="label">Status</div><div class="value"><span class="badge">Payment Completed</span></div>
+        <div class="label">Status</div><div class="value"><span class="badge">Paid</span></div>
       </div>
+    </div>
 
-      <h3 class="section-title">Passengers</h3>
-      <table class="info-table">
-        {''.join(f'<tr><td>Passenger</td><td>{pd}</td></tr>' for pd in passenger_details)}
+    <div class="section">
+      <h3 class="section-title">Your Tickets</h3>
+      <table class="qr-table">
+        {''.join(qr_rows)}
       </table>
+    </div>
 
-      {vehicles_html}
-      {cargo_html}
-      {addons_html}
+    <div class="section">
+      <h3 class="section-title">Passengers</h3>
+      <table style="width:100%;border-collapse:separate;border-spacing:0 6px;">
+        {''.join(f'<tr><td style="width:40%;color:#6b7280;background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">Passenger</td>'
+                 f'<td style="background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">{pd}</td></tr>' for pd in passenger_details)}
+      </table>
+    </div>
 
-      <h3 class="section-title">Payment Summary</h3>
-      <div class="total">
-        <div>Total Amount Paid</div>
-        <div class="amount">{total_str}</div>
+    {vehicles_html}
+    {cargo_html}
+    {addons_html}
+
+    <div class="section">
+      <h3 class="section-title">Payment</h3>
+      <div class="total-box">
+        <div style="font-weight:600;">Total Paid</div>
+        <div class="total-amount">{total_str}</div>
       </div>
+    </div>
 
-      <a class="cta" href="{request.build_absolute_uri(reverse('bookings:view_tickets', args=[booking.id]))}">
-        View Your Tickets
-      </a>
+    <a class="cta" href="{request.build_absolute_uri(reverse('bookings:view_tickets', args=[booking.id]))}">
+      View All Tickets Online
+    </a>
 
-      <p class="footer">
-        Please arrive 30–60 minutes early for check-in and boarding, and bring a valid photo ID.
-        If you need help, contact us at <a href="mailto:support@yourferryservice.com">support@yourferryservice.com</a> or +679-738-8496.
-        <br/><br/>Vinaka vakalevu, and safe travels,<br/>Fiji Ferry Service Team
-      </p>
+    <div class="footer">
+      Please arrive 30–60 minutes early. Present QR code at check-in.<br>
+      Need help? <a href="mailto:support@yourferryservice.com">support@yourferryservice.com</a> • +679-738-8496
+      <br><br>Vinaka vakSnack, and safe travels,<br><strong>Fiji Ferry Service Team</strong>
     </div>
   </div>
+</div>
 </body>
 </html>
 """
 
-            # Recipient
-            recipient = None
-            if booking.user and getattr(booking.user, "email", None):
-                recipient = booking.user.email
+            # --- Send email with inline QR images ---
+            recipient = booking.user.email if booking.user and getattr(booking.user, "email", None) else (
+                request.session.get('guest_email') or booking.guest_email
+            )
+
+            if recipient:
+                msg = EmailMultiAlternatives(
+                    subject=f"Your Ferry Booking Confirmed – ID {booking.id}",
+                    body=email_text,
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    to=[recipient]
+                )
+                # Attach HTML body
+                msg.attach_alternative(email_html, "text/html")
+
+                # Ensure HTML + inline images are grouped as multipart/related
+                msg.mixed_subtype = 'related'
+
+                # Attach QR codes as inline images with Content-ID
+                for ticket in tickets:
+                    b64 = qr_images.get(ticket.id)
+                    if b64:
+                        img_part = MIMEImage(base64.b64decode(b64), _subtype="png")
+                        img_part.add_header('Content-ID', f'<qr_{ticket.id}>')  # matches src="cid:qr_<id>"
+                        img_part.add_header('Content-Disposition', 'inline', filename=f'qr_{ticket.id}.png')
+                        msg.attach(img_part)
+
+                msg.send()
+                logger.info(f"Confirmation email with QR codes sent to {recipient}")
             else:
-                recipient = request.session.get('guest_email') or booking.guest_email
+                logger.warning("No recipient email found for booking confirmation")
 
-            send_mail(
-                subject=f"Your Ferry Booking Confirmation - ID {booking.id}",
-                message=email_text,  # plain text fallback
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[recipient] if recipient else [],
-                html_message=email_html,
-                fail_silently=True
-            )
-            logger.info(f"Confirmation email sent for booking {booking.id}")
         except Exception as e:
-            logger.error(f"Error sending confirmation email for booking {booking.id}: {str(e)}")
-            messages.warning(
-                request,
-                "Booking confirmed, but there was an issue sending the confirmation email. "
-                "Please check your email later or contact support."
-            )
+            logger.error(f"Error sending email for booking {booking.id}: {str(e)}")
+            messages.warning(request, "Booking confirmed, but email failed. Check your inbox later.")
 
-        # Cleanup session & redirect
-        messages.success(request, f'Booking #{booking.id} confirmed! Tickets have been generated and emailed.')
+        # Cleanup and redirect
+        messages.success(request, f'Booking #{booking.id} confirmed! Tickets generated and emailed.')
         request.session.pop('booking_id', None)
         request.session.pop('stripe_session_id', None)
         request.session.pop('guest_email', None)
@@ -2369,7 +2472,7 @@ def payment_success(request):
         return redirect('bookings:booking_history')
     except Exception as e:
         logger.error(f"Unexpected error for booking {booking_id}: {str(e)}")
-        messages.error(request, "An unexpected error occurred during payment processing. Please contact support.")
+        messages.error(request, "An unexpected error occurred. Please contact support.")
         return redirect('bookings:booking_history')
 
 
@@ -2411,90 +2514,65 @@ def payment_cancel(request):
     return redirect('bookings:booking_history')
 
 
-@login_required
+@require_POST
 def cancel_booking(request, booking_id):
-    # Get the booking first so we can give precise feedback instead of a 404
     booking = get_object_or_404(Booking, id=booking_id)
 
-    # Ownership/authorization check
-    if booking.user_id != request.user.id and not request.user.is_staff:
-        # Show a clear message to the user and avoid 404
-        messages.error(request, "You can only cancel your own bookings.")
-        logger.warning(
-            "User %s attempted to cancel booking %s not owned by them.",
-            request.user.id, booking_id
-        )
-        # For web flow, redirect with a message; for strict API, you could return HttpResponseForbidden
-        return redirect('bookings:booking_history')
+    # Authorization
+    if request.user.is_authenticated:
+        if booking.user != request.user:
+            return JsonResponse({'error': 'Unauthorized'}, status=403)
+    else:
+        if booking.guest_email != request.session.get('guest_email'):
+            return JsonResponse({'error': 'Unauthorized'}, status=403)
 
-    now = timezone.now()
-    cutoff = now + datetime.timedelta(hours=6)
+    if booking.status == 'cancelled':
+        return JsonResponse({'error': 'Booking already cancelled'}, status=400)
 
-    # Business rule messaging
-    if booking.status != 'confirmed':
-        messages.error(request, "Only confirmed bookings can be cancelled.")
-        return redirect('bookings:booking_history')
+    if booking.schedule.departure_time <= timezone.now() + datetime.timedelta(hours=6):
+        return JsonResponse({'error': 'Cannot cancel within 6 hours of departure'}, status=400)
 
-    if booking.schedule.departure_time <= cutoff:
-        # Be explicit why: departure too soon or already departed
-        if booking.schedule.departure_time <= now:
-            messages.error(request, "This trip has already departed and cannot be cancelled.")
-        else:
-            leave_in = booking.schedule.departure_time - now
-            minutes_left = max(0, int(leave_in.total_seconds() // 60))
-            messages.error(
-                request,
-                f"This booking cannot be cancelled within 6 hours of departure "
-                f"(only {minutes_left} minute(s) remaining)."
+    try:
+        with transaction.atomic():
+            # Get payment to retrieve exact amount paid
+            payment = Payment.objects.filter(booking=booking, payment_status='completed').first()
+            if not payment or not payment.payment_intent_id:
+                return JsonResponse({'error': 'No payment found'}, status=400)
+
+            # Use EXACT amount from Stripe (in cents)
+            session = stripe.checkout.Session.retrieve(
+                payment.session_id or booking.stripe_session_id,
+                expand=['payment_intent']
             )
-        return redirect('bookings:booking_history')
+            if not session.payment_intent:
+                return JsonResponse({'error': 'Payment intent not found'}, status=400)
 
-    if request.method == 'POST':
-        try:
-            # Process refund if we have a Stripe PaymentIntent
-            if booking.payment_intent_id:
-                refund = stripe.Refund.create(
-                    payment_intent=booking.payment_intent_id,
-                    amount=int(booking.total_price * 100)  # amount in cents
-                )
-                Payment.objects.create(
-                    booking=booking,
-                    payment_method='stripe',
-                    amount=-booking.total_price,
-                    payment_status='refunded',
-                    transaction_id=refund.id
-                )
+            amount_paid_cents = session.payment_intent.amount_received  # Exact amount in cents
 
-            # Update booking and related objects
+            # Create refund using EXACT amount
+            refund = stripe.Refund.create(
+                payment_intent=session.payment_intent.id,
+                amount=amount_paid_cents  # ← Critical: use exact amount
+            )
+
+            # Update booking & payment
             booking.status = 'cancelled'
-            booking.schedule.available_seats += (
-                booking.passenger_adults + booking.passenger_children + booking.passenger_infants
-            )
-            booking.schedule.save()
             booking.save()
 
-            # Mark tickets cancelled
-            for ticket in booking.tickets.all():
-                ticket.ticket_status = 'cancelled'
-                ticket.save()
+            payment.payment_status = 'refunded'
+            payment.refund_id = refund.id
+            payment.save()
 
-            messages.success(request, f"Booking #{booking.id} has been cancelled and refunded.")
-            return redirect('bookings:booking_history')
+            logger.info(f"Booking {booking.id} cancelled and refunded {amount_paid_cents} cents")
 
-        except stripe.error.StripeError as e:
-            logger.error(f"Refund error for booking {booking.id}: {str(e)}")
-            messages.error(request, f"Refund processing failed: {str(e)}. Please contact support.")
-            return redirect('bookings:booking_history')
-        except Exception as e:
-            logger.error(f"Unexpected error cancelling booking {booking.id}: {str(e)}")
-            messages.error(request, "An unexpected error occurred. Please contact support.")
-            return redirect('bookings:booking_history')
+        return JsonResponse({'message': 'Booking cancelled and refunded successfully'})
 
-    # GET -> show confirmation page
-    return render(request, 'bookings/cancel.html', {
-        'booking': booking,
-        'cutoff_time': cutoff
-    })
+    except stripe.error.StripeError as e:
+        logger.error(f"Refund error for booking {booking.id}: {e}")
+        return JsonResponse({'error': str(e.user_message or 'Refund failed')}, status=400)
+    except Exception as e:
+        logger.error(f"Unexpected error cancelling booking {booking.id}: {e}")
+        return JsonResponse({'error': 'An unexpected error occurred'}, status=500)
 
 
 @require_POST

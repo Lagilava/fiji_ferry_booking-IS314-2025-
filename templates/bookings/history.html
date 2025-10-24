@@ -237,7 +237,7 @@
     display: none;
     width: 16px;
     height: 16px;
-    border: 2px solid var(--border);
+    border: 2px solid variegated;
     border-top-color: var(--primary);
     border-radius: 50%;
     animation: spin 1s linear infinite;
@@ -262,11 +262,11 @@
         {% if bookings %}
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {% for booking in bookings %}
-                    <div class="booking-card vibrant" data-status="{{ booking.status|lower }}" data-aos="fade-up" data-aos-delay="{{ forloop.counter0|multiply:100 }}">
+                    <div class="booking-card vibrant" data-status="{{ booking.status|lower }}" data-aos="fade-up" data-aos-delay="{{ forloop.counter0|multiply:100 }}" data-booking-id="{{ booking.id }}">
                         <div class="text-lg font-bold mb-4" style="color: var(--text-primary);">Booking #{{ booking.id }}</div>
                         <div class="mb-4">
                             <h4 class="text-md font-semibold mb-2" style="color: var(--text-primary);">Trip Details</h4>
-                            <p style="color: var(--text-secondary);"><strong>{{ booking.schedule.route.departure_port }}</strong> → <strong>{{ booking.schedule.route.destination_port }}</strong></p>
+                            <p style="color: var(--text-secondary);"><strong>{{ booking.schedule.route.departure_port }}</strong> to <strong>{{ booking.schedule.route.destination_port }}</strong></p>
                             <p style="color: var(--text-secondary);">Ferry: {{ booking.schedule.ferry.name }}</p>
                             <p style="color: var(--text-secondary);">Departure: {{ booking.schedule.departure_time|date:"F d, Y H:i" }}</p>
                             <p style="color: var(--text-secondary);">Status: <span class="status-badge {{ booking.status|lower }}">{{ booking.status|capfirst }}</span> • FJD {{ booking.total_price|floatformat:2 }}</p>

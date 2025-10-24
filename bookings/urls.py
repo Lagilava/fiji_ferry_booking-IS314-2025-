@@ -20,6 +20,7 @@ urlpatterns = [
     path('modify/<int:booking_id>/', views.modify_booking, name='modify_booking'),
     path('cancel_booking/<int:booking_id>/', views.cancel_booking, name='cancel_booking'),
     path('api/bookings/', views.get_schedule_updates, name='get_schedule_updates'),
+    path('api/bookings/', views.api_bookings, name='api_bookings'),
     path('api/pricing/', views.get_pricing, name='api_pricing'),  # Updated: Consistent API path
     path('api/stripe_webhook/', views.stripe_webhook, name='stripe_webhook'),  # Updated: Moved to api/
     path('api/weather/stream/', views.weather_stream, name='weather_stream'),

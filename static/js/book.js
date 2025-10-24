@@ -3,6 +3,7 @@
  * Multi-step form with passenger management, validation, and Stripe integration
  * Enhanced with add-on display, improved summary styling, schedule freshness checks,
  * and real-time departure warnings (15-minute window).
+ * Now with FULL URL param support, auto-select schedule, scroll, and Quick Book sync
  */
 
 'use strict';
@@ -63,7 +64,7 @@ window.validationUtils = window.validationUtils || {
 
 // CRITICAL: Expose initializeBookingSystem globally FIRST
 window.initializeBookingSystem = function initializeBookingSystem() {
-    console.log('🚀 initializeBookingSystem called');
+    console.log('initializeBookingSystem called');
 
     // Prevent double initialization
     if (window.bookingSystemActive) {
@@ -84,7 +85,7 @@ window.initializeBookingSystem = function initializeBookingSystem() {
         window.urls.getActiveSchedules = '/bookings/api/bookings/';
     }
 
-    console.log('📍 URLs configured:', window.urls);
+    console.log('URLs configured:', window.urls);
 
     // DOM Elements
     const elements = {
@@ -111,11 +112,11 @@ window.initializeBookingSystem = function initializeBookingSystem() {
 
     // Validate core elements
     if (!elements.form) {
-        console.error('❌ Booking form not found');
+        console.error('Booking form not found');
         return false;
     }
 
-    console.log('✅ Core elements found');
+    console.log('Core elements found');
 
     // State management
     let appState = {
@@ -149,7 +150,7 @@ window.initializeBookingSystem = function initializeBookingSystem() {
                     dataObj.addOnsSelected = appState.formData.addOnsSelected;
                 }
                 sessionStorage.setItem('ferryBookingData', JSON.stringify(dataObj));
-                console.log('💾 Form data saved');
+                console.log('Form data saved');
             } catch (error) {
                 console.warn('Failed to save session data:', error);
             }
@@ -199,7 +200,7 @@ window.initializeBookingSystem = function initializeBookingSystem() {
             };
 
             try {
-                console.log(`🌐 API Request: ${endpoint}`);
+                console.log(`API Request: ${endpoint}`);
                 const response = await fetch(endpoint, defaults);
                 if (!response.ok) {
                     const errorText = await response.text();
@@ -528,7 +529,7 @@ window.initializeBookingSystem = function initializeBookingSystem() {
     }
 
     function updatePassengerFields() {
-        console.log('🔹 Updating passenger fields...');
+        console.log('Updating passenger fields...');
 
         appState.totalPassengers = {
             adults: Math.max(1, parseInt(elements.adultsInput?.value) || 1),
@@ -547,7 +548,7 @@ window.initializeBookingSystem = function initializeBookingSystem() {
         const countMap = { adult: 'adults', child: 'children', infant: 'infants' };
 
         if (!elements.passengerTemplate) {
-            console.error('❌ Passenger template not found');
+            console.error('Passenger template not found');
             return;
         }
 
@@ -597,7 +598,7 @@ window.initializeBookingSystem = function initializeBookingSystem() {
                     if (!header.querySelector('.toggle-icon')) {
                         const icon = document.createElement('span');
                         icon.className = 'toggle-icon';
-                        icon.textContent = '▼';
+                        icon.textContent = 'Down Arrow';
                         header.appendChild(icon);
                     }
                     header.classList.add('passenger-card-header');
@@ -623,7 +624,7 @@ window.initializeBookingSystem = function initializeBookingSystem() {
                 });
             }
 
-            console.log(`✅ ${type} fields generated and restored: ${container.children.length}`);
+            console.log(`${type} fields generated and restored: ${container.children.length}`);
         });
 
         setTimeout(() => {
@@ -661,7 +662,7 @@ window.initializeBookingSystem = function initializeBookingSystem() {
                 }
             });
 
-            console.log('✅ Linked adults populated');
+            console.log('Linked adults populated');
         }, 100);
 
         document.querySelectorAll('input[type="file"]').forEach(input => {
@@ -769,7 +770,7 @@ window.initializeBookingSystem = function initializeBookingSystem() {
             elements.submitBtn.classList.add('cta-button', 'cta-button-primary');
             elements.submitBtn.addEventListener('click', async (e) => {
                 e.preventDefault();
-                console.log('💳 Payment initiated');
+                console.log('Payment initiated');
 
                 if (!(await validateCurrentStep())) {
                     console.warn('Validation failed');
@@ -793,7 +794,7 @@ window.initializeBookingSystem = function initializeBookingSystem() {
                 try {
                     const formData = new FormData(elements.form);
                     const checkoutUrl = window.urls.createCheckoutSession || '/bookings/api/create_checkout_session/';
-                    console.log('🌐 Creating checkout session at:', checkoutUrl);
+                    console.log('Creating checkout session at:', checkoutUrl);
 
                     const response = await fetch(checkoutUrl, {
                         method: 'POST',
@@ -811,7 +812,7 @@ window.initializeBookingSystem = function initializeBookingSystem() {
                     }
 
                     const result = await response.json();
-                    console.log('✅ Checkout session created:', result);
+                    console.log('Checkout session created:', result);
 
                     if (result.sessionId) {
                         const { error } = await stripe.redirectToCheckout({
@@ -827,7 +828,7 @@ window.initializeBookingSystem = function initializeBookingSystem() {
                         validation.displayBackendErrors([{ field: 'general', message: errorMsg }]);
                     }
                 } catch (error) {
-                    console.error('💥 Payment error:', error);
+                    console.error('Payment error:', error);
                     validation.displayBackendErrors([{
                         field: 'general',
                         message: `Payment failed: ${error.message}`
@@ -877,7 +878,7 @@ window.initializeBookingSystem = function initializeBookingSystem() {
 
                 content.style.display = isExpanded ? 'none' : 'block';
                 if (icon) {
-                    icon.textContent = isExpanded ? '▶' : '▼';
+                    icon.textContent = isExpanded ? 'Right Arrow' : 'Down Arrow';
                 }
                 header.setAttribute('aria-expanded', !isExpanded);
             }
@@ -916,7 +917,7 @@ window.initializeBookingSystem = function initializeBookingSystem() {
             } else {
                 const fileInfo = document.createElement('div');
                 fileInfo.className = 'pdf-icon';
-                fileInfo.innerHTML = `📄 ${file.name} (${(file.size / 1024).toFixed(1)}KB)`;
+                fileInfo.innerHTML = `PDF ${file.name} (${(file.size / 1024).toFixed(1)}KB)`;
                 preview.appendChild(fileInfo);
             }
         }
@@ -969,7 +970,7 @@ window.initializeBookingSystem = function initializeBookingSystem() {
                     <!-- Schedule Information -->
                     ${scheduleInfo.departure_time || scheduleInfo.route ? `
                         <div class="summary-section mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200" data-aos="fade-up" data-aos-delay="100">
-                            <h4 class="font-semibold text-gray-800 mb-2">🚢 Trip Details</h4>
+                            <h4 class="font-semibold text-gray-800 mb-2">Trip Details</h4>
                             ${scheduleInfo.route ? `<div class="text-sm text-gray-600 mb-1">${scheduleInfo.route}</div>` : ''}
                             ${scheduleInfo.departure_time ? `<div class="text-lg font-medium">${scheduleInfo.departure_time}</div>` : ''}
                             ${scheduleInfo.return_time ? `<div class="text-sm text-gray-500">Return: ${scheduleInfo.return_time}</div>` : ''}
@@ -979,7 +980,7 @@ window.initializeBookingSystem = function initializeBookingSystem() {
                     <!-- Total Price Header -->
                     <div class="flex justify-between items-start mb-6" data-aos="fade-up" data-aos-delay="200">
                         <div>
-                            <h3 class="text-2xl font-bold text-gray-800 mb-1">📋 Booking Summary</h3>
+                            <h3 class="text-2xl font-bold text-gray-800 mb-1">Booking Summary</h3>
                             <p class="text-gray-600">Review your selection before payment</p>
                         </div>
                         <div class="text-right">
@@ -991,7 +992,7 @@ window.initializeBookingSystem = function initializeBookingSystem() {
                     <div class="space-y-6 mb-6">
                         <!-- Passengers -->
                         <div class="summary-section" data-aos="fade-up" data-aos-delay="300">
-                            <h4 class="font-semibold text-gray-800 mb-2">👥 Passengers</h4>
+                            <h4 class="font-semibold text-gray-800 mb-2">Passengers</h4>
                             <div class="space-y-3">
             `;
 
@@ -1019,7 +1020,7 @@ window.initializeBookingSystem = function initializeBookingSystem() {
                 const vehicleType = elements.form.querySelector('select[name="vehicle_type"]')?.value || 'Vehicle';
                 summaryHTML += `
                     <div class="summary-section" data-aos="fade-up" data-aos-delay="400">
-                        <h4 class="font-semibold text-gray-800 mb-2">🚗 Vehicle</h4>
+                        <h4 class="font-semibold text-gray-800 mb-2">Vehicle</h4>
                         <div class="summary-row">
                             <span class="summary-label">${vehicleType}</span>
                             <span class="summary-value">+ FJD ${parseFloat(breakdown.vehicle).toFixed(2)}</span>
@@ -1033,7 +1034,7 @@ window.initializeBookingSystem = function initializeBookingSystem() {
                 const cargoLabel = cargoWeight ? `Cargo (${cargoWeight}kg)` : 'Cargo';
                 summaryHTML += `
                     <div class="summary-section" data-aos="fade-up" data-aos-delay="500">
-                        <h4 class="font-semibold text-gray-800 mb-2">📦 Cargo</h4>
+                        <h4 class="font-semibold text-gray-800 mb-2">Cargo</h4>
                         <div class="summary-row">
                             <span class="summary-label">${cargoLabel}</span>
                             <span class="summary-value">+ FJD ${parseFloat(breakdown.cargo).toFixed(2)}</span>
@@ -1077,7 +1078,7 @@ window.initializeBookingSystem = function initializeBookingSystem() {
 
                 summaryHTML += `
                     <div class="summary-section addon-group" data-aos="fade-up" data-aos-delay="600">
-                        <h4 class="font-semibold text-gray-800 mb-2">🛎️ Add-ons</h4>
+                        <h4 class="font-semibold text-gray-800 mb-2">Add-ons</h4>
                         <div class="space-y-3">
                             ${addOns.map(a => `
                                 <div class="summary-row">
@@ -1140,11 +1141,11 @@ window.initializeBookingSystem = function initializeBookingSystem() {
                         </div>
                         <div class="text-center">
                             <p class="text-xs text-gray-500 mb-3">
-                                🔒 Secure payment via Stripe. Your information is encrypted and safe.
+                                Secure payment via Stripe. Your information is encrypted and safe.
                             </p>
                             ${response.payment_methods ? `
                                 <p class="text-xs text-gray-500">
-                                    💳 Accepts Visa, Mastercard, American Express
+                                    Accepts Visa, Mastercard, American Express
                                 </p>
                             ` : ''}
                         </div>
@@ -1177,7 +1178,19 @@ window.initializeBookingSystem = function initializeBookingSystem() {
 
     async function populateSchedules() {
         try {
-            const schedulesResponse = await utils.apiRequest(window.urls.getActiveSchedules || '/bookings/api/bookings/', { method: 'GET' });
+           // Build URL with current route/date from form or URL params
+            const scheduleUrl = new URL(window.urls.getActiveSchedules || '/bookings/api/bookings/', window.location.origin);
+            const currentRoute = elements.form.querySelector('[name="route"]')?.value?.trim();
+            const currentDate = elements.form.querySelector('[name="date"]')?.value;
+
+            if (currentRoute) {
+                scheduleUrl.searchParams.set('route', encodeURIComponent(currentRoute));
+            }
+            if (currentDate) {
+                scheduleUrl.searchParams.set('date', currentDate);
+            }
+
+            const schedulesResponse = await utils.apiRequest(scheduleUrl.toString(), { method: 'GET' });
             const schedules = schedulesResponse.schedules || [];
             if (!elements.scheduleSelect) {
                 console.error('Schedule select element not found');
@@ -1220,7 +1233,7 @@ window.initializeBookingSystem = function initializeBookingSystem() {
                     option.value = schedule.id;
 
                     // Improved display: Ferry - Route - Time (and return if available) - Seats
-                    let displayText = `🚢 ${schedule.ferry_name} - ${schedule.route} - Dep: ${new Date(schedule.departure_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
+                    let displayText = `Ferry ${schedule.ferry_name} - ${schedule.route} - Dep: ${new Date(schedule.departure_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
                     if (schedule.return_time) {
                         displayText += ` | Ret: ${new Date(schedule.return_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
                     }
@@ -1241,7 +1254,7 @@ window.initializeBookingSystem = function initializeBookingSystem() {
             // Set up notifier for restored selection
             await setupDepartureNotifierForSelectedSchedule();
 
-            console.log('✅ Active schedules populated and grouped:', schedules.length);
+            console.log('Active schedules populated and grouped:', schedules.length);
         } catch (error) {
             console.error('Error fetching active schedules:', error);
             if (elements.scheduleSelect) {
@@ -1251,29 +1264,76 @@ window.initializeBookingSystem = function initializeBookingSystem() {
         }
     }
 
+    // ---------------------------------------------------------------
+    // Helper: wait for an <option> to appear
+    // ---------------------------------------------------------------
+    function waitForOption(select, value, timeout = 3000) {
+        return new Promise((resolve, reject) => {
+            if (select.querySelector(`option[value="${value}"]`)) return resolve();
+            const start = Date.now();
+            const iv = setInterval(() => {
+                const opt = select.querySelector(`option[value="${value}"]`);
+                if (opt) { clearInterval(iv); resolve(); }
+                else if (Date.now() - start > timeout) { clearInterval(iv); reject(new Error(`Option ${value} not found`)); }
+            }, 50);
+        });
+    }
+
+    // ---------------------------------------------------------------
+    // Helper: safely select schedule + fire change
+    // ---------------------------------------------------------------
+    async function selectScheduleIfNeeded(select, scheduleId) {
+        if (!scheduleId || !select) return;
+        try { await waitForOption(select, scheduleId); }
+        catch (e) { console.warn(e.message); return; }
+        select.value = scheduleId;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    // ---------------------------------------------------------------
+    // init() – now async‑aware
+    // ---------------------------------------------------------------
     function init() {
-        console.log('🔧 Initializing booking system...');
+        console.log('Initializing booking system...');
 
         elements.form?.classList.add('booking-form-container');
         elements.form?.querySelectorAll('input:not([type="file"]), select, textarea').forEach(el => {
             el.classList.add('form-input', 'form-select');
         });
-        elements.form?.querySelectorAll('input[type="checkbox"]').forEach(el => {
-            const wrapper = el.closest('.form-checkbox') || el.parentElement;
-            wrapper?.classList.add('form-checkbox');
-        });
 
         utils.loadFromSession();
-        populateSchedules();
-        restoreFormData();
-        updatePassengerFields();
-        restoreFormData(); // original duplicate call preserved
-        // ensure add-ons stay captured right after restores
-        utils.saveAddOnsToState();
+
+        // === READ URL PARAMS ===
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlRoute      = urlParams.get('route');
+        const urlDate       = urlParams.get('date');
+        const urlPassengers = urlParams.get('passengers');
+        const urlScheduleId = urlParams.get('schedule_id');
+
+        if (urlRoute)      appState.formData.route = urlRoute;
+        if (urlDate)       appState.formData.date  = urlDate;
+        if (urlPassengers) appState.formData.passengers = urlPassengers;
+        if (urlScheduleId) appState.formData.schedule_id = urlScheduleId;
+
+        // -----------------------------------------------------------------
+        // 1. Load schedules → 2. restore → 3. select → 4. scroll
+        // -----------------------------------------------------------------
+        (async () => {
+            try {
+                await populateSchedules();               // <-- fills <select>
+                restoreFormData();                       // <-- restores schedule_id
+                updatePassengerFields();
+
+                await selectScheduleIfNeeded(elements.scheduleSelect, urlScheduleId);
+
+                if (urlRoute || urlDate || urlScheduleId) {
+                    setTimeout(() => elements.scheduleSelect?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 500);
+                }
+            } catch (e) { console.error('Schedule init error:', e); }
+        })();
+
         setupEventListeners();
         showStep(appState.currentStep);
-
-        console.log('✅ Booking system initialized');
     }
 
     if (document.readyState === 'loading') {

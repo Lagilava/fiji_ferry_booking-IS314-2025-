@@ -1,0 +1,198 @@
+.summary-card {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+    padding: 2.5rem;
+    margin: 1.5rem 0;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+    container-type: inline-size; /* Enable container queries for responsive internal layouts */
+
+    &::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0) 0%, rgba(240, 248, 255, 0.5) 100%);
+        opacity: 0.6;
+        pointer-events: none;
+    }
+
+    &:hover {
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+        transform: translateY(-4px);
+    }
+
+    /* Use :has() for conditional styling, e.g., if card has add-ons */
+    &:has(.addon-group) {
+        border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+    }
+}
+
+.summary-section {
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    border-radius: 8px;
+    background: rgba(248, 250, 252, 0.8);
+    transition: background 0.3s ease;
+
+    & h4 {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 1.25rem;
+        color: #2d3748;
+    }
+}
+
+.addon-group {
+    background: rgba(237, 242, 247, 0.9);
+    border: 1px solid #e2e8f0;
+    padding: 1.25rem;
+}
+
+.summary-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 1.25rem;
+    padding: 0.75rem 0.5rem;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    transition: background 0.2s ease, transform 0.2s ease;
+
+    &:hover {
+        background: rgba(237, 242, 247, 0.9);
+        border-radius: 6px;
+        transform: translateX(2px);
+    }
+}
+
+.summary-label {
+    font-weight: 600;
+    color: #4a5568;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.summary-value {
+    text-align: right;
+    color: #2d3748;
+    font-weight: 500;
+
+    &::before {
+        content: '+';
+        color: #48bb78;
+        margin-right: 0.25rem;
+        display: inline-block;
+        opacity: 0.9;
+    }
+}
+
+/* Total Section with color-mix for dynamic gradients */
+.summary-card .border-t {
+    border-top: 2px solid #e2e8f0;
+    margin-top: 2rem;
+    padding-top: 2rem;
+    background: linear-gradient(to right, color-mix(in srgb, #ebf8ff 80%, #e6fffa), #e6fffa);
+    border-radius: 10px;
+    box-shadow: inset 0 2px 12px rgba(0, 0, 0, 0.03);
+}
+
+/* Animation with @starting-style for smoother initial render (CSS Animations Level 2) */
+@starting-style {
+    .text-3xl {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+}
+
+.text-3xl {
+    animation: fadeInUp 0.5s ease-out;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Container Queries for Responsive Design (replaces some media queries) */
+@container (max-width: 640px) {
+    .summary-card {
+        padding: 1.5rem;
+    }
+
+    .summary-section {
+        padding: 0.75rem;
+
+        & h4 {
+            font-size: 1.1rem;
+        }
+    }
+
+    .summary-row {
+        grid-template-columns: 1fr;
+        text-align: center;
+        gap: 0.5rem;
+    }
+
+    .summary-value {
+        text-align: center;
+        font-size: 1rem;
+    }
+
+    .addon-group {
+        padding: 1rem;
+    }
+}
+
+/* Dark Mode with light-dark() for adaptive colors (CSS Color Level 5) */
+@media (prefers-color-scheme: dark) {
+    .summary-card {
+        background: light-dark(#ffffff, #1a202c);
+        color: light-dark(#2d3748, #e2e8f0);
+    }
+
+    .summary-section {
+        background: light-dark(rgba(248, 250, 252, 0.8), #2d3748);
+    }
+
+    .addon-group {
+        background: light-dark(rgba(237, 242, 247, 0.9), #2a4365);
+        border-color: light-dark(#e2e8f0, #4a5568);
+    }
+
+    .summary-label {
+        color: light-dark(#4a5568, #a0aec0);
+    }
+
+    .summary-value {
+        color: light-dark(#2d3748, #e2e8f0);
+
+        &::before {
+            color: light-dark(#48bb78, #68d391);
+        }
+    }
+
+    .summary-card .border-t {
+        border-top-color: light-dark(#e2e8f0, #4a5568);
+        background: linear-gradient(to right, light-dark(#ebf8ff, #2a4365), light-dark(#e6fffa, #234e52));
+    }
+
+    .summary-section h4 {
+        color: light-dark(#2d3748, #e2e8f0);
+    }
+}
+
+/* Additional advanced technique: Trigonometric functions in calc() for dynamic padding */
+.summary-card {
+    padding: calc(2.5rem + sin(45deg) * 1rem); /* Example usage; adjust as needed for subtle effects */
+}

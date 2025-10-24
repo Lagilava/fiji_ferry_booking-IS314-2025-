@@ -68,7 +68,7 @@
                         {% for schedule in schedules %}
                             <option value="{{ schedule.id }}"
                                     {% if form_data.schedule_id == schedule.id|stringformat:"s" %}selected{% endif %}>
-                                {{ schedule.route.departure_port.name }} → {{ schedule.route.destination_port.name }}
+                                {{ schedule.route.departure_port.name }} to {{ schedule.route.destination_port.name }}
                                 - {{ schedule.departure_time|date:"M d, Y H:i" }} ({{ schedule.available_seats }} seats)
                             </option>
                         {% empty %}
@@ -136,7 +136,7 @@
                     <div class="passenger-card p-4 border rounded-lg">
                         <button type="button" class="passenger-header flex justify-between w-full text-left mb-3" aria-expanded="true">
                             <span class="passenger-title font-medium">{type} Passenger #{index}</span>
-                            <span class="toggle-icon">▼</span>
+                            <span class="toggle-icon">Down Arrow</span>
                         </button>
                         <div class="passenger-content">
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -386,7 +386,7 @@
             {% endfor %}
         ];
         const bookingConfig = {
-            stripeEnabled: {{ stripe_enabled|yesno:"true,false" }},
+            stripeEnabled: {{ stripe_enabled|yesno:"true,false"|lower }},
             validationEnabled: true,
             formExists: true,
             userAuthenticated: isAuthenticated,
@@ -415,20 +415,20 @@
         window.bookingFormData = formData;
         window.csrfToken = csrfToken;
 
-        console.log('✅ Global booking config loaded:', {
+        console.log('Global booking config loaded:', {
             urls: window.urls,
             config: bookingConfig
         });
 
     } catch (err) {
-        console.error('❌ Global config setup failed:', err);
+        console.error('Global config setup failed:', err);
         // Fallback URLs
         window.urls = window.urls || {
             getPricing: '/bookings/api/pricing/',
             createCheckoutSession: '/bookings/api/create_checkout_session/',
             getActiveSchedules: '/bookings/api/bookings/'
         };
-        console.log('🔧 Using fallback URLs:', window.urls);
+        console.log('Using fallback URLs:', window.urls);
     }
 })();
 </script>
@@ -518,7 +518,7 @@ window.isAuthenticated = {% if user.is_authenticated %}true{% else %}false{% end
     }
 
     // Backup trigger
-    window.addEventListener('load', initializeBookingSystemSafe);
+<!--    window.addEventListener('load', initializeBookingSystemSafe);-->
 })();
 </script>
 {% endblock %}
