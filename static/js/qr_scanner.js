@@ -1,3 +1,4 @@
+// qr_scanner.js
 document.addEventListener('DOMContentLoaded', function() {
     // Reuse theme colors from admin_custom.css
     const theme = window.colors ? window.colors[window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'] : {
@@ -542,10 +543,11 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function updateRecentBookingsTable() {
-        fetch('/admin/analytics-data/?chart_type=recent_bookings', {
+        fetch(`/admin/analytics-data/?chart_type=recent_bookings&_=${Date.now()}`, {
             headers: {
                 'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRFToken': getCookie('csrftoken')
+                'X-CSRFToken': getCookie('csrftoken'),
+                'Cache-Control': 'no-cache, no-store, must-revalidate'
             }
         })
         .then(response => {

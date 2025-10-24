@@ -19,22 +19,22 @@
             <!-- Username -->
             <div class="space-y-2">
                 <h2 class="text-lg font-semibold text-gray-700 uppercase tracking-wide">Username</h2>
-                <p class="text-gray-900 text-base">{{ user.username }}</p>
+                <p class="text-gray-900 text-base">{{ user.username|default:"—" }}</p>
             </div>
             <!-- Email -->
             <div class="space-y-2">
                 <h2 class="text-lg font-semibold text-gray-700 uppercase tracking-wide">Email Address</h2>
-                <p class="text-gray-900 text-base">{{ user.email }}</p>
+                <p class="text-gray-900 text-base">{{ user.email|default:"—" }}</p>
             </div>
             <!-- First Name -->
             <div class="space-y-2">
                 <h2 class="text-lg font-semibold text-gray-700 uppercase tracking-wide">First Name</h2>
-                <p class="text-gray-900 text-base">{{ user.first_name }}</p>
+                <p class="text-gray-900 text-base">{{ user.first_name|default:"—" }}</p>
             </div>
             <!-- Last Name -->
             <div class="space-y-2">
                 <h2 class="text-lg font-semibold text-gray-700 uppercase tracking-wide">Last Name</h2>
-                <p class="text-gray-900 text-base">{{ user.last_name }}</p>
+                <p class="text-gray-900 text-base">{{ user.last_name|default:"—" }}</p>
             </div>
         </div>
 
@@ -56,23 +56,33 @@
         <p class="text-gray-800 text-lg sm:text-xl mb-6">
             You are not currently logged in.
         </p>
-        <a href="{% url 'login' %}"
+        <a href="{% url 'accounts:login' %}"
            class="text-indigo-600 font-medium text-lg underline hover:text-indigo-800 transition duration-300">
            Please login to view your profile.
         </a>
     </div>
     {% endif %}
 </div>
+
 <style>
     .book-btn {
-    background: var(--gradient-primary);
-    position: relative;
-    overflow: hidden;
-    isolation: isolate;
-    color: #e0e0e0;
-}
+        background: var(--gradient-primary);
+        position: relative;
+        overflow: hidden;
+        isolation: isolate;
+        color: #e0e0e0;
+    }
     .card-style {
-    background: rgba(226, 226, 226, 0.6);
+        background: rgba(226, 226, 226, 0.6);
+    }
+    /* Optional: dark-mode tweak if your site supports data-theme="dark" */
+    [data-theme="dark"] .card-style {
+        background: rgba(24, 24, 27, 0.6);
+        border-color: #334155;
+    }
+    .text-gray-900 {
+        --tw-text-opacity: 1;
+        color: #db87b9;
     }
 </style>
 {% endblock %}

@@ -16,6 +16,7 @@ urlpatterns = [
     path('process_payment/<int:booking_id>/', views.process_payment, name='process_payment'),
     path('success/', views.payment_success, name='success'),
     path('cancel/', views.payment_cancel, name='cancel'),
+    path('cancel/<int:booking_id>/', views.cancel_booking, name='cancel_legacy'),
     path('modify/<int:booking_id>/', views.modify_booking, name='modify_booking'),
     path('cancel_booking/<int:booking_id>/', views.cancel_booking, name='cancel_booking'),
     path('api/bookings/', views.get_schedule_updates, name='get_schedule_updates'),

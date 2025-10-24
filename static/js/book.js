@@ -1,7 +1,8 @@
 /**
  * book.js - Complete Fiji Ferry Booking System
  * Multi-step form with passenger management, validation, and Stripe integration
- * CSS-aligned while preserving ALL original working logic
+ * Enhanced with add-on display, improved summary styling, schedule freshness checks,
+ * and real-time departure warnings (15-minute window).
  */
 
 'use strict';
@@ -45,14 +46,11 @@ window.validationUtils = window.validationUtils || {
         if (spinner) spinner.style.display = loading ? 'inline-block' : 'none';
     },
     validateStep: async (step, formData) => {
-        // Fallback validation - replace with actual API call
         return { valid: true, errors: [] };
     },
     validateFile: async (file) => {
-        // Basic file validation
         const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
         const maxSize = 2.5 * 1024 * 1024; // 2.5MB
-
         if (!allowedTypes.includes(file.type)) {
             return { valid: false, error: 'Invalid file type. Please upload PDF, JPG, or PNG.' };
         }
@@ -82,14 +80,17 @@ window.initializeBookingSystem = function initializeBookingSystem() {
     if (!window.urls.getPricing) {
         window.urls.getPricing = '/bookings/api/pricing/';
     }
+    if (!window.urls.getActiveSchedules) {
+        window.urls.getActiveSchedules = '/bookings/api/bookings/';
+    }
 
     console.log('📍 URLs configured:', window.urls);
 
-    // DOM Elements - Added CSS-compatible elements while keeping originals
+    // DOM Elements
     const elements = {
         form: document.getElementById('booking-form'),
         stepsContainer: document.querySelector('.steps'),
-        progressBar: document.getElementById('progress-bar'), // Container for CSS
+        progressBar: document.getElementById('progress-bar'),
         progressBarFill: document.getElementById('progress-bar-fill'),
         scheduleSelect: document.getElementById('schedule_id'),
         guestEmail: document.getElementById('guest_email'),
@@ -121,13 +122,21 @@ window.initializeBookingSystem = function initializeBookingSystem() {
         currentStep: parseInt(elements.currentStepInput?.value) || 1,
         totalPassengers: { adults: 1, children: 0, infants: 0 },
         formData: window.bookingConfig.formData || {},
-        isSubmitting: false
+        isSubmitting: false,
+        activeSchedulesMap: {}, // id -> schedule
+        // Departure warning timers/ids
+        departureWarn: {
+            thresholdMs: 15 * 60 * 1000, // 15 minutes
+            preWarnTimeoutId: null,
+            countdownIntervalId: null,
+            currentScheduleId: null
+        }
     };
 
     // Validation utilities
     const validation = window.validationUtils;
 
-    // === UTILITY FUNCTIONS ===
+    // Utility Functions
     const utils = {
         saveToSession() {
             try {
@@ -135,6 +144,10 @@ window.initializeBookingSystem = function initializeBookingSystem() {
                 const dataObj = Object.fromEntries(formData);
                 dataObj.step = appState.currentStep;
                 dataObj.timestamp = Date.now();
+                // also persist add-ons selections if present
+                if (appState.formData?.addOnsSelected) {
+                    dataObj.addOnsSelected = appState.formData.addOnsSelected;
+                }
                 sessionStorage.setItem('ferryBookingData', JSON.stringify(dataObj));
                 console.log('💾 Form data saved');
             } catch (error) {
@@ -159,7 +172,6 @@ window.initializeBookingSystem = function initializeBookingSystem() {
             if (elements.progressBarFill) {
                 const percentage = (step / 4) * 100;
                 elements.progressBarFill.style.width = `${percentage}%`;
-                // Add CSS step-specific fill class
                 elements.progressBarFill.classList.remove('step-1-fill', 'step-2-fill', 'step-3-fill', 'step-4-fill');
                 elements.progressBarFill.classList.add(`step-${step}-fill`);
             }
@@ -207,8 +219,261 @@ window.initializeBookingSystem = function initializeBookingSystem() {
                 clearTimeout(timeout);
                 timeout = setTimeout(() => fn.apply(this, args), delay);
             };
+        },
+
+        /** ----------------- ADDONS PERSISTENCE HELPERS ----------------- */
+
+        /**
+         * Collect add-on selections from the DOM.
+         * Recognizes inputs ending with "_quantity" or elements marked with [data-addon].
+         * Attempts to read label and unit price from nearby DOM or data-attributes.
+         */
+        collectAddOnsSelected() {
+            const entries = [];
+            const qInputs = elements.form.querySelectorAll(
+                'input[name$="_quantity"], select[name$="_quantity"], [data-addon]'
+            );
+
+            qInputs.forEach(input => {
+                const isDataset = input.hasAttribute('data-addon');
+                const name = isDataset ? input.getAttribute('data-addon') : input.name;
+                if (!name) return;
+
+                const quantityVal = isDataset ? input.getAttribute('data-quantity') : input.value;
+                const qty = parseInt((quantityVal || '0'), 10);
+                if (!Number.isFinite(qty) || qty <= 0) return;
+
+                const root = input.closest('[data-addon-root]') || input.closest('.addon-row') || input.parentElement;
+                const label =
+                    (root?.querySelector('[data-addon-label]')?.textContent ||
+                     input.getAttribute('data-addon-label') ||
+                     name).trim();
+
+                const unitStr =
+                    root?.querySelector('[data-addon-price]')?.textContent ||
+                    input.getAttribute('data-addon-price') ||
+                    input.dataset?.price ||
+                    '';
+
+                const parsedUnit = Number.parseFloat((String(unitStr).match(/[\d.]+/) || [0])[0]) || 0;
+
+                entries.push({
+                    id: name.replace(/_quantity$/, ''),
+                    label,
+                    quantity: qty,
+                    unitPrice: parsedUnit,
+                    amount: (qty * parsedUnit)
+                });
+            });
+
+            return entries;
+        },
+
+        /**
+         * Save collected add-ons into appState and sessionStorage
+         * to survive navigation and reloads.
+         */
+        saveAddOnsToState() {
+            const selected = utils.collectAddOnsSelected();
+            appState.formData = appState.formData || {};
+            appState.formData.addOnsSelected = selected;
+
+            const current = JSON.parse(sessionStorage.getItem('ferryBookingData') || '{}');
+            current.addOnsSelected = selected;
+            sessionStorage.setItem('ferryBookingData', JSON.stringify(current));
+
+            return selected;
         }
+        /** -------------------------------------------------------------- */
     };
+
+    /* ====================== SCHEDULE FRESHNESS & WARNINGS ===================== */
+
+    function ensureWarningContainers() {
+        const select = elements.scheduleSelect;
+        if (!select) return { expired: null, warning: null };
+
+        let expiredNote = document.getElementById('schedule-expired-note');
+        if (!expiredNote) {
+            expiredNote = document.createElement('div');
+            expiredNote.id = 'schedule-expired-note';
+            expiredNote.style.display = 'none';
+            expiredNote.className = 'mt-2 p-3 rounded border border-red-200 bg-red-50 text-red-700 text-sm';
+            select.parentElement.appendChild(expiredNote);
+        }
+
+        let warningNote = document.getElementById('schedule-warning-note');
+        if (!warningNote) {
+            warningNote = document.createElement('div');
+            warningNote.id = 'schedule-warning-note';
+            warningNote.style.display = 'none';
+            warningNote.className = 'mt-2 p-3 rounded border border-amber-200 bg-amber-50 text-amber-800 text-sm';
+            select.parentElement.appendChild(warningNote);
+        }
+
+        return { expired: expiredNote, warning: warningNote };
+    }
+
+    function showExpiredScheduleNotice(msg = 'This departure is no longer available. Please choose another schedule.') {
+        const { expired } = ensureWarningContainers();
+        if (!expired) return;
+        expired.textContent = msg;
+        expired.style.display = 'block';
+
+        // Also surface via your existing error renderer
+        window.validationUtils?.displayBackendErrors?.([
+            { field: 'general', message: msg }
+        ]);
+    }
+
+    function clearExpiredScheduleNotice() {
+        const expired = document.getElementById('schedule-expired-note');
+        if (expired) {
+            expired.style.display = 'none';
+            expired.textContent = '';
+        }
+    }
+
+    function showDepartureWarningBanner(remainingMs) {
+        const { warning } = ensureWarningContainers();
+        if (!warning) return;
+
+        const mins = Math.max(0, Math.floor(remainingMs / 60000));
+        const secs = Math.max(0, Math.floor((remainingMs % 60000) / 1000));
+        warning.innerHTML = `
+            <strong>Heads up:</strong> This departure leaves in <strong>${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}</strong>.
+            Please complete your booking soon.
+        `;
+        warning.style.display = 'block';
+    }
+
+    function clearDepartureWarningBanner() {
+        const warning = document.getElementById('schedule-warning-note');
+        if (warning) {
+            warning.style.display = 'none';
+            warning.textContent = '';
+        }
+    }
+
+    function clearDepartureTimers() {
+        if (appState.departureWarn.preWarnTimeoutId) {
+            clearTimeout(appState.departureWarn.preWarnTimeoutId);
+            appState.departureWarn.preWarnTimeoutId = null;
+        }
+        if (appState.departureWarn.countdownIntervalId) {
+            clearInterval(appState.departureWarn.countdownIntervalId);
+            appState.departureWarn.countdownIntervalId = null;
+        }
+    }
+
+    async function refreshActiveSchedulesIfNeeded() {
+        try {
+            const res = await utils.apiRequest(window.urls.getActiveSchedules || '/bookings/api/bookings/', { method: 'GET' });
+            const list = res.schedules || [];
+            appState.activeSchedulesMap = {};
+            list.forEach(s => { appState.activeSchedulesMap[String(s.id)] = s; });
+            return list;
+        } catch(e) {
+            console.warn('Could not refresh schedules:', e);
+            return null;
+        }
+    }
+
+    /**
+     * Validate the selected schedule is still valid & in the future.
+     * Returns true if OK, false if invalid/expired (and informs the user).
+     */
+    async function ensureSelectedScheduleIsFresh() {
+        const select = elements.scheduleSelect;
+        const selectedId = select?.value;
+        if (!selectedId) return false;
+
+        // Local cache check
+        let s = appState.activeSchedulesMap[String(selectedId)];
+        if (!s) {
+            await refreshActiveSchedulesIfNeeded();
+            s = appState.activeSchedulesMap[String(selectedId)];
+        }
+        if (!s) {
+            showExpiredScheduleNotice('This departure is no longer available. Please choose another schedule.');
+            return false;
+        }
+
+        // Status + time check
+        const now = Date.now();
+        const depMs = new Date(s.departure_time).getTime();
+        if ((s.status && s.status !== 'scheduled') || isNaN(depMs) || depMs <= now) {
+            showExpiredScheduleNotice('This departure has already left. Please choose another schedule.');
+            return false;
+        }
+
+        // If previously shown, clear the banner
+        clearExpiredScheduleNotice();
+        return true;
+    }
+
+    /**
+     * Set up a timed warning that starts at 15 minutes before departure.
+     * - If already within 15 minutes, show live countdown immediately.
+     * - If more than 15 minutes away, schedule a timeout to show banner at T-15.
+     * - Clears and resets when schedule changes.
+     */
+    async function setupDepartureNotifierForSelectedSchedule() {
+        clearDepartureTimers();
+        clearDepartureWarningBanner();
+
+        const select = elements.scheduleSelect;
+        if (!select || !select.value) return;
+
+        // Make sure we have the schedule data
+        let s = appState.activeSchedulesMap[String(select.value)];
+        if (!s) {
+            await refreshActiveSchedulesIfNeeded();
+            s = appState.activeSchedulesMap[String(select.value)];
+            if (!s) return; // nothing to do
+        }
+
+        appState.departureWarn.currentScheduleId = String(select.value);
+
+        const now = Date.now();
+        const depMs = new Date(s.departure_time).getTime();
+        if (isNaN(depMs)) return;
+
+        const delta = depMs - now;
+
+        // If already past, trigger expired handling
+        if (delta <= 0) {
+            showExpiredScheduleNotice('This departure has already left. Please choose another schedule.');
+            return;
+        }
+
+        // If within threshold, start countdown immediately
+        if (delta <= appState.departureWarn.thresholdMs) {
+            showDepartureWarningBanner(delta);
+            appState.departureWarn.countdownIntervalId = setInterval(() => {
+                const remaining = depMs - Date.now();
+                if (remaining <= 0) {
+                    clearDepartureTimers();
+                    showExpiredScheduleNotice('This departure has already left. Please choose another schedule.');
+                    clearDepartureWarningBanner();
+                } else {
+                    showDepartureWarningBanner(remaining);
+                }
+            }, 1000);
+            return;
+        }
+
+        // If more than threshold away, schedule a pre-warn timeout
+        const wait = delta - appState.departureWarn.thresholdMs;
+        appState.departureWarn.preWarnTimeoutId = setTimeout(() => {
+            // Only warn if user still has the same schedule selected
+            if (elements.scheduleSelect?.value === appState.departureWarn.currentScheduleId) {
+                setupDepartureNotifierForSelectedSchedule();
+            }
+        }, wait);
+    }
+
+    /* ====================== END SCHEDULE FRESHNESS & WARNINGS ================== */
 
     function restoreFormData() {
         Object.entries(appState.formData).forEach(([key, value]) => {
@@ -227,12 +492,14 @@ window.initializeBookingSystem = function initializeBookingSystem() {
                 }
             }
         });
+
+        // ensure add-ons in form are captured right after restoration
+        utils.saveAddOnsToState();
     }
 
     function showStep(stepNumber) {
         appState.currentStep = Math.max(1, Math.min(4, stepNumber));
 
-        // ORIGINAL LOGIC PRESERVED - toggle active class and display
         document.querySelectorAll('.form-step').forEach((stepEl, index) => {
             const stepIndex = index + 1;
             stepEl.classList.toggle('active', stepIndex === appState.currentStep);
@@ -291,19 +558,16 @@ window.initializeBookingSystem = function initializeBookingSystem() {
 
             if (!container) return;
 
-            // Store current values before clearing
             const currentValues = {};
             container.querySelectorAll('input, select, textarea').forEach(field => {
                 currentValues[field.name] = field.value;
             });
 
-            // Clear existing fields
             container.innerHTML = '';
 
             for (let i = 0; i < count; i++) {
                 const clone = elements.passengerTemplate.content.cloneNode(true);
 
-                // Replace placeholders in id, name, for attributes - ORIGINAL LOGIC
                 clone.querySelectorAll('[id], [name], [for]').forEach(el => {
                     ['id', 'name', 'for'].forEach(attr => {
                         const val = el.getAttribute(attr);
@@ -313,11 +577,9 @@ window.initializeBookingSystem = function initializeBookingSystem() {
                     });
                 });
 
-                // Update passenger title - ORIGINAL LOGIC
                 const title = clone.querySelector('.passenger-title');
                 if (title) title.textContent = `${type.charAt(0).toUpperCase() + type.slice(1)} ${i + 1}`;
 
-                // Show/hide sections based on type - ORIGINAL LOGIC
                 const ageSection = clone.querySelector('[data-for="non-infant"]');
                 const dobSection = clone.querySelector('[data-for="infant"]');
                 const linkedSection = clone.querySelector('[data-for="child-infant"]');
@@ -326,37 +588,29 @@ window.initializeBookingSystem = function initializeBookingSystem() {
                 if (dobSection) dobSection.style.display = type === 'infant' ? 'block' : 'none';
                 if (linkedSection) linkedSection.style.display = type !== 'adult' ? 'block' : 'none';
 
-                // Make sure content is visible - ORIGINAL LOGIC
                 const content = clone.querySelector('.passenger-content');
                 if (content) content.style.display = 'block';
 
-                // Header aria-expanded - ORIGINAL LOGIC with CSS enhancement
                 const header = clone.querySelector('.passenger-header, .passenger-card-header');
                 if (header) {
                     header.setAttribute('aria-expanded', 'true');
-                    // Add CSS toggle icon if missing
                     if (!header.querySelector('.toggle-icon')) {
                         const icon = document.createElement('span');
                         icon.className = 'toggle-icon';
                         icon.textContent = '▼';
                         header.appendChild(icon);
                     }
-                    // Ensure CSS passenger card header styling
                     header.classList.add('passenger-card-header');
                 }
 
-                // Apply CSS classes for styling - CSS ENHANCEMENT ONLY
                 const passengerCard = clone.querySelector('.passenger-card') || clone;
                 passengerCard.classList.add('passenger-card');
 
-                // Append to container
                 container.appendChild(clone);
 
-                // **CRITICAL FIX: Restore saved values to new fields** - ORIGINAL LOGIC
                 const newFields = container.querySelectorAll(`input[name*="${type}_${i}"], select[name*="${type}_${i}"]`);
                 newFields.forEach(field => {
                     const fieldName = field.getAttribute('name');
-                    // Restore from sessionStorage data
                     if (appState.formData[fieldName] !== undefined) {
                         if (field.type === 'checkbox') {
                             field.checked = appState.formData[fieldName] === 'on' || appState.formData[fieldName] === true;
@@ -364,7 +618,6 @@ window.initializeBookingSystem = function initializeBookingSystem() {
                             field.value = appState.formData[fieldName];
                         }
                     } else if (currentValues[fieldName] !== undefined) {
-                        // Fallback to previously entered values
                         field.value = currentValues[fieldName];
                     }
                 });
@@ -373,7 +626,6 @@ window.initializeBookingSystem = function initializeBookingSystem() {
             console.log(`✅ ${type} fields generated and restored: ${container.children.length}`);
         });
 
-        // Populate linked adults AFTER fields are restored - ORIGINAL LOGIC
         setTimeout(() => {
             const adults = [];
             document.querySelectorAll('#adult-fields .passenger-card').forEach((card, index) => {
@@ -393,10 +645,8 @@ window.initializeBookingSystem = function initializeBookingSystem() {
                     const select = document.querySelector(`select[name="${type}_linked_adult_${i}"]`);
                     if (!select) continue;
 
-                    // Clear existing options
                     select.innerHTML = '<option value="">Select adult passenger</option>';
 
-                    // Add adult options
                     adults.forEach(adult => {
                         const option = document.createElement('option');
                         option.value = adult.index;
@@ -404,7 +654,6 @@ window.initializeBookingSystem = function initializeBookingSystem() {
                         select.appendChild(option);
                     });
 
-                    // Restore saved linked adult value
                     const savedKey = `${type}_linked_adult_${i}`;
                     if (appState.formData[savedKey] !== undefined) {
                         select.value = appState.formData[savedKey];
@@ -415,18 +664,17 @@ window.initializeBookingSystem = function initializeBookingSystem() {
             console.log('✅ Linked adults populated');
         }, 100);
 
-        // Reattach file input listeners - ORIGINAL LOGIC
         document.querySelectorAll('input[type="file"]').forEach(input => {
             input.removeEventListener('change', handleFileChange);
             input.addEventListener('change', (e) => handleFileChange(e.target));
         });
 
-        // Save updated state
         utils.saveToSession();
+        // keep add-ons state in sync after any passenger UI rebuild
+        utils.saveAddOnsToState();
     }
 
     async function validateCurrentStep() {
-        // ORIGINAL VALIDATION LOGIC with CSS busy state
         const activeStep = document.querySelector('.form-step.active');
         if (activeStep) activeStep.setAttribute('aria-busy', 'true');
 
@@ -438,13 +686,29 @@ window.initializeBookingSystem = function initializeBookingSystem() {
                 headers: { 'X-CSRFToken': utils.getCsrfToken() }
             });
             const result = await response.json();
+
+            // --- Normalize server error shapes to [{ field, message }] ---
+            if (!result.valid && result.errors && !Array.isArray(result.errors)) {
+                const normalized = [];
+                for (const [field, val] of Object.entries(result.errors)) {
+                    if (Array.isArray(val)) {
+                        val.forEach(msg => normalized.push({ field, message: String(msg) }));
+                    } else if (val && typeof val === 'object') {
+                        Object.values(val).forEach(msg => normalized.push({ field, message: String(msg) }));
+                    } else {
+                        normalized.push({ field, message: String(val || 'Invalid') });
+                    }
+                }
+                result.errors = normalized;
+            }
+            // ----------------------------------------------------------------
+
             if (!result.valid) {
                 validation.displayBackendErrors(result.errors);
                 return false;
             }
         } catch (error) {
             console.warn('Validation failed:', error);
-            // Fallback to client-side validation
         } finally {
             if (activeStep) activeStep.setAttribute('aria-busy', 'false');
         }
@@ -452,9 +716,7 @@ window.initializeBookingSystem = function initializeBookingSystem() {
     }
 
     function setupEventListeners() {
-        // Navigation - ORIGINAL LOGIC with CSS classes
         document.querySelectorAll('.next-step').forEach(btn => {
-            // Add CSS classes for styling
             btn.classList.add('cta-button', 'cta-button-primary');
             btn.addEventListener('click', async (e) => {
                 e.preventDefault();
@@ -470,7 +732,6 @@ window.initializeBookingSystem = function initializeBookingSystem() {
         });
 
         document.querySelectorAll('.prev-step').forEach(btn => {
-            // Add CSS classes for styling
             btn.classList.add('cta-button', 'cta-button-secondary');
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
@@ -479,18 +740,16 @@ window.initializeBookingSystem = function initializeBookingSystem() {
             });
         });
 
-        // Passenger counters - ORIGINAL LOGIC
         [elements.adultsInput, elements.childrenInput, elements.infantsInput].forEach(input => {
             if (input) {
-                input.classList.add('form-input'); // CSS enhancement
+                input.classList.add('form-input');
                 input.addEventListener('change', utils.debounce(updatePassengerFields, 300));
             }
         });
 
-        // Optional fields toggle - ORIGINAL LOGIC
         if (elements.vehicleCheckbox) {
             const wrapper = elements.vehicleCheckbox.closest('.form-group') || elements.vehicleCheckbox.parentElement;
-            wrapper?.classList.add('form-checkbox'); // CSS enhancement
+            wrapper?.classList.add('form-checkbox');
             elements.vehicleCheckbox.addEventListener('change', () => {
                 elements.vehicleFields?.classList.toggle('hidden', !elements.vehicleCheckbox.checked);
                 utils.saveToSession();
@@ -499,16 +758,15 @@ window.initializeBookingSystem = function initializeBookingSystem() {
 
         if (elements.cargoCheckbox) {
             const wrapper = elements.cargoCheckbox.closest('.form-group') || elements.cargoCheckbox.parentElement;
-            wrapper?.classList.add('form-checkbox'); // CSS enhancement
+            wrapper?.classList.add('form-checkbox');
             elements.cargoCheckbox.addEventListener('change', () => {
                 elements.cargoFields?.classList.toggle('hidden', !elements.cargoCheckbox.checked);
                 utils.saveToSession();
             });
         }
 
-        // Form submission - FIXED PAYMENT HANDLER - ORIGINAL LOGIC
         if (elements.submitBtn) {
-            elements.submitBtn.classList.add('cta-button', 'cta-button-primary'); // CSS enhancement
+            elements.submitBtn.classList.add('cta-button', 'cta-button-primary');
             elements.submitBtn.addEventListener('click', async (e) => {
                 e.preventDefault();
                 console.log('💳 Payment initiated');
@@ -516,6 +774,13 @@ window.initializeBookingSystem = function initializeBookingSystem() {
                 if (!(await validateCurrentStep())) {
                     console.warn('Validation failed');
                     return;
+                }
+
+                // NEW: Guard — ensure schedule still fresh before creating checkout session
+                const stillFresh = await ensureSelectedScheduleIsFresh();
+                if (!stillFresh) {
+                    validation.toggleButtonLoading(elements.submitBtn, false);
+                    return; // stop checkout flow
                 }
 
                 if (!window.stripe) {
@@ -527,8 +792,6 @@ window.initializeBookingSystem = function initializeBookingSystem() {
 
                 try {
                     const formData = new FormData(elements.form);
-
-                    // Use correct URL with fallback
                     const checkoutUrl = window.urls.createCheckoutSession || '/bookings/api/create_checkout_session/';
                     console.log('🌐 Creating checkout session at:', checkoutUrl);
 
@@ -575,18 +838,36 @@ window.initializeBookingSystem = function initializeBookingSystem() {
             });
         }
 
-        // File uploads - ORIGINAL LOGIC
+        // Existing file change handler
         elements.form.addEventListener('change', async (e) => {
             if (e.target.type === 'file') {
                 await handleFileChange(e.target);
             }
         });
 
-        // Auto-save - ORIGINAL LOGIC
+        // NEW: capture any addon quantity changes and persist
+        elements.form.addEventListener('change', (e) => {
+            const t = e.target;
+            if (!t) return;
+            const isAddon = t.matches('input[name$="_quantity"], select[name$="_quantity"], [data-addon]');
+            if (isAddon) {
+                utils.saveAddOnsToState();
+                utils.saveToSession();
+            }
+        });
+
+        // NEW: when schedule changes, clear banners, re-check, and set up notifier
+        elements.scheduleSelect?.addEventListener('change', async () => {
+            clearExpiredScheduleNotice();
+            clearDepartureWarningBanner();
+            clearDepartureTimers();
+            await ensureSelectedScheduleIsFresh();
+            await setupDepartureNotifierForSelectedSchedule();
+        });
+
         elements.form.addEventListener('input', utils.debounce(utils.saveToSession, 1000));
         elements.form.addEventListener('change', utils.saveToSession);
 
-        // Collapsible passenger cards - ORIGINAL LOGIC with CSS toggle-icon
         elements.form.addEventListener('click', (e) => {
             const header = e.target.closest('.passenger-header, .passenger-card-header');
             if (header) {
@@ -601,14 +882,20 @@ window.initializeBookingSystem = function initializeBookingSystem() {
                 header.setAttribute('aria-expanded', !isExpanded);
             }
         });
+
+        // Proactive re-checks while the user is on the page
+        setInterval(ensureSelectedScheduleIsFresh, 30_000);
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') ensureSelectedScheduleIsFresh();
+        });
+        window.addEventListener('focus', ensureSelectedScheduleIsFresh);
     }
 
     async function handleFileChange(input) {
         const file = input.files[0];
         if (!file) return;
 
-        const result = await validation.validateFile(file, input); // ✅ FIXED
-
+        const result = await validation.validateFile(file, input);
         if (!result.valid) {
             input.value = '';
             validation.displayBackendErrors([{ field: input.name, message: result.error }]);
@@ -641,8 +928,27 @@ window.initializeBookingSystem = function initializeBookingSystem() {
             return;
         }
 
+        // ensure we have most recent add-on selections before rendering
+        utils.saveAddOnsToState();
+
+        // NEW: guard against stale/just-departed schedules BEFORE pricing call
+        const freshOk = await ensureSelectedScheduleIsFresh();
+        if (!freshOk) {
+            elements.bookingSummary.innerHTML = `
+                <div class="p-6 rounded-lg border border-red-200 bg-red-50 text-red-700">
+                  <div class="font-semibold mb-1">Your selected departure is no longer available.</div>
+                  <p class="text-sm mb-4">It likely departed moments ago. Please select another schedule to continue.</p>
+                  <button class="px-4 py-2 rounded bg-blue-600 text-white" id="btn-reload-schedules">Refresh schedules</button>
+                </div>
+            `;
+            document.getElementById('btn-reload-schedules')?.addEventListener('click', () => {
+                populateSchedules();
+                document.getElementById('schedule_id')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            });
+            return;
+        }
+
         try {
-            // Show loading state with CSS spinner
             elements.bookingSummary.innerHTML = `
                 <div class="summary-card p-6 text-center">
                     <div class="loading-spinner mx-auto mb-4" aria-hidden="true"></div>
@@ -659,11 +965,11 @@ window.initializeBookingSystem = function initializeBookingSystem() {
             const scheduleInfo = response.schedule_info || {};
 
             let summaryHTML = `
-                <div class="summary-card">
+                <div class="summary-card" data-aos="fade-up">
                     <!-- Schedule Information -->
                     ${scheduleInfo.departure_time || scheduleInfo.route ? `
-                        <div class="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                            <h4 class="font-semibold text-gray-800 mb-2">Trip Details</h4>
+                        <div class="summary-section mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200" data-aos="fade-up" data-aos-delay="100">
+                            <h4 class="font-semibold text-gray-800 mb-2">🚢 Trip Details</h4>
                             ${scheduleInfo.route ? `<div class="text-sm text-gray-600 mb-1">${scheduleInfo.route}</div>` : ''}
                             ${scheduleInfo.departure_time ? `<div class="text-lg font-medium">${scheduleInfo.departure_time}</div>` : ''}
                             ${scheduleInfo.return_time ? `<div class="text-sm text-gray-500">Return: ${scheduleInfo.return_time}</div>` : ''}
@@ -671,9 +977,9 @@ window.initializeBookingSystem = function initializeBookingSystem() {
                     ` : ''}
 
                     <!-- Total Price Header -->
-                    <div class="flex justify-between items-start mb-6">
+                    <div class="flex justify-between items-start mb-6" data-aos="fade-up" data-aos-delay="200">
                         <div>
-                            <h3 class="text-2xl font-bold text-gray-800 mb-1">Booking Summary</h3>
+                            <h3 class="text-2xl font-bold text-gray-800 mb-1">📋 Booking Summary</h3>
                             <p class="text-gray-600">Review your selection before payment</p>
                         </div>
                         <div class="text-right">
@@ -682,17 +988,19 @@ window.initializeBookingSystem = function initializeBookingSystem() {
                         </div>
                     </div>
 
-                    <div class="space-y-3 mb-6">
+                    <div class="space-y-6 mb-6">
+                        <!-- Passengers -->
+                        <div class="summary-section" data-aos="fade-up" data-aos-delay="300">
+                            <h4 class="font-semibold text-gray-800 mb-2">👥 Passengers</h4>
+                            <div class="space-y-3">
             `;
 
-            // Passengers Breakdown
             ['adults', 'children', 'infants'].forEach(type => {
                 const count = parseInt(elements.form.querySelector(`[name="${type}"]`)?.value || 0);
                 if (count > 0) {
                     const amount = parseFloat(breakdown[type] || 0);
                     const unitPrice = count > 0 ? (amount / count).toFixed(2) : '0.00';
                     const typeLabel = type.charAt(0).toUpperCase() + type.slice(1) + (count > 1 ? 's' : '');
-
                     summaryHTML += `
                         <div class="summary-row">
                             <span class="summary-label">${typeLabel} × ${count}</span>
@@ -702,71 +1010,121 @@ window.initializeBookingSystem = function initializeBookingSystem() {
                 }
             });
 
-            // Vehicle
+            summaryHTML += `
+                            </div>
+                        </div>
+            `;
+
             if (breakdown.vehicle && parseFloat(breakdown.vehicle) > 0) {
                 const vehicleType = elements.form.querySelector('select[name="vehicle_type"]')?.value || 'Vehicle';
                 summaryHTML += `
-                    <div class="summary-row">
-                        <span class="summary-label">${vehicleType}</span>
-                        <span class="summary-value">+ FJD ${parseFloat(breakdown.vehicle).toFixed(2)}</span>
+                    <div class="summary-section" data-aos="fade-up" data-aos-delay="400">
+                        <h4 class="font-semibold text-gray-800 mb-2">🚗 Vehicle</h4>
+                        <div class="summary-row">
+                            <span class="summary-label">${vehicleType}</span>
+                            <span class="summary-value">+ FJD ${parseFloat(breakdown.vehicle).toFixed(2)}</span>
+                        </div>
                     </div>
                 `;
             }
 
-            // Cargo
             if (breakdown.cargo && parseFloat(breakdown.cargo) > 0) {
-                const cargoWeight = elements.form.querySelector('input[name="cargo_weight"]')?.value || '';
+                const cargoWeight = elements.form.querySelector('input[name="cargo_weight_kg"]')?.value || '';
                 const cargoLabel = cargoWeight ? `Cargo (${cargoWeight}kg)` : 'Cargo';
                 summaryHTML += `
-                    <div class="summary-row">
-                        <span class="summary-label">${cargoLabel}</span>
-                        <span class="summary-value">+ FJD ${parseFloat(breakdown.cargo).toFixed(2)}</span>
+                    <div class="summary-section" data-aos="fade-up" data-aos-delay="500">
+                        <h4 class="font-semibold text-gray-800 mb-2">📦 Cargo</h4>
+                        <div class="summary-row">
+                            <span class="summary-label">${cargoLabel}</span>
+                            <span class="summary-value">+ FJD ${parseFloat(breakdown.cargo).toFixed(2)}</span>
+                        </div>
                     </div>
                 `;
             }
 
-            // Add-ons
-            if (breakdown.addons && typeof breakdown.addons === 'object') {
-                Object.entries(breakdown.addons).forEach(([addonKey, addonData]) => {
-                    const { label, quantity, amount } = addonData;
-                    if (parseFloat(amount) > 0) {
-                        const unitPrice = quantity > 0 ? (parseFloat(amount) / quantity).toFixed(2) : parseFloat(amount).toFixed(2);
-                        summaryHTML += `
-                            <div class="summary-row">
-                                <span class="summary-label">${label}${quantity > 0 ? ` × ${quantity}` : ''}</span>
-                                <span class="summary-value">${quantity > 0 ? `${quantity} × FJD ${unitPrice}` : ''} = FJD ${parseFloat(amount).toFixed(2)}</span>
-                            </div>
-                        `;
+            // --- Add-ons (use state if present; fallback to bookingConfig) ---
+            let addOns = [];
+            const stateAddOns = (appState.formData && appState.formData.addOnsSelected) || [];
+
+            if (stateAddOns.length > 0) {
+                addOns = stateAddOns.map(a => ({
+                    ...a,
+                    unitPrice: Number.parseFloat(a.unitPrice || 0),
+                    amount: Number.parseFloat(a.amount || (a.quantity * (a.unitPrice || 0))).toFixed(2)
+                }));
+            } else {
+                (window.bookingConfig.addOns || []).forEach(addon => {
+                    const quantity = parseInt(elements.form.querySelector(`[name="${addon.id}_quantity"]`)?.value || 0);
+                    if (quantity > 0) {
+                        const amount = (quantity * Number.parseFloat(addon.price || 0)).toFixed(2);
+                        addOns.push({
+                            id: addon.id,
+                            label: addon.label,
+                            quantity,
+                            amount,
+                            unitPrice: Number.parseFloat(addon.price || 0).toFixed(2)
+                        });
                     }
                 });
             }
 
-            // Subtotal line
+            if (addOns.length > 0) {
+                const addOnsTotal = addOns.reduce((sum, addon) => sum + Number.parseFloat(addon.amount), 0).toFixed(2);
+                const backendAddOnsTotal = Number.parseFloat(breakdown.addons || 0).toFixed(2);
+                if (backendAddOnsTotal !== '0.00' && addOnsTotal !== backendAddOnsTotal) {
+                    console.warn(`Add-ons total mismatch: Frontend=${addOnsTotal}, Backend=${backendAddOnsTotal}`);
+                }
+
+                summaryHTML += `
+                    <div class="summary-section addon-group" data-aos="fade-up" data-aos-delay="600">
+                        <h4 class="font-semibold text-gray-800 mb-2">🛎️ Add-ons</h4>
+                        <div class="space-y-3">
+                            ${addOns.map(a => `
+                                <div class="summary-row">
+                                    <span class="summary-label">${a.label} × ${a.quantity}</span>
+                                    <span class="summary-value">${a.quantity} × FJD ${(Number(a.unitPrice)).toFixed(2)} = FJD ${Number(a.amount).toFixed(2)}</span>
+                                </div>
+                            `).join('')}
+                            <div class="summary-row font-semibold">
+                                <span class="summary-label">Add-ons Total</span>
+                                <span class="summary-value">FJD ${addOnsTotal}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            // -----------------------------------------------------------------
+
             const subtotal = parseFloat(breakdown.subtotal || total).toFixed(2);
             if (breakdown.taxes || breakdown.fees) {
                 summaryHTML += `
-                    <div class="summary-row">
-                        <span class="summary-label">Subtotal</span>
-                        <span class="summary-value">FJD ${subtotal}</span>
+                    <div class="summary-section" data-aos="fade-up" data-aos-delay="700">
+                        <div class="summary-row font-semibold">
+                            <span class="summary-label">Subtotal</span>
+                            <span class="summary-value">FJD ${subtotal}</span>
+                        </div>
                     </div>
                 `;
             }
 
-            // Taxes and Fees
             if (breakdown.taxes && parseFloat(breakdown.taxes) > 0) {
                 summaryHTML += `
-                    <div class="summary-row">
-                        <span class="summary-label">Taxes</span>
-                        <span class="summary-value">+ FJD ${parseFloat(breakdown.taxes).toFixed(2)}</span>
+                    <div class="summary-section" data-aos="fade-up" data-aos-delay="800">
+                        <div class="summary-row">
+                            <span class="summary-label">Taxes</span>
+                            <span class="summary-value">+ FJD ${parseFloat(breakdown.taxes).toFixed(2)}</span>
+                        </div>
                     </div>
                 `;
             }
 
             if (breakdown.fees && parseFloat(breakdown.fees) > 0) {
                 summaryHTML += `
-                    <div class="summary-row">
-                        <span class="summary-label">Processing Fees</span>
-                        <span class="summary-value">+ FJD ${parseFloat(breakdown.fees).toFixed(2)}</span>
+                    <div class="summary-section" data-aos="fade-up" data-aos-delay="900">
+                        <div class="summary-row">
+                            <span class="summary-label">Processing Fees</span>
+                            <span class="summary-value">+ FJD ${parseFloat(breakdown.fees).toFixed(2)}</span>
+                        </div>
                     </div>
                 `;
             }
@@ -775,7 +1133,7 @@ window.initializeBookingSystem = function initializeBookingSystem() {
                     </div>
 
                     <!-- Total Section -->
-                    <div class="border-t pt-4 bg-gray-50 rounded-lg p-4">
+                    <div class="border-t pt-4 bg-gray-50 rounded-lg p-4" data-aos="fade-up" data-aos-delay="1000">
                         <div class="flex justify-between items-center text-lg font-semibold mb-2">
                             <span class="text-gray-800">Total Amount Due</span>
                             <span class="text-2xl font-bold text-primary">FJD ${total}</span>
@@ -796,50 +1154,122 @@ window.initializeBookingSystem = function initializeBookingSystem() {
 
             elements.bookingSummary.innerHTML = summaryHTML;
 
-            // Add professional styling classes after rendering
             const summaryCard = elements.bookingSummary.querySelector('.summary-card');
             if (appState.currentStep === 4 && summaryCard) {
-                summaryCard.classList.add('step-4-active'); // For step-specific styling
+                summaryCard.classList.add('step-4-active');
             }
 
         } catch (error) {
             console.error('Error loading summary:', error);
             elements.bookingSummary.innerHTML = `
-                <div class="alert alert-error text-center p-6">
-                    <div class="text-red-600 mb-4 text-2xl">⚠️</div>
-                    <h4 class="font-semibold text-red-800 mb-3">Unable to calculate pricing</h4>
-                    <p class="text-red-600 mb-4">Please ensure you've selected a valid schedule and passenger details, then try again.</p>
-                    <button onclick="location.reload()" class="cta-button cta-button-primary px-6 py-3">
-                        <span>🔄 Refresh Page</span>
-                    </button>
+                <div class="p-6 rounded-lg border border-red-200 bg-red-50 text-red-700">
+                    <div class="font-semibold mb-1">Unable to calculate pricing.</div>
+                    <p class="text-sm mb-4">Please ensure you've selected a valid schedule and passenger details, then try again.</p>
+                    <button class="px-4 py-2 rounded bg-blue-600 text-white" id="btn-reload-schedules">Refresh schedules</button>
                 </div>
             `;
+            document.getElementById('btn-reload-schedules')?.addEventListener('click', () => {
+                populateSchedules();
+                document.getElementById('schedule_id')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            });
         }
     }
 
-    // === INITIALIZATION ===
+    async function populateSchedules() {
+        try {
+            const schedulesResponse = await utils.apiRequest(window.urls.getActiveSchedules || '/bookings/api/bookings/', { method: 'GET' });
+            const schedules = schedulesResponse.schedules || [];
+            if (!elements.scheduleSelect) {
+                console.error('Schedule select element not found');
+                return;
+            }
+
+            // Update map for freshness & notifier
+            appState.activeSchedulesMap = {};
+            schedules.forEach(s => { appState.activeSchedulesMap[String(s.id)] = s; });
+
+            // Sort schedules by departure time ascending
+            schedules.sort((a, b) => new Date(a.departure_time) - new Date(b.departure_time));
+
+            // Group schedules by departure date (YYYY-MM-DD)
+            const groupedSchedules = schedules.reduce((groups, schedule) => {
+                const departureDate = new Date(schedule.departure_time).toISOString().split('T')[0];
+                if (!groups[departureDate]) {
+                    groups[departureDate] = [];
+                }
+                groups[departureDate].push(schedule);
+                return groups;
+            }, {});
+
+            // Clear select and add default option
+            elements.scheduleSelect.innerHTML = '<option value="">Select a schedule</option>';
+
+            // Create optgroups for each date
+            Object.keys(groupedSchedules).sort().forEach(dateKey => {
+                const group = document.createElement('optgroup');
+                const dateObj = new Date(dateKey);
+                group.label = dateObj.toLocaleDateString('en-GB', {
+                    weekday: 'long',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                });
+
+                groupedSchedules[dateKey].forEach(schedule => {
+                    const option = document.createElement('option');
+                    option.value = schedule.id;
+
+                    // Improved display: Ferry - Route - Time (and return if available) - Seats
+                    let displayText = `🚢 ${schedule.ferry_name} - ${schedule.route} - Dep: ${new Date(schedule.departure_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
+                    if (schedule.return_time) {
+                        displayText += ` | Ret: ${new Date(schedule.return_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
+                    }
+                    displayText += ` (Seats: ${schedule.available_seats})`;
+
+                    option.textContent = displayText;
+                    group.appendChild(option);
+                });
+
+                elements.scheduleSelect.appendChild(group);
+            });
+
+            // Restore saved selection if available
+            if (appState.formData.schedule_id) {
+                elements.scheduleSelect.value = appState.formData.schedule_id;
+            }
+
+            // Set up notifier for restored selection
+            await setupDepartureNotifierForSelectedSchedule();
+
+            console.log('✅ Active schedules populated and grouped:', schedules.length);
+        } catch (error) {
+            console.error('Error fetching active schedules:', error);
+            if (elements.scheduleSelect) {
+                elements.scheduleSelect.innerHTML = '<option value="">No active schedules available</option>';
+            }
+            showToast('error', 'Failed to load active schedules. Please try refreshing the page.');
+        }
+    }
+
     function init() {
         console.log('🔧 Initializing booking system...');
 
-        // Apply CSS container class
         elements.form?.classList.add('booking-form-container');
-
-        // Apply CSS classes to form elements - ENHANCEMENT ONLY
         elements.form?.querySelectorAll('input:not([type="file"]), select, textarea').forEach(el => {
             el.classList.add('form-input', 'form-select');
         });
-
-        // Apply CSS classes to checkboxes
         elements.form?.querySelectorAll('input[type="checkbox"]').forEach(el => {
             const wrapper = el.closest('.form-checkbox') || el.parentElement;
             wrapper?.classList.add('form-checkbox');
         });
 
-        // ORIGINAL INITIALIZATION SEQUENCE
         utils.loadFromSession();
+        populateSchedules();
         restoreFormData();
         updatePassengerFields();
-        restoreFormData();
+        restoreFormData(); // original duplicate call preserved
+        // ensure add-ons stay captured right after restores
+        utils.saveAddOnsToState();
         setupEventListeners();
         showStep(appState.currentStep);
 

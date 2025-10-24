@@ -7,6 +7,7 @@
 {% block extra_css %}
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/aos/2.3.4/aos.css" />
 <link rel="stylesheet" href="{% static 'css/booking.css' %}" />
+<link rel="stylesheet" href="{% static 'css/booking_summary.css' %}" />
 <style>
     .form-step { display: none; }
     .form-step.active { display: block; }
@@ -211,7 +212,7 @@
                 <!-- Add-ons Grid -->
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
                     {% for addon in add_ons %}
-                    <div class="addon-card p-4 border rounded-lg hover:shadow-md">
+                    <div class="addon-card p-4 border rounded-lg hover:shadow-md" data-addon-id="{{ addon.id }}" data-addon-label="{{ addon.label }}" data-addon-price="{{ addon.price }}">
                         <div class="flex justify-between items-start mb-3">
                             <div>
                                 <h4 class="font-semibold">{{ addon.label }}</h4>
@@ -300,7 +301,7 @@
                             <p id="error-cargo_weight_kg" class="error-message"></p>
                         </div>
                         <div class="form-group">
-                            <label class="block text-sm font-medium mb-2">Dimensions (optional)</label>
+                            <label class="block text-sm font-medium mb-2">Dimensions</label>
                             <input type="text" id="cargo_dimensions_cm" name="cargo_dimensions_cm"
                                    value="{{ form_data.cargo_dimensions_cm|default:'' }}"
                                    placeholder="100x50x50" class="form-input w-full">
@@ -364,57 +365,73 @@
     </div>
 </main>
 
-    <!-- CRITICAL GLOBAL CONFIGURATION -->
-    <script type="application/javascript">
-    (function() {
-        'use strict';
+<!-- CRITICAL GLOBAL CONFIGURATION -->
+<script type="application/javascript">
+(function() {
+    'use strict';
 
-        try {
-            // --- CSRF token ---
-            const csrfToken = '{{ csrf_token }}';
-            const isAuthenticated = {% if user.is_authenticated %}true{% else %}false{% endif %};
-            const formData = {{ form_data|default:"{}"|safe }};
-            const bookingConfig = {
-                stripeEnabled: {{ stripe_enabled|yesno:"true,false" }},  // Fixed boolean rendering
-                validationEnabled: true,
-                formExists: true,
-                userAuthenticated: isAuthenticated,
-            };
+    try {
+        // CSRF token
+        const csrfToken = '{{ csrf_token }}';
+        const isAuthenticated = {% if user.is_authenticated %}true{% else %}false{% endif %};
+        const formData = {{ form_data|default:"{}"|safe }};
+        const addOns = [
+            {% for addon in add_ons %}
+            {
+                id: "{{ addon.id }}",
+                label: "{{ addon.label }}",
+                price: {{ addon.price }},
+                max_quantity: {{ addon.max_quantity|default:10 }}
+            }{% if not forloop.last %},{% endif %}
+            {% endfor %}
+        ];
+        const bookingConfig = {
+            stripeEnabled: {{ stripe_enabled|yesno:"true,false" }},
+            validationEnabled: true,
+            formExists: true,
+            userAuthenticated: isAuthenticated,
+            addOns: addOns
+        };
 
-            // Define URLs with fallback
-            window.urls = {
-                getPricing: '{% url "bookings:api_pricing" %}'.trim() || '/bookings/api/pricing/',
-                createCheckoutSession: '{% url "bookings:api_create_checkout_session" %}'.trim() || '/bookings/api/create_checkout_session/'
-            };
+        // Define URLs with fallback
+        window.urls = {
+            getPricing: '{% url "bookings:api_pricing" %}'.trim() || '/bookings/api/pricing/',
+            createCheckoutSession: '{% url "bookings:api_create_checkout_session" %}'.trim() || '/bookings/api/create_checkout_session/',
+            getActiveSchedules: '{% url "bookings:get_schedule_updates" %}'.trim() || '/bookings/api/bookings/'
+        };
 
-            // Validate URLs
-            if (!window.urls.createCheckoutSession || window.urls.createCheckoutSession === 'undefined') {
-                window.urls.createCheckoutSession = '/bookings/api/create_checkout_session/';
-            }
-            if (!window.urls.getPricing || window.urls.getPricing === 'undefined') {
-                window.urls.getPricing = '/bookings/api/pricing/';
-            }
-
-            window.bookingConfig = bookingConfig;
-            window.bookingFormData = formData;
-            window.csrfToken = csrfToken;
-
-            console.log('✅ Global booking config loaded:', {
-                urls: window.urls,
-                config: bookingConfig
-            });
-
-        } catch (err) {
-            console.error('❌ Global config setup failed:', err);
-            // Fallback URLs
-            window.urls = window.urls || {
-                getPricing: '/bookings/api/pricing/',
-                createCheckoutSession: '/bookings/api/create_checkout_session/'
-            };
-            console.log('🔧 Using fallback URLs:', window.urls);
+        // Validate URLs
+        if (!window.urls.createCheckoutSession || window.urls.createCheckoutSession === 'undefined') {
+            window.urls.createCheckoutSession = '/bookings/api/create_checkout_session/';
         }
-    })();
-    </script>
+        if (!window.urls.getPricing || window.urls.getPricing === 'undefined') {
+            window.urls.getPricing = '/bookings/api/pricing/';
+        }
+        if (!window.urls.getActiveSchedules || window.urls.getActiveSchedules === 'undefined') {
+            window.urls.getActiveSchedules = '/bookings/api/bookings/';
+        }
+
+        window.bookingConfig = bookingConfig;
+        window.bookingFormData = formData;
+        window.csrfToken = csrfToken;
+
+        console.log('✅ Global booking config loaded:', {
+            urls: window.urls,
+            config: bookingConfig
+        });
+
+    } catch (err) {
+        console.error('❌ Global config setup failed:', err);
+        // Fallback URLs
+        window.urls = window.urls || {
+            getPricing: '/bookings/api/pricing/',
+            createCheckoutSession: '/bookings/api/create_checkout_session/',
+            getActiveSchedules: '/bookings/api/bookings/'
+        };
+        console.log('🔧 Using fallback URLs:', window.urls);
+    }
+})();
+</script>
 
 {% endblock %}
 
@@ -428,7 +445,6 @@
 <script>
 window.isAuthenticated = {% if user.is_authenticated %}true{% else %}false{% endif %};
 </script>
-
 
 <!-- 3. VALIDATION UTILITIES -->
 <script src="{% static 'js/validation.js' %}"></script>

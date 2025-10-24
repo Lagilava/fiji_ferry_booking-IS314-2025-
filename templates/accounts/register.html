@@ -2,214 +2,394 @@
 {% load static %}
 
 {% block content %}
-<div class="register-container">
-    <h1 class="text-[var(--text-color)]">Create Your Account</h1>
+<div class="register-wrapper">
+  <div class="register-card">
+    <div class="register-header">
+      <h1>Create Your Account</h1>
+      <p>Join the journey — it only takes a moment.</p>
+    </div>
+
+    {# Global flash messages (success/info). Keep for non-validation notices. #}
     {% if messages %}
-        <div class="messages" id="messages">
-            {% for message in messages %}
-                <div class="alert animate__animated animate__fadeIn">{{ message }}</div>
-            {% endfor %}
-        </div>
+      <div class="messages" id="messages" aria-live="polite">
+        {% for message in messages %}
+          {% if "Registration failed" not in message %}
+            <div class="alert animate__animated animate__fadeInUp">{{ message }}</div>
+          {% endif %}
+        {% endfor %}
+      </div>
     {% endif %}
+
     <form method="post" novalidate id="register-form">
-        {% csrf_token %}
-        <div class="input-group">
-            {{ form.username }}
-            <label for="id_username">Username</label>
-            <span class="error-message" id="username-error"></span>
+      {% csrf_token %}
+
+      {# ONE place for server-side NON-FIELD validation errors (e.g., password similarity) #}
+      {% if form.non_field_errors %}
+      <div class="form-alert error animate__animated animate__fadeIn" id="non-field-errors" aria-live="assertive">
+        {% for err in form.non_field_errors %}
+          <div>{{ err }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <!-- Username -->
+      <div class="input-group">
+        {{ form.username }}
+        <label for="id_username">Username</label>
+        <span class="error-message" id="username-error" aria-live="polite">
+          {# SERVER errors for this field render here #}
+          {% if form.username.errors %}
+            {{ form.username.errors|striptags }}
+          {% endif %}
+        </span>
+      </div>
+
+      <!-- Email -->
+      <div class="input-group">
+        {{ form.email }}
+        <label for="id_email">Email</label>
+        <span class="error-message" id="email-error" aria-live="polite">
+          {% if form.email.errors %}
+            {{ form.email.errors|striptags }}
+          {% endif %}
+        </span>
+      </div>
+
+      <!-- Password -->
+      <div class="input-group password-group">
+        {{ form.password1 }}
+        <label for="id_password1">Password</label>
+        <button type="button" class="toggle-password" aria-label="Toggle password visibility">
+          <i class="fas fa-eye"></i>
+        </button>
+
+        <div class="password-strength" id="password-strength">
+          <div class="strength-bar" id="strength-bar"></div>
+          <span class="strength-text" id="strength-text">Enter a strong password</span>
         </div>
 
-        <div class="input-group">
-            {{ form.email }}
-            <label for="id_email">Email</label>
-            <span class="error-message" id="email-error"></span>
-        </div>
+        <span class="error-message" id="password1-error" aria-live="polite">
+          {% if form.password1.errors %}
+            {{ form.password1.errors|striptags }}
+          {% endif %}
+        </span>
+      </div>
 
-        <div class="input-group">
-            {{ form.password1 }}
-            <label for="id_password1">Password</label>
-            <div class="password-strength" id="password-strength">
-                <span class="strength-bar" id="strength-bar"></span>
-                <span class="strength-text" id="strength-text">Password Strength</span>
-            </div>
-        </div>
+      <!-- Confirm Password -->
+      <div class="input-group">
+        {{ form.password2 }}
+        <label for="id_password2">Confirm Password</label>
+        <span class="error-message" id="password2-error" aria-live="polite">
+          {% if form.password2.errors %}
+            {{ form.password2.errors|striptags }}
+          {% endif %}
+        </span>
+      </div>
 
-        <div class="input-group">
-            {{ form.password2 }}
-            <label for="id_password2">Confirm Password</label>
-            <span class="error-message" id="password2-error"></span>
-        </div>
-
-        <button type="submit" class="btn-ripple auth-button">Register</button>
+      <button type="submit" class="auth-button">
+        <i class="fas fa-user-plus"></i> Register
+      </button>
     </form>
-    <p class="login-link">Already have an account? <a href="{% url 'accounts:login' %}" class="text-[var(--link-color)] hover:text-[var(--link-hover)]">Login</a></p>
+
+    <p class="login-link">
+      Already have an account?
+      <a href="{% url 'accounts:login' %}" class="link-hover">Login here</a>
+    </p>
+  </div>
 </div>
 {% endblock %}
 
 {% block extra_css %}
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap');
-
-.register-container {
-    background: var(--dropdown-bg);
-    padding: 40px;
-    border-radius: 15px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
-    max-width: 420px;
-    width: 90%;
-    margin: 50px auto;
-    text-align: center;
-    animation: slideUp 0.8s ease-out forwards;
+:root {
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --success: #10b981;
+  --warning: #fbbf24;
+  --danger: #ef4444;
 }
 
-@keyframes slideUp { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
+.register-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 60px 20px;
+  background: radial-gradient(circle at top left, #e0f2fe00, #f9fafb00 50%);
+}
 
-h1 { font-size: 2rem; margin-bottom: 25px; }
+.register-card {
+  background: rgba(255, 255, 255, 0%);
+  backdrop-filter: blur(55px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 18px;
+  padding: 48px;
+  max-width: 480px;
+  width: 100%;
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
+  position: relative;
+  animation: fadeIn 1s ease-out;
+}
 
-.input-group { position: relative; margin-bottom: 20px; }
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.register-card::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  padding: 2px;
+  background: linear-gradient(135deg, #2563eb, #10b981, #facc15);
+  mask: linear-gradient(white, white) content-box, linear-gradient(white, white);
+  -webkit-mask-composite: destination-out;
+          mask-composite: exclude;
+  z-index: -1;
+}
+
+.register-header h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #2049bf;
+}
+.register-header p {
+  color: #748fdb;
+  margin-top: 4px;
+  margin-bottom: 24px;
+}
+
+.input-group {
+  position: relative;
+  margin-bottom: 28px;
+}
 input {
-    padding: 14px 12px;
-    border: 2px solid var(--border-color);
-    border-radius: 8px;
-    width: 100%;
-    background: var(--bg-color);
-    color: var(--text-color);
-    outline: none;
-    transition: border-color 0.3s ease;
-    font-size: 1rem;
+  width: 100%;
+  padding: 14px 12px;
+  border: 2px solid #d1d5db;
+  border-radius: 8px;
+  background: #f9fafb00;
+  color: #1d4ed8;
+  font-size: 1rem;
+  outline: none;
+  transition: all 0.3s ease;
 }
-input:focus { border-color: var(--button-bg); background: var(--dropdown-bg); }
+input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
+}
 label {
-    position: absolute;
-    top: 50%; left: 12px;
-    transform: translateY(-50%);
-    color: #777;
-    font-size: 0.95rem;
-    transition: 0.3s ease;
-    pointer-events: none;
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  transform: translateY(-50%);
+  background: #f9fafb00;
+  color: #6b7280;
+  font-size: 0.95rem;
+  transition: all 0.3s ease;
+  pointer-events: none;
 }
 input:focus + label,
 input:not(:placeholder-shown) + label {
-    top: -8px; background: var(--dropdown-bg); padding: 0 6px; font-size: 0.8rem; color: var(--button-bg);
+  top: -8px;
+  left: 10px;
+  padding: 0 6px;
+  background: #fff;
+  font-size: 0.8rem;
+  color: var(--primary);
 }
 
-.register-container .auth-button {
-    background: var(--button-bg);
-    color: white !important;
-    padding: 14px;
-    border-radius: 10px;
-    font-weight: 700;
-    border: none;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    width: 100%;
+/* Password Toggle */
+.password-group {
+  position: relative;
 }
-.register-container .auth-button:hover {
-    background: var(--button-hover);
-    transform: translateY(-2px);
-    box-shadow: 0 6px 15px rgba(37, 99, 235, 0.5);
+.toggle-password {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #6b7280;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 4px;
+  z-index: 2;
+  pointer-events: auto;
 }
-.register-container .auth-button:after {
-    content: "";
-    position: absolute;
-    left: 50%; top: 50%;
-    transform: translate(-50%, -50%);
-    width: 0; height: 0;
-    background: rgba(255, 255, 255, 0.5);
-    border-radius: 50%;
-    opacity: 0;
-    transition: width 0.4s ease, height 0.4s ease, opacity 0.4s ease;
+.password-group input {
+  padding-right: 2.25rem;
 }
-.register-container .auth-button:active:after {
-    width: 200px; height: 200px; opacity: 1; transition: 0s;
+.toggle-password:hover { color: var(--primary); }
+
+/* Strength bar */
+.password-strength {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+.strength-bar {
+  flex-grow: 1;
+  height: 6px;
+  background: #e5e7eb;
+  border-radius: 4px;
+  transition: all 0.4s ease;
+}
+.strength-bar.weak { background: var(--danger); width: 33%; }
+.strength-bar.medium { background: var(--warning); width: 66%; }
+.strength-bar.strong { background: var(--success); width: 100%; }
+.strength-text { font-size: 0.8rem; color: #6b7280; }
+
+/* One place for field validation messages */
+.error-message {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--danger);
+  margin-top: 6px;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.error-message.show { opacity: 1; }
+
+/* Non-field error alert */
+.form-alert.error {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #fecaca;
+  padding: 10px 12px;
+  border-radius: 10px;
+  margin-bottom: 16px;
+  font-size: 0.95rem;
 }
 
-.register-container .messages, .register-container .error-message {
-    background: var(--alert-bg);
-    color: var(--alert-text);
-    padding: 8px;
-    border-radius: 6px;
-    font-size: 0.9rem;
-    margin-top: 5px;
-    opacity: 0;
-    transition: opacity 0.4s ease;
+.auth-button {
+  width: 100%;
+  background: linear-gradient(135deg, var(--primary), #1e40af);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  padding: 14px;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
-.register-container .messages.show, .register-container .error-message.show {
-    opacity: 1;
+.auth-button:hover {
+  background: linear-gradient(135deg, var(--primary-hover), #1e3a8a);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.4);
 }
 
-.password-strength { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
-.strength-bar { flex-grow: 1; height: 6px; background: #e0e0e0; border-radius: 3px; transition: all 0.4s ease; }
-.strength-bar.weak { background: #d32f2f; width: 33%; }
-.strength-bar.medium { background: #f4a261; width: 66%; }
-.strength-bar.strong { background: #2a9d8f; width: 100%; }
-.strength-text { font-size: 0.8rem; color: #555; }
-
-.login-link { margin-top: 20px; font-size: 0.9rem; }
+.login-link {
+  text-align: center;
+  margin-top: 24px;
+  color: #374151;
+  font-size: 0.9rem;
+}
+.link-hover {
+  color: var(--primary);
+  font-weight: 600;
+  transition: color 0.3s ease;
+}
+.link-hover:hover { color: var(--primary-hover); text-decoration: underline; }
 
 @media (max-width: 480px) {
-    .register-container { padding: 30px 20px; }
-    h1 { font-size: 1.7rem; }
+  .register-card { padding: 32px 20px; }
+  .register-header h1 { font-size: 1.6rem; }
 }
 </style>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const form = document.getElementById('register-form');
-    const usernameInput = document.querySelector('#register-form [name="username"]');
-    const emailInput = document.querySelector('#register-form [name="email"]');
-    const password1Input = document.querySelector('#register-form [name="password1"]');
-    const password2Input = document.querySelector('#register-form [name="password2"]');
-    const usernameError = document.getElementById('username-error');
-    const emailError = document.getElementById('email-error');
-    const password2Error = document.getElementById('password2-error');
-    const strengthBar = document.getElementById('strength-bar');
-    const strengthText = document.getElementById('strength-text');
-    const messages = document.getElementById('messages');
+document.addEventListener('DOMContentLoaded', () => {
+  const form = document.getElementById('register-form');
 
-    function showError(element, message) {
-        if (element) { element.textContent = message; element.classList.add('show'); }
-    }
-    function clearError(element) {
-        if (element) { element.textContent = ''; element.classList.remove('show'); }
-    }
+  // Select fields
+  const username = document.getElementById('id_username');
+  const email = document.getElementById('id_email');
+  const pass1 = document.getElementById('id_password1');
+  const pass2 = document.getElementById('id_password2');
 
-    if (messages) {
-        messages.classList.add('show');
-        setTimeout(() => messages.classList.remove('show'), 5000);
-    }
+  // Error slots (ONE per field)
+  const usernameError = document.getElementById('username-error');
+  const emailError = document.getElementById('email-error');
+  const pass1Error = document.getElementById('password1-error');
+  const pass2Error = document.getElementById('password2-error');
 
-    usernameInput.addEventListener('input', () => {
-        usernameInput.value.length < 3 ? showError(usernameError, 'Username must be at least 3 characters long.') : clearError(usernameError);
+  const strengthBar = document.getElementById('strength-bar');
+  const strengthText = document.getElementById('strength-text');
+
+  // Password toggle
+  const toggleBtn = document.querySelector('.toggle-password');
+  const toggleIcon = toggleBtn?.querySelector('i');
+  if (toggleBtn && pass1) {
+    pass1.style.paddingRight = '2.25rem';
+    toggleBtn.addEventListener('click', () => {
+      const isPassword = pass1.getAttribute('type') === 'password';
+      pass1.setAttribute('type', isPassword ? 'text' : 'password');
+      if (toggleIcon) {
+        toggleIcon.classList.toggle('fa-eye', !isPassword);
+        toggleIcon.classList.toggle('fa-eye-slash', isPassword);
+      }
+      toggleBtn.setAttribute('aria-label', isPassword ? 'Hide password' : 'Show password');
+      pass1.focus({ preventScroll: true });
+      const v = pass1.value; pass1.value = ''; pass1.value = v; // keep cursor at end
     });
+  }
 
-    emailInput.addEventListener('input', () => {
-        /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput.value) ? clearError(emailError) : showError(emailError, 'Please enter a valid email address.');
-    });
+  // Helpers — reuse same single slot for client feedback
+  const showError = (el, msg) => { if (!el) return; el.textContent = msg; el.classList.add('show'); };
+  const clearError = (el) => { if (!el) return; el.textContent = ''; el.classList.remove('show'); };
 
-    password1Input.addEventListener('input', () => {
-        const val = password1Input.value;
-        let strength = 'weak';
-        if (val.length >= 8 && /[A-Z]/.test(val) && /[0-9]/.test(val)) strength = 'strong';
-        else if (val.length >= 6) strength = 'medium';
-        strengthBar.className = 'strength-bar ' + strength;
-        strengthText.textContent = `Password Strength: ${strength.charAt(0).toUpperCase() + strength.slice(1)}`;
-    });
+  // If server already added errors, make them visible
+  [usernameError, emailError, pass1Error, pass2Error].forEach(el => {
+    if (el && el.textContent.trim().length) el.classList.add('show');
+  });
 
-    password2Input.addEventListener('input', () => {
-        password2Input.value !== password1Input.value ? showError(password2Error, 'Passwords do not match.') : clearError(password2Error);
-    });
+  // Live validation
+  username?.addEventListener('input', () => {
+    username.value.length < 3 ? showError(usernameError, 'Minimum 3 characters.') : clearError(usernameError);
+  });
 
-    form.addEventListener('submit', (e) => {
-        let hasError = false;
-        if (usernameInput.value.length < 3) { showError(usernameError, 'Username must be at least 3 characters long.'); hasError = true; }
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput.value)) { showError(emailError, 'Please enter a valid email address.'); hasError = true; }
-        if (password1Input.value.length < 6) { showError(password2Error, 'Password must be at least 6 characters long.'); hasError = true; }
-        if (password1Input.value !== password2Input.value) { showError(password2Error, 'Passwords do not match.'); hasError = true; }
-        if (hasError) e.preventDefault();
-    });
+  email?.addEventListener('input', () => {
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value)
+      ? clearError(emailError)
+      : showError(emailError, 'Invalid email address.');
+  });
+
+  pass1?.addEventListener('input', () => {
+    const val = pass1.value;
+    let level = 'weak';
+    if (val.length >= 8 && /[A-Z]/.test(val) && /[0-9]/.test(val)) level = 'strong';
+    else if (val.length >= 6) level = 'medium';
+    strengthBar.className = 'strength-bar ' + level;
+    strengthText.textContent = `Password Strength: ${level.charAt(0).toUpperCase() + level.slice(1)}`;
+    // Clear server/client error if user improves input
+    if (val.length >= 6) clearError(pass1Error);
+  });
+
+  pass2?.addEventListener('input', () => {
+    pass2.value !== pass1.value
+      ? showError(pass2Error, 'Passwords do not match.')
+      : clearError(pass2Error);
+  });
+
+  // Final client-side check (one error place per field)
+  form.addEventListener('submit', e => {
+    let invalid = false;
+    if (username && username.value.length < 3) { showError(usernameError, 'Username too short.'); invalid = true; }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value)) { showError(emailError, 'Enter a valid email.'); invalid = true; }
+    if (pass1 && pass1.value.length < 6) { showError(pass1Error, 'Password too short.'); invalid = true; }
+    if (pass1 && pass2 && pass1.value !== pass2.value) { showError(pass2Error, 'Passwords do not match.'); invalid = true; }
+    if (invalid) e.preventDefault();
+  });
 });
 </script>
 {% endblock %}

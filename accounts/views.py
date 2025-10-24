@@ -1,12 +1,13 @@
 from django import forms
 from django.contrib import messages
-from django.contrib.auth import authenticate, login
+from django.contrib.auth import authenticate, login as auth_login, get_user_model
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import UserCreationForm
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse_lazy
 from django.utils import timezone
 from django.views import View
+from django.conf import settings
 
 from bookings.models import Schedule, Booking
 from .models import User
@@ -26,6 +27,7 @@ class CustomUserCreationForm(UserCreationForm):
             'password2': forms.PasswordInput(attrs={'placeholder': ' '}),
         }
 
+
 class RegisterView(View):
     template_name = 'accounts/register.html'
     success_url = reverse_lazy('home')
@@ -40,16 +42,33 @@ class RegisterView(View):
             user = form.save()
             raw_password = form.cleaned_data.get('password1')
 
-            # ✅ Authenticate after creating user
-            authenticated_user = authenticate(request, username=user.email, password=raw_password)
+            # ✅ Robust auto-login after creating the user
+            # First try the safest route: log in directly with a known backend.
+            # (Django allows this right after signup.)
+            try:
+                backend_to_use = (
+                    settings.AUTHENTICATION_BACKENDS[0]
+                    if getattr(settings, 'AUTHENTICATION_BACKENDS', None)
+                    else 'django.contrib.auth.backends.ModelBackend'
+                )
+                auth_login(request, user, backend=backend_to_use)
+            except Exception:
+                # Fallback: authenticate using the model's USERNAME_FIELD
+                # so this works regardless of whether it's 'email' or 'username'.
+                U = get_user_model()
+                username_field = U.USERNAME_FIELD
+                auth_kwargs = {username_field: getattr(user, username_field), 'password': raw_password}
+                authenticated_user = authenticate(request, **auth_kwargs)
+                if not authenticated_user:
+                    messages.error(request, 'Registration succeeded but auto-login failed. Please log in.')
+                    return redirect('accounts:login')
+                auth_login(request, authenticated_user)
 
-            if authenticated_user:
-                login(request, authenticated_user)
-                messages.success(request, 'Registration successful! You are now logged in.')
-                next_url = request.GET.get('next') or request.POST.get('next')
-                if next_url:
-                    return redirect(next_url)
-                return redirect(self.success_url)
+            messages.success(request, 'Registration successful! You are now logged in.')
+            next_url = request.GET.get('next') or request.POST.get('next')
+            if next_url:
+                return redirect(next_url)
+            return redirect(self.success_url)
 
         messages.error(request, 'Registration failed. Please correct the errors below.')
         return render(request, self.template_name, {'form': form})
@@ -69,11 +88,22 @@ class LoginView(View):
         identifier = request.POST.get('identifier')
         password = request.POST.get('password')
 
-        # ✅ Single call, backend handles both username/email
-        user = authenticate(request, username=identifier, password=password)
+        # ✅ Try authenticating in a way that works whether the user enters email or username,
+        # and regardless of what USERNAME_FIELD is.
+        user = authenticate(request, username=identifier, password=password)  # works for most backends
+
+        if user is None:
+            U = get_user_model()
+            username_field = U.USERNAME_FIELD
+            # Try again passing the model's username field explicitly (e.g., email)
+            try:
+                user = authenticate(request, **{username_field: identifier, 'password': password})
+            except TypeError:
+                # Some backends only accept 'username' kwarg; nothing more to do here.
+                pass
 
         if user is not None:
-            login(request, user)
+            auth_login(request, user)
             messages.success(request, "Login successful! Welcome back 🌴")
             next_url = request.GET.get('next') or request.POST.get('next')
             if next_url:
@@ -84,19 +114,15 @@ class LoginView(View):
             return render(request, self.template_name)
 
 
-
-
-
 # Homepage View
-
 def homepage(request):
     now = timezone.now()
     schedules = Schedule.objects.filter(departure_time__gte=now).order_by('departure_time')
+    # Note: your template expects 'bookings' — keeping that key to avoid breaking the page.
     return render(request, 'home.html', {'bookings': schedules})
 
 
 # Booking History View
-
 @login_required
 def booking_history(request):
     bookings = Booking.objects.filter(user=request.user).order_by('-created_at')
@@ -114,7 +140,6 @@ def booking_history(request):
 
 
 # Booking Detail and Ticket View
-
 @login_required
 def booking_detail(request, booking_id):
     booking = get_object_or_404(Booking, id=booking_id, user=request.user)
@@ -132,7 +157,6 @@ def booking_detail(request, booking_id):
 
 
 # View to re-attempt payment for pending bookings
-
 @login_required
 def pay_pending_booking(request, booking_id):
     booking = get_object_or_404(Booking, id=booking_id, user=request.user, status='pending')
@@ -150,7 +174,6 @@ def pay_pending_booking(request, booking_id):
 
 
 # Cancel booking
-
 @login_required
 def cancel_booking(request, booking_id):
     booking = get_object_or_404(Booking, id=booking_id, user=request.user)

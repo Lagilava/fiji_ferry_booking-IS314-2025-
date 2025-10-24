@@ -84,3 +84,19 @@ def dict_get(d, key):
 @register.filter
 def zip(a, b):
     return zip(a, b)
+
+@register.filter
+def get_item(dictionary, key):
+    return dictionary.get(key)
+
+@register.filter(name='mul')
+def mul(value, arg):
+    """
+    Multiplies a numeric value by a given argument.
+    Usage: {{ number|mul:factor }}
+    Example: {{ 2|mul:150 }} -> 300
+    """
+    try:
+        return float(value) * float(arg)
+    except (ValueError, TypeError):
+        return 0

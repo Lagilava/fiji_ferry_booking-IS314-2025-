@@ -4,75 +4,310 @@
 
 {% block title %}Booking History - Fiji Ferry Booking{% endblock %}
 
+{% block extra_css %}
+<style>
+/* Card Enhancements */
+.booking-card {
+    background: var(--bg-light);
+    border-radius: var(--radius);
+    padding: 2.5rem;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    perspective: 2000px;
+    position: relative;
+    overflow: hidden;
+}
+
+[data-theme="dark"] .booking-card {
+    background: var(--neutral-800);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+}
+
+.booking-card:hover {
+    transform: translateY(-8px);
+    box-shadow: var(--shadow-xl);
+}
+
+[data-theme="dark"] .booking-card:hover {
+    box-shadow: 0 12px 24px rgba(0,0,0,0.5);
+}
+
+.booking-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, var(--ocean-teal), var(--nautical-blue));
+    opacity: 0.8;
+}
+
+[data-theme="dark"] .booking-card::before {
+    background: linear-gradient(90deg, var(--primary-light), #A5B4FC);
+}
+
+/* Glow Animations */
+.booking-card.glow-scheduled {
+    animation: glowGreen 2s ease-in-out infinite;
+}
+
+.booking-card.glow-cancelled {
+    animation: glowRed 2s ease-in-out infinite;
+}
+
+.booking-card.glow-pending {
+    animation: glowOrange 2s ease-in-out infinite;
+}
+
+@keyframes glowGreen {
+    0%, 100% { box-shadow: 0 0 10px rgba(16, 185, 129, 0.4), 0 0 20px rgba(16, 185, 129, 0.2); }
+    50% { box-shadow: 0 0 15px rgba(16, 185, 129, 0.6), 0 0 30px rgba(16, 185, 129, 0.3); }
+}
+
+@keyframes glowRed {
+    0%, 100% { box-shadow: 0 0 10px rgba(239, 68, 68, 0.4), 0 0 20px rgba(239, 68, 68, 0.2); }
+    50% { box-shadow: 0 0 15px rgba(239, 68, 68, 0.6), 0 0 30px rgba(239, 68, 68, 0.3); }
+}
+
+@keyframes glowOrange {
+    0%, 100% { box-shadow: 0 0 10px rgba(245, 158, 11, 0.4), 0 0 20px rgba(245, 158, 11, 0.2); }
+    50% { box-shadow: 0 0 15px rgba(245, 158, 11, 0.6), 0 0 30px rgba(245, 158, 11, 0.3); }
+}
+
+/* Vibrant Animation */
+.vibrant {
+    animation: subtlePulse 2s ease-in-out infinite;
+}
+
+@keyframes subtlePulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.02); opacity: 0.95; }
+}
+
+/* Status Badge */
+.status-badge {
+    padding: 0.5rem 1.2rem;
+    border-radius: 999px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.status-badge.scheduled {
+    background: var(--success);
+    color: white;
+}
+
+.status-badge.pending {
+    background: var(--warning);
+    color: #1F2937;
+}
+
+.status-badge.cancelled {
+    background: var(--error);
+    color: white;
+}
+
+[data-theme="dark"] .status-badge.scheduled {
+    background: var(--success);
+    color: white;
+}
+
+[data-theme="dark"] .status-badge.pending {
+    background: var(--warning);
+    color: #1F2937;
+}
+
+[data-theme="dark"] .status-badge.cancelled {
+    background: var(--error);
+    color: white;
+}
+
+/* Modal Enhancements */
+#cancelModal {
+    transition: opacity 0.3s ease;
+}
+
+#cancelModal.show {
+    opacity: 1;
+}
+
+.modal-content {
+    background: var(--bg-light);
+    border-radius: var(--radius);
+    padding: 2.5rem;
+    box-shadow: var(--shadow-xl);
+}
+
+[data-theme="dark"] .modal-content {
+    background: var(--neutral-800);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+}
+
+.modal-content h3 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.8rem;
+    font-weight: 700;
+    background: linear-gradient(to right, var(--primary), var(--secondary));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+/* Countdown */
+.countdown {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--primary);
+    background: var(--neutral-100);
+    padding: 0.8rem 1.5rem;
+    border-radius: 8px;
+    text-align: center;
+    transition: color 0.3s ease;
+}
+
+.countdown.urgent {
+    color: var(--error);
+}
+
+[data-theme="dark"] .countdown {
+    background: var(--neutral-800);
+    color: var(--#00ff97);
+}
+
+[data-theme="dark"] .countdown.urgent {
+    color: #FCA5A5;
+}
+
+/* Button Styles */
+.ticket-action-btn {
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    text-decoration: none;
+    transition: transform 0.2s ease, background 0.3s;
+    border: none;
+    cursor: pointer;
+    text-transform: none;
+}
+
+.ticket-action-btn.back {
+    background: var(--neutral-100);
+    color: var(--secondary-dark);
+}
+
+[data-theme="dark"] .ticket-action-btn.back {
+    background: var(--neutral-800);
+    color: var(--text-dark);
+}
+
+.ticket-action-btn.back:hover {
+    background: var(--border-hover);
+    transform: scale(1.02);
+}
+
+.ticket-action-btn.cancel {
+    background: var(--error);
+    color: white;
+}
+
+.ticket-action-btn.cancel:hover {
+    background: #DC2626;
+}
+
+.ticket-action-btn.disabled {
+    background: var(--neutral-100);
+    color: var(--text-muted);
+    cursor: not-allowed;
+}
+
+[data-theme="dark"] .ticket-action-btn.cancel {
+    background: #FCA5A5;
+    color: black;
+}
+
+[data-theme="dark"] .ticket-action-btn.disabled {
+    background: var(--neutral-800);
+    color: var(--text-muted);
+}
+
+/* Loading Spinner */
+.loading-spinner {
+    display: none;
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--border);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+</style>
+{% endblock %}
+
 {% block content %}
-<section class="container mx-auto px-4 sm:px-6 lg:px-8 py-12" data-aos="fade-up">
-    <h1 class="text-3xl font-bold text-center mb-4" style="font-family: 'Playfair Display', serif; color: var(--text-color);">Your Booking History</h1>
-    <h2 class="text-xl text-center mb-8" style="color: var(--text-color);">View and Manage Your Island Adventures</h2>
+<section class="ticket-container" id="main-content">
+    <h1 class="text-3xl font-bold text-center mb-4" style="font-family: 'Playfair Display', serif; background: linear-gradient(to right, var(--primary), var(--secondary)); -webkit-background-clip: text; background-clip: text; color: transparent;">Your Booking History</h1>
+    <h2 class="text-xl text-center mb-8" style="color: var(--text-secondary);">View and Manage Your Island Adventures</h2>
     <div class="flex justify-center mb-8">
-        <a href="{% url 'bookings:book_ticket' %}" class="book-btn bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white py-3 px-8 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all flex items-center gap-2 justify-center" aria-label="Book another ferry ticket">Book Another Ferry</a>
+        <a href="{% url 'bookings:book_ticket' %}" class="ticket-action-btn" style="background: linear-gradient(90deg, var(--ocean-teal), var(--nautical-blue)); color: white;" aria-label="Book another ferry ticket">Book Another Ferry</a>
     </div>
 
     <div class="max-w-5xl mx-auto">
-        <h3 class="text-2xl font-semibold mb-6" style="font-family: 'Playfair Display', serif; color: var(--text-color);">Your Bookings</h3>
+        <h3 class="text-2xl font-semibold mb-6" style="font-family: 'Playfair Display', serif; color: var(--text-primary);">Your Bookings</h3>
         {% if bookings %}
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {% for booking in bookings %}
-                    <div class="bg-[var(--card-bg)] rounded-lg shadow-lg p-6 hover:shadow-xl transition-all duration-300" data-aos="fade-up" data-aos-delay="{{ forloop.counter0|multiply:100 }}">
-                        <div class="text-lg font-bold mb-4" style="color: var(--text-color);">Booking #{{ booking.id }}</div>
+                    <div class="booking-card vibrant" data-status="{{ booking.status|lower }}" data-aos="fade-up" data-aos-delay="{{ forloop.counter0|multiply:100 }}">
+                        <div class="text-lg font-bold mb-4" style="color: var(--text-primary);">Booking #{{ booking.id }}</div>
                         <div class="mb-4">
-                            <h4 class="text-md font-semibold mb-2" style="color: var(--text-color);">Trip Details</h4>
-                            <p class="text-[var(--text-color)]"><strong>{{ booking.schedule.route.departure_port }}</strong> → <strong>{{ booking.schedule.route.destination_port }}</strong></p>
-                            <p class="text-[var(--text-color)]">Ferry: {{ booking.schedule.ferry.name }}</p>
-                            <p class="text-[var(--text-color)]">Departure: {{ booking.schedule.departure_time|date:"F d, Y H:i" }}</p>
-                            <p class="text-[var(--text-color)]">Status: <span class="status-badge {{ booking.status|lower }}">{{ booking.status|capfirst }}</span> • FJD {{ booking.total_price|floatformat:2 }}</p>
-                            {% if booking.cargo_set.exists %}
-                                <h4 class="text-md font-semibold mt-4 mb-2" style="color: var(--text-color);">📦 Cargo Details</h4>
-                                {% for cargo in booking.cargo_set.all %}
-                                    <p class="text-sm text-[var(--text-color)]">• {{ cargo.cargo_type|title }} - {{ cargo.weight_kg }}kg ({{ cargo.dimensions_cm }}) — FJD {{ cargo.price|floatformat:2 }}</p>
-                                {% endfor %}
-                            {% endif %}
+                            <h4 class="text-md font-semibold mb-2" style="color: var(--text-primary);">Trip Details</h4>
+                            <p style="color: var(--text-secondary);"><strong>{{ booking.schedule.route.departure_port }}</strong> → <strong>{{ booking.schedule.route.destination_port }}</strong></p>
+                            <p style="color: var(--text-secondary);">Ferry: {{ booking.schedule.ferry.name }}</p>
+                            <p style="color: var(--text-secondary);">Departure: {{ booking.schedule.departure_time|date:"F d, Y H:i" }}</p>
+                            <p style="color: var(--text-secondary);">Status: <span class="status-badge {{ booking.status|lower }}">{{ booking.status|capfirst }}</span> • FJD {{ booking.total_price|floatformat:2 }}</p>
+                            <div class="countdown" id="countdown-{{ booking.id }}" data-departure-time="{{ booking.schedule.departure_time|date:'c' }}">Countdown to Departure: Loading...</div>
                         </div>
                         <div class="flex flex-wrap gap-3">
                             {% if booking.status != 'cancelled' %}
                                 {% if booking.schedule.departure_time > cutoff_time %}
-                                    <a href="{% url 'bookings:modify_booking' booking.id %}" class="bg-[var(--button-bg)] bg-blue-500 text-white font-semibold px-4 py-2 rounded-lg hover:bg-[var(--button-hover)] hover:bg-blue-600 transition-colors duration-300" aria-label="Modify booking {{ booking.id }}">Modify</a>
+                                    <a href="{% url 'bookings:modify_booking' booking.id %}" class="ticket-action-btn back" aria-label="Modify booking {{ booking.id }}">Modify</a>
                                 {% else %}
-                                    <button class="bg-gray-400 text-gray-700 font-semibold px-4 py-2 rounded-lg cursor-not-allowed" disabled aria-label="Modify disabled: within 6 hours of departure">Modify</button>
+                                    <button class="ticket-action-btn disabled" disabled aria-label="Modify disabled: within 6 hours of departure">Modify</button>
                                 {% endif %}
-                                <a href="{% url 'bookings:cancel_booking' booking.id %}" class="cancel-booking bg-red-500 text-white font-semibold px-4 py-2 rounded-lg hover:bg-red-600 transition-colors duration-300" data-booking-id="{{ booking.id }}" aria-label="Cancel booking {{ booking.id }}">Cancel</a>
+                                <a href="{% url 'bookings:cancel_booking' booking.id %}" class="ticket-action-btn cancel cancel-booking" data-booking-id="{{ booking.id }}" aria-label="Cancel booking {{ booking.id }}">Cancel <span class="loading-spinner"></span></a>
                             {% endif %}
-                            <a href="{% url 'bookings:view_tickets' booking.id %}" class="bg-gray-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors duration-300" aria-label="View tickets for booking {{ booking.id }}">View Tickets</a>
+                            <a href="{% url 'bookings:view_tickets' booking.id %}" class="ticket-action-btn back" aria-label="View tickets for booking {{ booking.id }}">View Tickets</a>
                         </div>
                     </div>
                 {% endfor %}
             </div>
         {% else %}
-            <p class="text-center text-[var(--text-color)]">No bookings available at this time.</p>
+            <p class="text-center" style="color: var(--text-secondary);">No bookings available at this time.</p>
         {% endif %}
     </div>
 
     <div class="flex justify-center mt-8 gap-4">
-        <a href="{% url 'bookings:book_ticket' %}" class="book-btn bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white py-3 px-8 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all flex items-center gap-2 justify-center" aria-label="Book another ticket">Book Another Ticket</a>
-        <a href="{% url 'home' %}" class="bg-gray-600 text-white font-semibold px-6 py-3 rounded-lg hover:bg-gray-700 transition-colors duration-300" aria-label="Back to home">Back to Home</a>
+        <a href="{% url 'bookings:book_ticket' %}" class="ticket-action-btn" style="background: linear-gradient(90deg, var(--ocean-teal), var(--nautical-blue)); color: white;" aria-label="Book another ticket">Book Another Ticket</a>
+        <a href="{% url 'home' %}" class="ticket-action-btn back" aria-label="Back to home">Back to Home</a>
     </div>
 </section>
 
 <div id="cancelModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden" role="dialog" aria-labelledby="cancelModalTitle" aria-modal="true">
-    <div class="bg-[var(--card-bg)] rounded-lg p-6 max-w-md w-full" data-aos="zoom-in">
-        <h3 id="cancelModalTitle" class="text-xl font-semibold mb-4" style="color: var(--text-color);">Are you sure you want to cancel this booking?</h3>
+    <div class="modal-content ticket-container" data-aos="zoom-in">
+        <h3 id="cancelModalTitle" class="text-xl font-semibold mb-4">Are you sure you want to cancel this booking?</h3>
         <div class="flex justify-end gap-3">
-            <button id="confirmCancel" class="bg-red-500 text-white font-semibold px-4 py-2 rounded-lg hover:bg-red-600 transition-colors duration-300" aria-label="Confirm cancellation">Confirm</button>
-            <button id="closeModal" class="bg-gray-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors duration-300" aria-label="Close modal">Close</button>
+            <button id="confirmCancel" class="ticket-action-btn cancel" aria-label="Confirm cancellation">Confirm <span class="loading-spinner"></span></button>
+            <button id="closeModal" class="ticket-action-btn back" aria-label="Close modal">Close</button>
         </div>
     </div>
 </div>
-<style>
-    .book-btn {
-    background: var(--gradient-primary);
-    position: relative;
-    overflow: hidden;
-    isolation: isolate;
-    color: #e0e0e0;
-}
-</style>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/history.js' %}"></script>
 {% endblock %}

@@ -548,14 +548,14 @@ class Command(BaseCommand):
 
         port_data = [
             # Major hubs
-            ("Suva", -18.1405, 178.4233, time(4, 0), time(23, 59), 6, False, True),
-            ("Natovi", -17.9833, 178.3167, time(6, 0), time(21, 0), 3, True, False),
+            ("Suva", -18.1267978, 178.4272351, time(4, 0), time(23, 59), 6, False, True),
+            ("Natovi", 	-17.6745545, 178.5865103, time(6, 0), time(21, 0), 3, True, False),
             # Island ports
-            ("Levuka", -17.6833, 178.8333, time(7, 0), time(19, 0), 2, True, False),
-            ("Nabouwalu", -16.6333, 178.9500, time(7, 0), time(18, 0), 2, True, False),
-            ("Kadavu (Vunisea)", -19.0500, 178.2000, time(6, 0), time(19, 0), 1, True, False),
+            ("Levuka", -17.6849095, 178.837284, time(7, 0), time(19, 0), 2, True, False),
+            ("Nabouwalu", -16.9933564, 178.6849334, time(7, 0), time(18, 0), 2, True, False),
+            ("Kadavu (Vunisea)", -19.0450936, 178.1570691, time(6, 0), time(19, 0), 1, True, False),
             # Remote
-            ("Rotuma", -12.5167, 177.1333, time(8, 0), time(17, 0), 1, True, False)
+            ("Rotuma", -12.4870153, 177.1215836, time(8, 0), time(17, 0), 1, True, False)
         ]
 
         deployed = 0

@@ -1,3 +1,4 @@
+// admin_custom.js
 document.addEventListener('DOMContentLoaded', function() {
     // Prevent duplicate initialization
     if (document.getElementById('chartScript') && window.chartInitialized) {
@@ -259,9 +260,13 @@ document.addEventListener('DOMContentLoaded', function() {
             if (spinner) spinner.classList.add('hidden');
             return;
         }
-        fetch(url, {
+        fetch(`${url}?_=${Date.now()}`, {
             method: 'GET',
-            headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRFToken': csrfToken }
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRFToken': csrfToken,
+                'Cache-Control': 'no-cache, no-store, must-revalidate'
+            }
         })
         .then(response => {
             console.log(`Response status for ${url}: ${response.status}`);
@@ -452,6 +457,33 @@ document.addEventListener('DOMContentLoaded', function() {
                         item.classList.remove('hovered');
                     });
                 });
+            } else if (widgetId === 'recent_activity') {
+                let html = `
+                    <div class="section-header">
+                        <h3 class="section-title">Recent Operations</h3>
+                        <button id="refresh-recent-activity" class="btn btn-secondary" aria-label="Refresh recent activity">
+                            <i class="fas fa-sync-alt hidden" id="recent-activity-spinner"></i> Refresh
+                        </button>
+                    </div>
+                    <div class="activity-list">
+                `;
+                if (data.recent_activities.length === 0) {
+                    html += '<div class="activity-item">No recent operations.</div>';
+                } else {
+                    data.recent_activities.forEach(activity => {
+                        html += `
+                            <div class="activity-item">
+                                <span class="activity-date">${new Date(activity.timestamp).toLocaleString('en-US', {hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short', year: 'numeric'})}</span>
+                                <span class="activity-operator">${activity.operator}</span>
+                                <span class="activity-action">${activity.action}</span>
+                                <span class="activity-resource">${activity.resource.substring(0, 40)}</span>
+                                ${activity.count > 1 ? `<span class="activity-count">(x${activity.count})</span>` : ''}
+                            </div>
+                        `;
+                    });
+                }
+                html += '</div>';
+                widget.innerHTML = html;
             }
         } catch (error) {
             console.error(`Error updating widget content for ${widgetId}:`, error);
@@ -470,6 +502,11 @@ document.addEventListener('DOMContentLoaded', function() {
         if (refreshWeather) {
             refreshWeather.removeEventListener('click', refreshWeatherHandler);
             refreshWeather.addEventListener('click', refreshWeatherHandler);
+        }
+        const refreshRecentActivity = document.getElementById('refresh-recent-activity');
+        if (refreshRecentActivity) {
+            refreshRecentActivity.removeEventListener('click', refreshRecentActivityHandler);
+            refreshRecentActivity.addEventListener('click', refreshRecentActivityHandler);
         }
     }
 
@@ -500,6 +537,20 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         } else {
             console.error('Weather alerts widget not found for refresh.');
+        }
+        setTimeout(() => {
+            if (spinner) spinner.classList.add('hidden');
+        }, 1000);
+    }
+
+    function refreshRecentActivityHandler() {
+        const spinner = document.getElementById('recent-activity-spinner');
+        if (spinner) spinner.classList.remove('hidden');
+        const widget = document.getElementById('recent_activity');
+        if (widget) {
+            window.fetchWidgetData('/admin/widget-data/recent_activity/', widget);
+        } else {
+            console.error('Recent activity widget not found for refresh.');
         }
         setTimeout(() => {
             if (spinner) spinner.classList.add('hidden');
@@ -542,6 +593,7 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log('WebSocket connected to admin dashboard');
             wsRetryCount = 0;
             ws.send(JSON.stringify({ action: 'refresh_weather' }));
+            document.dispatchEvent(new CustomEvent('admin-ws-connected'));
         };
 
         ws.onmessage = (event) => {
@@ -552,28 +604,157 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.type === 'weather_alerts') {
                     const weatherWidget = document.getElementById('weather_alerts');
                     if (weatherWidget) updateWidgetContent(weatherWidget, data);
+                    document.dispatchEvent(new CustomEvent('weather_update'));
 
-                } else if (data.type === 'booking_updates') {
-                    const dataElement = document.getElementById('recent-bookings-data');
-                    if (dataElement && data.data && Array.isArray(data.data)) {
-                        dataElement.textContent = JSON.stringify(data.data);
-                        if (typeof window.jQuery.fn.DataTable !== 'undefined') {
-                            const table = window.jQuery('#recent-bookings-table').DataTable();
-                            table.clear();
-                            data.data.forEach(booking => {
-                                table.row.add([
-                                    booking.id || 'N/A',
-                                    booking.user_email || 'N/A',
-                                    `<span title="${booking.route || 'N/A'}">${booking.route || 'N/A'}</span>`,
-                                    booking.booking_date ? new Date(booking.booking_date).toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A',
-                                    `<span data-status="${booking.status || 'N/A'}">${booking.status || 'N/A'}</span>`
-                                ]).draw();
-                            });
-                            console.log('Recent bookings table updated via WebSocket.');
+                } else if (data.type === 'booking_update') {
+                    // 1. Try to use the payload if it contains the list
+                    if (data.recent_bookings && Array.isArray(data.recent_bookings)) {
+                        const dataElement = document.getElementById('recent-bookings-data');
+                        if (dataElement) {
+                            dataElement.textContent = JSON.stringify(data.recent_bookings);
+                            refreshRecentBookingsTable(data.recent_bookings);
                         }
+                    } else {
+                        // 2. Payload does NOT contain the list → fetch it
+                        console.warn('booking_update received without recent_bookings → falling back to HTTP');
+                        fetchRecentBookingsViaHttp();
                     }
+
+                    // Update related components
+                    window.fetchWidgetData('/admin/widget-data/performance_metrics/', document.getElementById('performance_metrics'));
+                    window.fetchWidgetData('/admin/widget-data/recent_activity/', document.getElementById('recent_activity'));
+                    if (['bookingsChart', 'revenueChart', 'paymentChart', 'topCustomersChart', 'userGrowthChart'].includes(activeChartId)) {
+                        debouncedFetchAndUpdateChart(activeChartId, chartDays[activeChartId]);
+                    }
+                    document.dispatchEvent(new CustomEvent('booking_update'));
+
+                } else if (data.type === 'schedule_update') {
+                    // Update related components
+                    window.fetchWidgetData('/admin/widget-data/performance_metrics/', document.getElementById('performance_metrics'));
+                    window.fetchWidgetData('/admin/widget-data/recent_activity/', document.getElementById('recent_activity'));
+                    if (activeChartId === 'utilizationChart') {
+                        debouncedFetchAndUpdateChart(activeChartId, chartDays[activeChartId]);
+                    }
+                    document.dispatchEvent(new CustomEvent('schedule_update'));
+
+                } else if (data.type === 'payment_update' || data.type === 'ticket_update') {
+                    // Handle similarly to booking_update
+                    fetch('/admin/analytics-data/?chart_type=recent_bookings', {
+                        headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRFToken': getCookie('csrftoken') }
+                    })
+                    .then(response => response.json())
+                    .then(fetchedData => {
+                        const dataElement = document.getElementById('recent-bookings-data');
+                        if (dataElement) {
+                            dataElement.textContent = JSON.stringify(fetchedData.recent_bookings);
+                            if (typeof window.jQuery.fn.DataTable !== 'undefined') {
+                                const table = window.jQuery('#recent-bookings-table').DataTable();
+                                table.clear();
+                                fetchedData.recent_bookings.forEach(booking => {
+                                    table.row.add([
+                                        booking.id || 'N/A',
+                                        booking.user_email || 'N/A',
+                                        `<span title="${booking.route || 'N/A'}">${booking.route || 'N/A'}</span>`,
+                                        booking.booking_date ? new Date(booking.booking_date).toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A',
+                                        `<span data-status="${booking.status || 'N/A'}">${booking.status || 'N/A'}</span>`
+                                    ]).draw();
+                                });
+                            }
+                        }
+                    })
+                    .catch(error => console.error('Error refreshing recent bookings:', error));
+                    // Update other components
+                    window.fetchWidgetData('/admin/widget-data/performance_metrics/', document.getElementById('performance_metrics'));
+                    window.fetchWidgetData('/admin/widget-data/recent_activity/', document.getElementById('recent_activity'));
+                    if (['revenueChart', 'paymentChart'].includes(activeChartId)) {
+                        debouncedFetchAndUpdateChart(activeChartId, chartDays[activeChartId]);
+                    }
+                    document.dispatchEvent(new CustomEvent(data.type));
+
+                } else if (data.type === 'maintenance_update') {
+                    window.fetchWidgetData('/admin/widget-data/recent_activity/', document.getElementById('recent_activity'));
+                    document.dispatchEvent(new CustomEvent('maintenance_update'));
+
+                } else if (data.type === 'system_notifications') {
+                    const notificationsSection = document.getElementById('notificationsSection');
+                    if (notificationsSection) {
+                        notificationsSection.style.display = 'block';
+                        let html = '';
+                        data.notifications.forEach(notif => {
+                            html += `
+                                <div class="notification-item severity-${notif.severity}">
+                                    <strong>${notif.title}</strong>
+                                    <p>${notif.message}</p>
+                                    <small>${new Date(notif.timestamp).toLocaleString()}</small>
+                                </div>
+                            `;
+                        });
+                        document.querySelector('.notifications-list').innerHTML = html;
+                    } else {
+                        console.warn('Notifications section not found');
+                    }
+                    document.dispatchEvent(new CustomEvent('system_notifications'));
+
+                } else if (data.type === 'critical_alerts') {
+                    const alertsSection = document.getElementById('alertsSection');
+                    if (alertsSection) {
+                        alertsSection.style.display = 'block';
+                        let html = '';
+                        data.alerts.forEach(alert => {
+                            html += `
+                                <div class="alert-item severity-${alert.severity}">
+                                    <strong>${alert.type.toUpperCase()}</strong>: ${alert.message}
+                                </div>
+                            `;
+                        });
+                        document.querySelector('.alerts-list').innerHTML = html;
+                    } else {
+                        console.warn('Alerts section not found');
+                    }
+                    document.dispatchEvent(new CustomEvent('critical_alerts'));
+
+                } else if (data.type === 'cache_cleared') {
+                    // Refresh all widgets and active chart
+                    lazyLoadWidgets();
+                    if (activeChartId) {
+                        debouncedFetchAndUpdateChart(activeChartId, chartDays[activeChartId]);
+                    }
+                    // Refresh recent bookings table
+                    fetch('/admin/analytics-data/?chart_type=recent_bookings', {
+                        headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRFToken': getCookie('csrftoken') }
+                    })
+                    .then(response => response.json())
+                    .then(fetchedData => {
+                        const dataElement = document.getElementById('recent-bookings-data');
+                        if (dataElement) {
+                            dataElement.textContent = JSON.stringify(fetchedData.recent_bookings);
+                            if (typeof window.jQuery.fn.DataTable !== 'undefined') {
+                                const table = window.jQuery('#recent-bookings-table').DataTable();
+                                table.clear();
+                                fetchedData.recent_bookings.forEach(booking => {
+                                    table.row.add([
+                                        booking.id || 'N/A',
+                                        booking.user_email || 'N/A',
+                                        `<span title="${booking.route || 'N/A'}">${booking.route || 'N/A'}</span>`,
+                                        booking.booking_date ? new Date(booking.booking_date).toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A',
+                                        `<span data-status="${booking.status || 'N/A'}">${booking.status || 'N/A'}</span>`
+                                    ]).draw();
+                                });
+                            }
+                        }
+                    })
+                    .catch(error => console.error('Error refreshing recent bookings on cache clear:', error));
+                    window.fetchWidgetData('/admin/widget-data/recent_activity/', document.getElementById('recent_activity'));
+                    document.dispatchEvent(new CustomEvent('cache_cleared'));
+
                 } else {
                     console.warn('Unknown WebSocket message type:', data.type);
+                }
+
+                // Handle recent activities if included in message
+                if (data.recent_activities) {
+                    const recentWidget = document.getElementById('recent_activity');
+                    if (recentWidget) updateWidgetContent(recentWidget, { recent_activities: data.recent_activities });
                 }
             } catch (e) {
                 console.error('Error parsing WebSocket message:', e);
@@ -582,6 +763,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         ws.onclose = (event) => {
             console.log(`WebSocket disconnected: Code ${event.code}, Reason: ${event.reason}`);
+            document.dispatchEvent(new CustomEvent('admin-ws-disconnected'));
             wsRetryCount++;
             console.log(`Reconnecting in ${baseRetryDelay * (wsRetryCount + 1)}ms... (${wsRetryCount}/${maxRetries})`);
             setTimeout(initializeWebSocket, baseRetryDelay * (wsRetryCount + 1));
@@ -850,8 +1032,12 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         wrappers[chartId] = wrapper; // Update wrapper in case DOM changed
-        fetch(`/admin/analytics-data/?days=${daysValue}&chart_type=${chartType}`, {
-            headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRFToken': getCookie('csrftoken') }
+        fetch(`/admin/analytics-data/?days=${daysValue}&chart_type=${chartType}&_=${Date.now()}`, {
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRFToken': getCookie('csrftoken'),
+                'Cache-Control': 'no-cache, no-store, must-revalidate'
+            }
         })
         .then(response => {
             console.log(`Response status for ${chartId}: ${response.status}`);
@@ -1047,7 +1233,8 @@ document.addEventListener('DOMContentLoaded', function() {
     function lazyLoadWidgets() {
         const widgets = [
             { id: 'performance_metrics', url: '/admin/widget-data/performance_metrics/' },
-            { id: 'weather_alerts', url: '/admin/widget-data/weather_alerts/' }
+            { id: 'weather_alerts', url: '/admin/widget-data/weather_alerts/' },
+            { id: 'recent_activity', url: '/admin/widget-data/recent_activity/' }
         ];
         widgets.forEach(widget => {
             const element = document.getElementById(widget.id);
@@ -1176,7 +1363,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         sectionsToUpdate.forEach(section => {
             if (section === 'recent_bookings') {
-                fetch('/admin/analytics-data/?chart_type=recent_bookings', {
+                fetch(`/admin/analytics-data/?chart_type=recent_bookings&_=${Date.now()}`, {
                     headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRFToken': getCookie('csrftoken') }
                 })
                 .then(response => response.json())
@@ -1195,6 +1382,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 `<span data-status="${booking.status || 'N/A'}">${booking.status || 'N/A'}</span>`
                             ]).draw();
                         });
+                        console.log('Recent bookings table updated.');
                     }
                 })
                 .catch(error => console.error('Error updating recent bookings:', error));
@@ -1253,6 +1441,162 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
     }
+
+    // === HERO HEADER WIRING (hardened) ===
+    // Cached formatters (avoid recreating options each tick)
+    const _fmt = {
+      time: new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
+      date: new Intl.DateTimeFormat('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+      timeSec: new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }),
+    };
+
+    // Drift-corrected clock that updates on second boundaries
+    (function initHeroClock(){
+      const t = document.getElementById('current-time');
+      const d = document.getElementById('current-date');
+
+      function tick() {
+        const now = new Date();
+        if (t) t.textContent = _fmt.time.format(now);
+        if (d) d.textContent = _fmt.date.format(now);
+
+        // next whole second
+        const ms = 1000 - (now.getTime() % 1000);
+        setTimeout(tick, ms);
+      }
+      tick();
+    })();
+
+    // Small helpers
+    function setDot(el, level /* 'off' | 'on' | 'warn' | 'err' */) {
+      if (!el) return;
+      el.classList.remove('dot-off','dot-on','dot-warn','dot-err');
+      el.classList.add(`dot-${level}`);
+    }
+
+    function text(el, value) {
+      if (el) el.textContent = String(value);
+    }
+
+    async function fetchJSON(url) {
+      // Always mark as XHR; cache-bust with ts
+      const u = url.includes('_=') ? url : (url + (url.includes('?') ? '&' : '?') + '_=' + Date.now());
+      const res = await fetch(u, { headers: { 'X-Requested-With': 'XMLHttpRequest' }});
+      if (!res.ok) throw new Error(`HTTP ${res.status} for ${u}`);
+      return res.json();
+    }
+
+    // Single in-flight refresh guard to avoid races on bursty events
+    let _inFlightCtrl = null;
+    let _lastRefreshTs = 0;
+    const _MIN_REFRESH_GAP_MS = 400;
+
+    // Debounced trigger for bursts (e.g., many ws events at once)
+    let _debounceTimer = null;
+    function scheduleRefresh(delay = 150) {
+      clearTimeout(_debounceTimer);
+      _debounceTimer = setTimeout(() => {
+        const now = Date.now();
+        if (now - _lastRefreshTs < _MIN_REFRESH_GAP_MS) {
+          // push just a bit further to respect min gap
+          return scheduleRefresh(_MIN_REFRESH_GAP_MS);
+        }
+        refreshHeroKpis();
+      }, delay);
+    }
+
+    // Update KPI cards from existing endpoints you already use in widgets
+    async function refreshHeroKpis() {
+      // cancel previous in-flight request group to ensure ordering
+      if (_inFlightCtrl) _inFlightCtrl.abort();
+      const ctrl = new AbortController();
+      _inFlightCtrl = ctrl;
+
+      try {
+        const [perfRes, weatherRes, utilRes] = await Promise.allSettled([
+          fetchJSON('/admin/widget-data/performance_metrics/'),
+          fetchJSON('/admin/widget-data/weather_alerts/'),
+          fetchJSON('/admin/analytics-data/?chart_type=ferry_utilization&days=30'),
+        ]);
+
+        // Read DOM once
+        const tb = document.getElementById('kpi-total-bookings');
+        const af = document.getElementById('kpi-active-ferries');
+        const pp = document.getElementById('kpi-pending-payments');
+        const wa = document.getElementById('kpi-weather-alerts');
+        const wd = document.getElementById('kpi-weather-dot');
+        const au = document.getElementById('kpi-avg-util');
+        const bf = document.getElementById('kpi-bookings-foot');
+
+        // --- Performance metrics ---
+        const perf = perfRes.status === 'fulfilled' && perfRes.value ? perfRes.value : {};
+        text(tb, (perf.total_bookings ?? 0).toLocaleString());
+        text(af, (perf.active_ferries ?? 0).toLocaleString());
+        text(pp, (perf.pending_payments ?? 0).toLocaleString());
+        if (bf && perf.updated_at) {
+          const dt = new Date(perf.updated_at);
+          bf.textContent = 'Updated ' + _fmt.timeSec.format(dt);
+        }
+
+        // --- Weather alerts ---
+        const weather = weatherRes.status === 'fulfilled' && weatherRes.value ? weatherRes.value : {};
+        const arrA = Array.isArray(weather.weather_alerts) ? weather.weather_alerts : [];
+        const arrB = Array.isArray(weather.data) ? weather.data : [];
+        // If both exist, count total (if they can overlap and you prefer max, swap to Math.max(arrA.length, arrB.length))
+        const alertCount = (arrA.length + arrB.length);
+        text(wa, alertCount);
+        setDot(wd, alertCount >= 3 ? 'err' : alertCount === 2 ? 'warn' : alertCount === 1 ? 'on' : 'off');
+
+        // --- Utilization (average over last 30 days) ---
+        const util = utilRes.status === 'fulfilled' && utilRes.value ? utilRes.value : {};
+        const utilArr = Array.isArray(util.ferry_utilization) ? util.ferry_utilization : [];
+        if (utilArr.length && au) {
+          const vals = utilArr
+            .map(x => Number(x?.utilization))
+            .filter(v => Number.isFinite(v));
+          const avg = vals.length ? (vals.reduce((a,b)=>a+b,0) / vals.length) : 0;
+          au.textContent = Math.round(avg) + '%';
+        }
+
+        _lastRefreshTs = Date.now();
+      } catch (e) {
+        if (e?.name !== 'AbortError') {
+          console.warn('Hero KPI refresh failed:', e);
+        }
+      } finally {
+        if (_inFlightCtrl === ctrl) _inFlightCtrl = null;
+      }
+    }
+
+    // Keep Hero in sync with live WebSocket events (you already open ws elsewhere)
+    document.addEventListener('DOMContentLoaded', () => {
+      // initial load
+      refreshHeroKpis();
+
+      // Also refresh when the tab becomes visible again
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') scheduleRefresh(0);
+      });
+
+      // Wire ws status dot if elements exist
+      const wsDot = document.getElementById('ws-dot');
+      const wsLabel = document.getElementById('ws-label');
+      function wsSet(state) {
+        if (!(wsDot && wsLabel)) return;
+        setDot(wsDot, state === 'on' ? 'on' : 'off');
+        wsLabel.textContent = state === 'on' ? 'Live' : 'Offline';
+      }
+
+      // If your admin_websocket.js dispatches custom events, listen here:
+      document.addEventListener('admin-ws-connected',   () => wsSet('on'));
+      document.addEventListener('admin-ws-disconnected',() => wsSet('off'));
+
+      // Refresh KPIs on relevant events; debounce to coalesce bursts
+      [
+        'booking_update','schedule_update','payment_update','ticket_update',
+        'critical_alerts','cache_cleared','weather_update','maintenance_update'
+      ].forEach(type => document.addEventListener(type, () => scheduleRefresh()));
+    });
 
     // Initialize dashboard
     initializeDashboard();

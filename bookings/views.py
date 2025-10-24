@@ -6,14 +6,16 @@ import logging
 import re
 import time
 import uuid
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from io import BytesIO
 
 from django.contrib.admin.views.decorators import staff_member_required
+from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 import stripe
 import qrcode
 import requests
+from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
 from django.conf import settings
 from django.contrib import messages
@@ -23,7 +25,7 @@ from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile, File
 from django.core.mail import send_mail
 from django.core.validators import FileExtensionValidator
-from django.db.models import Subquery, Max, OuterRef
+from django.db.models import Subquery, Max, OuterRef, Prefetch
 from django.http import JsonResponse, HttpResponseForbidden, StreamingHttpResponse, HttpResponse, FileResponse
 from django.shortcuts import render, get_object_or_404, redirect
 from django.urls import reverse
@@ -410,9 +412,27 @@ def calculate_total_price(adults, children, infants, schedule, add_cargo, cargo_
 
 def routes_api(request):
     try:
-        routes = Route.objects.select_related('departure_port', 'destination_port').prefetch_related('bookings').all()
-        routes_data = [
-            {
+        # Only pull upcoming/active schedules into memory
+        upcoming = Prefetch(
+            'bookings',  # <— current related_name
+            queryset=Schedule.objects.filter(status='scheduled').order_by('departure_time'),
+            to_attr='prefetched_schedules'
+        )
+
+        routes = (
+            Route.objects
+                 .select_related('departure_port', 'destination_port')
+                 .prefetch_related(upcoming)
+        )
+
+        routes_data = []
+        for route in routes:
+            # get the first upcoming schedule id (if any)
+            first_schedule_id = (
+                route.prefetched_schedules[0].id if getattr(route, 'prefetched_schedules', []) else None
+            )
+
+            routes_data.append({
                 'id': route.id,
                 'departure_port': {
                     'name': route.departure_port.name,
@@ -427,17 +447,16 @@ def routes_api(request):
                 'distance_km': float(route.distance_km) if route.distance_km else None,
                 'estimated_duration': int(route.estimated_duration.total_seconds() / 60) if route.estimated_duration else None,
                 'base_fare': float(route.base_fare) if route.base_fare else None,
-                'schedule_id': route.schedules.first().id if route.schedules.exists() else None,
+                'schedule_id': first_schedule_id,
                 'waypoints': route.waypoints or [
                     [route.departure_port.lat, route.departure_port.lng],
                     [route.destination_port.lat, route.destination_port.lng]
                 ]
-            }
-            for route in routes
-        ]
+            })
+
         return JsonResponse({'routes': routes_data})
     except Exception as e:
-        logger.error(f"Routes API error: {str(e)}")
+        logger.error(f"Routes API error: {e}")
         return JsonResponse({'error': str(e)}, status=500)
 
 
@@ -464,6 +483,7 @@ def homepage(request):
 
     logger.debug(f"Search parameters: route={route_input}, travel_date={travel_date}, passengers={passengers}")
 
+    # --- Route filtering ---
     if route_input:
         try:
             origin, destination = route_input.split('-to-')
@@ -474,6 +494,7 @@ def homepage(request):
         except ValueError:
             messages.error(request, "Invalid route format. Use 'origin-to-destination' (e.g., nadi-to-suva).")
 
+    # --- Date filtering ---
     if travel_date:
         try:
             travel_date_obj = datetime.datetime.strptime(travel_date, '%Y-%m-%d')
@@ -485,8 +506,10 @@ def homepage(request):
         except ValueError:
             messages.error(request, "Invalid date format. Please use YYYY-MM-DD.")
 
+    # --- Routes queryset ---
     routes = Route.objects.select_related('departure_port', 'destination_port').all()
 
+    # --- Next Departure Info ---
     next_departure = schedules.first()
     next_departure_info = None
     if next_departure:
@@ -497,46 +520,36 @@ def homepage(request):
             'estimated_duration': int(
                 next_departure.route.estimated_duration.total_seconds() / 60) if next_departure.route.estimated_duration else None
         }
+    else:
+        next_departure_info = {
+            'time': '10:00 AM',
+            'route': 'Nadi to Suva',
+            'schedule_id': 1,
+            'estimated_duration': 240
+        }
 
-    # Complete weather data structure
+    # --- Default Weather Data (fallback) ---
     weather_data = {
         'current': {
-            'temp': 28,  # Default values
+            'temp': 28,
             'condition': 'Sunny',
             'humidity': 65,
             'wind': 12
         },
         'forecast': [
-            {
-                'date': 'Tomorrow',
-                'temp': 29,
-                'condition': 'Partly Cloudy'
-            },
-            {
-                'date': 'Friday',
-                'temp': 27,
-                'condition': 'Sunny'
-            }
+            {'date': 'Tomorrow', 'temp': 29, 'condition': 'Partly Cloudy'},
+            {'date': 'Friday', 'temp': 27, 'condition': 'Sunny'}
         ],
         'ports': {
-            'nadi': {
-                'temp': 28,
-                'condition': 'Sunny',
-                'wind': 10,
-                'precip': 0
-            },
-            'suva': {
-                'temp': 26,
-                'condition': 'Partly Cloudy',
-                'wind': 8,
-                'precip': 5
-            }
+            'nadi': {'temp': 28, 'condition': 'Sunny', 'wind': 10, 'precip': 0},
+            'suva': {'temp': 26, 'condition': 'Partly Cloudy', 'wind': 8, 'precip': 5},
+            'denarau': {'temp': 28, 'condition': 'Sunny', 'wind': 10, 'precip': 0},
+            'yasawa': {'temp': 27, 'condition': 'Clear', 'wind': 12, 'precip': 2}
         }
     }
 
-    # Override with real weather data if available
+    # --- Real Weather Overrides (if available) ---
     try:
-        # Get current weather conditions
         current_conditions = WeatherCondition.objects.filter(
             expires_at__gt=now
         ).order_by('-updated_at').first()
@@ -549,9 +562,8 @@ def homepage(request):
                 'wind': float(current_conditions.wind_speed) if current_conditions.wind_speed else 12
             }
 
-        # Get port-specific weather
         port_weather = WeatherCondition.objects.filter(
-            port__name__in=['Nadi', 'Suva'],
+            port__name__in=['Nadi', 'Suva', 'Denarau', 'Yasawa'],
             expires_at__gt=now
         ).select_related('port').order_by('port__name', '-updated_at')
 
@@ -565,32 +577,16 @@ def homepage(request):
                 'precip': int(pw.precipitation_probability) if pw.precipitation_probability else 0
             }
 
-        # Update specific ports
-        if 'nadi' in port_data:
-            weather_data['ports']['nadi'].update(port_data['nadi'])
-        if 'suva' in port_data:
-            weather_data['ports']['suva'].update(port_data['suva'])
+        weather_data['ports'].update(port_data)
 
-        # Get forecast (mock data - replace with real forecast API)
-        forecast_data = [
-            {
-                'date': 'Tomorrow',
-                'temp': 29,
-                'condition': 'Partly Cloudy'
-            },
-            {
-                'date': 'Friday',
-                'temp': 27,
-                'condition': 'Sunny'
-            }
+        weather_data['forecast'] = [
+            {'date': 'Tomorrow', 'temp': 29, 'condition': 'Partly Cloudy'},
+            {'date': 'Friday', 'temp': 27, 'condition': 'Sunny'}
         ]
-        weather_data['forecast'] = forecast_data
-
     except Exception as e:
         logger.error(f"Weather data fetch error: {e}")
-        # Keep default data
 
-    # Schedule-specific weather data
+    # --- Schedule-specific Weather ---
     schedule_weather_data = []
     schedule_route_ids = schedules.values_list('route_id', flat=True).distinct()
 
@@ -621,8 +617,7 @@ def homepage(request):
                         'condition': wc.condition,
                         'temperature': float(wc.temperature) if wc.temperature is not None else None,
                         'wind_speed': float(wc.wind_speed) if wc.wind_speed is not None else None,
-                        'precipitation_probability': float(
-                            wc.precipitation_probability) if wc.precipitation_probability is not None else None,
+                        'precipitation_probability': float(wc.precipitation_probability) if wc.precipitation_probability is not None else None,
                         'expires_at': wc.expires_at.isoformat() if wc.expires_at else None,
                         'updated_at': wc.updated_at.isoformat() if wc.updated_at else None,
                         'is_expired': False,
@@ -644,7 +639,6 @@ def homepage(request):
                     })
         except Exception as e:
             logger.error(f"Schedule weather data error: {e}")
-            # Use fallback data
             for schedule in schedules:
                 schedule_weather_data.append({
                     'route_id': schedule.route_id,
@@ -658,23 +652,58 @@ def homepage(request):
                     'error': None
                 })
 
-    # Calculate pagination data
+    # --- Pagination ---
     total_schedules_count = schedules.count()
-    displayed_schedules = schedules[:12]  # Limit for initial load
+    displayed_schedules = schedules[:12]
     remaining_schedules = max(0, total_schedules_count - len(displayed_schedules))
 
+    # --- Safe JSON route serialization ---
+    routes_data = list(routes.values(
+        'id',
+        'departure_port__name',
+        'destination_port__name',
+        'distance_km',
+        'estimated_duration',
+        'base_fare',
+        'service_tier',
+        'min_weekly_services',
+        'preferred_departure_windows',
+        'safety_buffer_minutes',
+        'waypoints'
+    )[:10])
+
+    if not routes_data:
+        routes_data = [
+            {
+                'departure_port__name': 'Nadi',
+                'destination_port__name': 'Suva',
+                'base_fare': 50,
+            },
+            {
+                'departure_port__name': 'Denarau',
+                'destination_port__name': 'Yasawa Islands',
+                'base_fare': 100,
+            },
+            {
+                'departure_port__name': 'Suva',
+                'destination_port__name': 'Lautoka',
+                'base_fare': 40,
+            },
+        ]
+
+    # --- Context ---
     context = {
-        'bookings': displayed_schedules,  # Limited for performance
-        'total_schedules': total_schedules_count,  # Total available count
-        'remaining_schedules': remaining_schedules,  # Pre-calculated for template
-        'routes': routes[:10],
+        'bookings': displayed_schedules,
+        'total_schedules': total_schedules_count,
+        'remaining_schedules': remaining_schedules,
+        'routes': routes_data,
         'form_data': {
             'route': route_input,
             'date': travel_date or now.date().strftime('%Y-%m-%d'),
             'passengers': passengers
         },
-        'weather_data': weather_data,  # Complete structure for JSON
-        'schedule_weather_data': schedule_weather_data,  # For schedule-specific updates
+        'weather_data': weather_data,
+        'schedule_weather_data': schedule_weather_data,
         'next_departure': next_departure_info,
         'today': now.date(),
         'tile_error_url': '/static/images/tile-error.png'
@@ -761,29 +790,23 @@ def view_ticket(request, qr_token):
 
 
 def get_schedule_updates(request):
-    now = timezone.now()
     schedules = Schedule.objects.filter(
+        departure_time__gte=timezone.now(),
         status='scheduled',
-        departure_time__gt=now
-    ).select_related('ferry', 'route__departure_port', 'route__destination_port').order_by('departure_time')
-    data = {
-        'bookings': [
-            {
-                'id': s.id,
-                'route_id': s.route.id,
-                'departure_time': s.departure_time.isoformat(),
-                'status': s.status,
-                'available_seats': s.available_seats,
-                'estimated_duration': int(s.route.estimated_duration.total_seconds() / 60) if s.route.estimated_duration else None,
-                'route': {
-                    'base_fare': str(s.route.base_fare),
-                    'departure_port': s.route.departure_port.name,
-                    'destination_port': s.route.destination_port.name
-                }
-            } for s in schedules
-        ]
-    }
-    return JsonResponse(data)
+        available_seats__gt=0
+    ).select_related('route__departure_port', 'route__destination_port', 'ferry').order_by('departure_time')
+
+    data = [
+        {
+            'id': s.id,
+            'route': f"{s.route.departure_port.name} to {s.route.destination_port.name}",
+            'departure_time': s.departure_time.isoformat(),
+            'available_seats': s.available_seats,
+            'ferry_name': s.ferry.name
+        } for s in schedules
+    ]
+
+    return JsonResponse({'schedules': data})
 
 
 @csrf_exempt
@@ -1543,71 +1566,222 @@ def view_tickets(request, booking_id):
     })
 
 
+
 def booking_pdf(request, booking_id):
     booking = get_object_or_404(Booking, id=booking_id)
-    tickets = booking.tickets.all()
+    tickets = list(booking.tickets.all())
 
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
 
-    # Path to logo
+    # Palette & tokens
+    BRAND_PRIMARY = colors.HexColor("#0EA5E9")
+    BRAND_DARK = colors.HexColor("#0B3C5D")
+    TEXT_PRIMARY = colors.HexColor("#1F2937")
+    TEXT_MUTED = colors.HexColor("#4B5563")
+    BORDER = colors.HexColor("#E5E7EB")
+    CARD_BG = colors.white
+
     logo_path = os.path.join(settings.BASE_DIR, "static/logo.png")
+    has_logo = os.path.exists(logo_path)
 
-    # Loop through each ticket in the booking
-    for ticket in tickets:
-        # Add Logo
-        if os.path.exists(logo_path):
-            p.drawImage(logo_path, 40, height - 120, width=120, height=60, mask='auto')
+    # Typography helpers
+    def set_h1():
+        p.setFillColor(BRAND_DARK)
+        p.setFont("Helvetica-Bold", 18)
 
-        # Header Title
-        p.setFont("Helvetica-Bold", 20)
-        p.drawString(180, height - 80, "Fiji Ferry Boarding Pass")
+    def set_h2():
+        p.setFillColor(BRAND_DARK)
+        p.setFont("Helvetica-Bold", 12)
 
-        # Passenger Info
-        p.setFont("Times-Roman", 12)  # more professional than plain Helvetica
-        y = height - 150
-        passenger_name = getattr(ticket.passenger, "first_name", "") + " " + getattr(ticket.passenger, "last_name", "")
-        if passenger_name.strip():
-            p.drawString(40, y, f"Passenger: {passenger_name} ({ticket.passenger.passenger_type.title()})")
-        else:
-            p.drawString(40, y, f"Passenger Type: {ticket.passenger.passenger_type.title()}")
-        y -= 20
-        p.drawString(40, y, f"Booking ID: #{ticket.booking.id}")
-        y -= 20
-        p.drawString(40, y, f"Ticket Status: {ticket.ticket_status.title()}")
-        y -= 20
-        p.drawString(40, y, f"Issued: {ticket.issued_at.strftime('%b %d, %Y %H:%M')}")
+    def set_lbl():
+        p.setFillColor(TEXT_MUTED)
+        p.setFont("Helvetica", 9)
 
-        # Schedule Section
-        y -= 40
-        p.setFont("Helvetica-Bold", 14)
-        p.drawString(40, y, "Schedule")
-        p.setFont("Times-Roman", 12)
-        y -= 20
-        p.drawString(40, y, f"Ferry: {ticket.booking.schedule.ferry.name}")
-        y -= 20
-        p.drawString(40, y, f"Route: {ticket.booking.schedule.route.departure_port} → {ticket.booking.schedule.route.destination_port}")
-        y -= 20
-        p.drawString(40, y, f"Departure: {ticket.booking.schedule.departure_time.strftime('%b %d, %Y %H:%M')}")
-        y -= 20
-        p.drawString(40, y, f"Arrival: {ticket.booking.schedule.arrival_time.strftime('%b %d, %Y %H:%M')}")
+    def set_val():
+        p.setFillColor(TEXT_PRIMARY)
+        p.setFont("Helvetica-Bold", 10.5)
 
-        # QR Code (bigger)
-        if ticket.qr_code:
-            qr_path = ticket.qr_code.path
-            p.drawImage(qr_path, width - 220, height - 320, width=180, height=180)
+    def set_small():
+        p.setFillColor(TEXT_MUTED)
+        p.setFont("Helvetica-Oblique", 8.5)
 
-        # Footer
-        p.setFont("Helvetica-Oblique", 10)
-        p.drawString(40, 40, "⚓ Please present this boarding pass with a valid ID when boarding.")
+    def fmt_dt(dt):
+        try:
+            return dt.strftime("%a, %d %b %Y %H:%M")
+        except Exception:
+            return str(dt) if dt is not None else "—"
 
-        # New page for next ticket
+    def safe_draw_image(path, x, y, w, h, preserve_aspect=True, mask='auto'):
+        try:
+            if path and os.path.exists(path):
+                p.drawImage(path, x, y, width=w, height=h,
+                            preserveAspectRatio=preserve_aspect, mask=mask, anchor='c')
+                return True
+        except Exception:
+            pass
+        return False
+
+    # Inline label:value row on one baseline
+    def draw_row(x, y, label, value, gap=6*mm, colon=True):
+        set_lbl()
+        lbl_text = f"{label}{':' if colon else ''}"
+        p.drawString(x, y, lbl_text)
+        lbl_w = p.stringWidth(lbl_text, "Helvetica", 9)
+        set_val()
+        p.drawString(x + lbl_w + gap, y, value if value else "—")
+
+    def draw_header():
+        # Brand band
+        band_h = 28 * mm
+        p.setFillColor(BRAND_PRIMARY)
+        p.rect(0, height - band_h, width, band_h, stroke=0, fill=1)
+
+        # Logo
+        if has_logo:
+            logo_h = 16 * mm
+            logo_w = 48 * mm
+            safe_draw_image(logo_path, 15 * mm, height - (band_h/2) - (logo_h/2),
+                            logo_w, logo_h, preserve_aspect=True)
+
+        # Title
+        title_x = (has_logo and 70 * mm) or 15 * mm
+        p.setFillColor(colors.white)
+        p.setFont("Helvetica-Bold", 18)
+        p.drawString(title_x, height - 17 * mm, "Fiji Ferry Boarding Pass")
+        p.setFont("Helvetica", 10.5)
+        p.drawString(title_x, height - 23 * mm, f"Booking #{booking.id}")
+
+    def draw_footer():
+        p.setStrokeColor(BORDER)
+        p.setLineWidth(0.5)
+        p.line(15 * mm, 18 * mm, width - 15 * mm, 18 * mm)
+        set_small()
+        p.drawString(15 * mm, 13 * mm, "Please present this boarding pass with a valid ID when boarding.")
+        p.drawString(15 * mm, 9 * mm, "For assistance, contact support@fijiferry.example")
+
+    def draw_watermark():
+        # Replace emoji with text watermark (prevents missing glyphs)
+        p.saveState()
+        p.setFillColor(BRAND_PRIMARY)
+        try:
+            p.setFillAlpha(0.06)  # not all renderers support alpha; safe if ignored
+        except Exception:
+            pass
+        p.translate(width * 0.75, height * 0.25)
+        p.rotate(15)
+        p.setFont("Helvetica-Bold", 90)
+        p.drawCentredString(0, 0, "FIJI FERRY")
+        p.restoreState()
+
+    def draw_ticket_card(t):
+        margin_x = 15 * mm
+        top_y = height - 40 * mm
+        card_w = width - (2 * margin_x)
+        card_h = 140 * mm
+        card_y = top_y - card_h
+
+        # Card background
+        p.setFillColor(CARD_BG)
+        p.setStrokeColor(BORDER)
+        p.setLineWidth(0.8)
+        p.roundRect(margin_x, card_y, card_w, card_h, 6 * mm, stroke=1, fill=1)
+
+        # Brand stripe
+        p.setFillColor(BRAND_PRIMARY)
+        p.rect(margin_x, card_y + card_h - (6 * mm), card_w, 6 * mm, stroke=0, fill=1)
+
+        # Header text
+        set_h1()
+        p.drawString(margin_x + 10 * mm, card_y + card_h - 14 * mm, f"Ticket #{t.id}")
+        set_small()
+        p.drawString(margin_x + 10 * mm, card_y + card_h - 20 * mm, f"Issued {fmt_dt(getattr(t, 'issued_at', None))}")
+
+        # Columns
+        col_gap = 12 * mm
+        inner_margin = 12 * mm
+        col_w = (card_w - (inner_margin * 2) - col_gap) / 2
+        left_x = margin_x + inner_margin
+        right_x = left_x + col_w + col_gap
+        base_y = card_y + card_h - 30 * mm
+        row_h = 8.5 * mm
+
+        # Passenger column
+        set_h2()
+        p.drawString(left_x, base_y, "Passenger")
+        y = base_y - 7 * mm
+
+        passenger = getattr(t, 'passenger', None)
+        full_name = ""
+        if passenger:
+            fn = getattr(passenger, 'first_name', '') or ''
+            ln = getattr(passenger, 'last_name', '') or ''
+            full_name = (fn + " " + ln).strip()
+        passenger_type = (getattr(passenger, 'passenger_type', '') or '').title()
+
+        draw_row(left_x, y, "Name", full_name); y -= row_h
+        draw_row(left_x, y, "Passenger Type", passenger_type); y -= row_h
+        draw_row(left_x, y, "Booking ID", f"#{t.booking.id}"); y -= row_h
+        draw_row(left_x, y, "Status", str(t.ticket_status).title())
+
+        # Divider
+        p.setStrokeColor(BORDER)
+        p.setLineWidth(0.6)
+        p.line(left_x + col_w + (col_gap/2), card_y + inner_margin,
+               left_x + col_w + (col_gap/2), card_y + card_h - inner_margin)
+
+        # Schedule column
+        set_h2()
+        p.drawString(right_x, base_y, "Schedule")
+        y2 = base_y - 7 * mm
+
+        sched = getattr(getattr(t, 'booking', None), 'schedule', None)
+        ferry = getattr(getattr(sched, 'ferry', None), 'name', '') if sched else ''
+        route = getattr(sched, 'route', None)
+        route_str = "—"
+        if route:
+            dep_port = getattr(route, 'departure_port', '—')
+            dest_port = getattr(route, 'destination_port', '—')
+            route_str = f"{dep_port} → {dest_port}"
+        dep_dt = getattr(sched, 'departure_time', None) if sched else None
+        arr_dt = getattr(sched, 'arrival_time', None) if sched else None
+
+        draw_row(right_x, y2, "Ferry", ferry); y2 -= row_h
+        draw_row(right_x, y2, "Route", route_str); y2 -= row_h
+        draw_row(right_x, y2, "Departure", fmt_dt(dep_dt)); y2 -= row_h
+        draw_row(right_x, y2, "Arrival", fmt_dt(arr_dt))
+
+        # QR area
+        qr = getattr(t, 'qr_code', None)
+        if qr:
+            try:
+                qr_size = 38 * mm
+                qr_x = right_x + col_w - qr_size
+                qr_y = card_y + inner_margin
+                p.setStrokeColor(BORDER)
+                p.setLineWidth(0.6)
+                p.roundRect(qr_x - 3*mm, qr_y - 3*mm, qr_size + 6*mm, qr_size + 6*mm, 3*mm, stroke=1, fill=0)
+                safe_draw_image(qr.path, qr_x, qr_y, qr_size, qr_size, preserve_aspect=True)
+                set_small()
+                p.drawRightString(qr_x + qr_size, qr_y - 6*mm, "Scan to validate")
+            except Exception:
+                pass
+
+        # Card micro-footer
+        set_small()
+        p.drawString(left_x, card_y + 8 * mm, "This ticket is valid only for the specified sailing and passenger.")
+
+    # One ticket per page
+    for t in tickets:
+        draw_header()
+        draw_watermark()   # text watermark; no emoji glyphs
+        draw_ticket_card(t)
+        draw_footer()
         p.showPage()
 
     p.save()
     buffer.seek(0)
-
     return FileResponse(buffer, as_attachment=True, filename=f"Booking_{booking.id}_Tickets.pdf")
 
 
@@ -1714,12 +1888,30 @@ def process_payment(request, booking_id):
     })
 
 
+
+# Helper: safe display name (works with custom User)
+def _display_name(user):
+    """
+    Best-effort user display name without relying on get_full_name()
+    (works for custom User models).
+    """
+    if not user:
+        return None
+    first = getattr(user, "first_name", "") or ""
+    last  = getattr(user, "last_name", "") or ""
+    name = f"{first} {last}".strip()
+    if name:
+        return name
+    return getattr(user, "email", None) or getattr(user, "username", None)
+
+
 def payment_success(request):
     booking_id = request.session.get('booking_id')
     session_id = request.GET.get('session_id') or request.session.get('stripe_session_id')
 
     logger.debug(f"Payment success: booking_id={booking_id}, session_id={session_id}")
 
+    # Try to recover a missing/placeholder session_id from the Booking record
     if not session_id or session_id == '{CHECKOUT_SESSION_ID}':
         logger.warning("Invalid or missing session_id in payment_success")
         session_id = None
@@ -1733,6 +1925,7 @@ def payment_success(request):
                 messages.error(request, "Booking not found. Please contact support.")
                 return redirect('bookings:booking_history')
 
+    # If we have a session_id but no booking_id, look it up via Stripe metadata
     if not booking_id and session_id:
         try:
             session = stripe.checkout.Session.retrieve(session_id)
@@ -1762,6 +1955,7 @@ def payment_success(request):
         messages.error(request, "Booking not found. Please contact support.")
         return redirect('bookings:booking_history')
 
+    # Authorization
     if request.user.is_authenticated and booking.user != request.user:
         logger.error(f"Authorization failed: User {request.user} not authorized for booking {booking_id}")
         return HttpResponseForbidden("You are not authorized to view this booking.")
@@ -1774,7 +1968,17 @@ def payment_success(request):
         messages.error(request, "This booking is no longer valid.")
         return redirect('bookings:booking_history')
 
+    # Currency formatting
+    def fmt_fjd(value):
+        try:
+            d = Decimal(value)
+        except Exception:
+            d = Decimal("0.00")
+        d = d.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        return f"FJD {d:,.2f}"
+
     try:
+        # DEV shortcut
         if session_id == 'debug-mode' and settings.DEBUG:
             payment, _ = Payment.objects.get_or_create(
                 booking=booking,
@@ -1797,6 +2001,7 @@ def payment_success(request):
                 messages.error(request, "Invalid payment session. Please try again or contact support.")
                 return redirect('bookings:booking_history')
 
+            # Retrieve and verify the session
             session = stripe.checkout.Session.retrieve(session_id, expand=['payment_intent'])
             if not session.payment_intent:
                 logger.error(f"No payment_intent found for session {session_id}, booking {booking_id}")
@@ -1808,6 +2013,7 @@ def payment_success(request):
                 messages.error(request, "Invalid payment session. Please contact support.")
                 return redirect('bookings:booking_history')
 
+            # Persist payment record
             payment, created = Payment.objects.get_or_create(
                 booking=booking,
                 session_id=session.id,
@@ -1820,6 +2026,7 @@ def payment_success(request):
             payment.payment_intent_id = session.payment_intent.id
             payment.transaction_id = session.payment_intent.id
             payment.amount = Decimal(session.payment_intent.amount) / 100
+
             if session.payment_intent.status == 'succeeded':
                 payment.payment_status = 'completed'
                 booking.status = 'confirmed'
@@ -1831,20 +2038,19 @@ def payment_success(request):
                 logger.warning(f"Payment not completed for booking {booking.id}: status={session.payment_intent.status}")
                 messages.error(request, f"Payment is not completed yet. Status: {session.payment_intent.status}")
                 return redirect('bookings:booking_history')
+
             payment.save()
 
-        # Check if tickets already exist
+        # --- Ticket generation ---
         if Ticket.objects.filter(booking=booking).count() == booking.passengers.count():
             logger.info(f"Tickets already generated for booking {booking.id}")
             messages.success(request, f'Booking #{booking.id} confirmed! Tickets already generated.')
         else:
-            # Verify passengers exist
             if not booking.passengers.exists():
                 logger.error(f"No passengers found for booking {booking.id}")
                 messages.error(request, "No passengers associated with booking. Please contact support.")
                 return redirect('bookings:booking_history')
 
-            # Generate tickets
             logger.debug(f"Starting ticket generation for booking {booking.id}, passenger count: {booking.passengers.count()}")
             for passenger in booking.passengers.all():
                 if not Ticket.objects.filter(booking=booking, passenger=passenger).exists():
@@ -1855,8 +2061,9 @@ def payment_success(request):
                             ticket_status='active',
                             qr_token=uuid.uuid4().hex
                         )
-                        ticket.full_clean()  # Validate model before saving
+                        ticket.full_clean()
                         ticket.save()
+
                         qr_data = request.build_absolute_uri(reverse('bookings:view_ticket', args=[ticket.qr_token]))
                         qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_L)
                         qr.add_data(qr_data)
@@ -1881,49 +2088,274 @@ def payment_success(request):
                         messages.error(request, "Error generating tickets. Please contact support.")
                         return redirect('bookings:booking_history')
 
-        # Send confirmation email
+        # --- Confirmation email (professional; includes vehicles & cargo; light Fijian formality) ---
         try:
-            email_subject = f'Booking Confirmation #{booking.id}'
-            email_body = (
-                f'Your booking has been confirmed!\n\n'
-                f'Booking ID: {booking.id}\n'
-                f'Route: {booking.schedule.route.departure_port.name} to {booking.schedule.route.destination_port.name}\n'
-                f'Departure: {booking.schedule.departure_time.strftime("%a, %b %d, %H:%M")}\n'
-                f'Estimated Duration: {int(booking.schedule.route.estimated_duration.total_seconds() / 60) if booking.schedule.route.estimated_duration else "N/A"} minutes\n'
-                f'Passengers: {booking.passenger_adults} Adults, {booking.passenger_children} Children, {booking.passenger_infants} Infants\n'
-                f'Total Price: FJD {booking.total_price}\n'
-            )
-            if booking.cargo.exists():
-                cargo = booking.cargo.first()
-                email_body += (
-                    f'\nCargo Details:\n'
-                    f'Type: {cargo.cargo_type.capitalize()}\n'
-                    f'Weight: {cargo.weight_kg} kg\n'
-                    f'License Plate: {cargo.license_plate or "N/A"}\n'
-                    f'Price: FJD {cargo.price}\n'
-                )
-            if booking.add_ons.exists():
-                email_body += '\nAdd-ons:\n'
-                for addon in booking.add_ons.all():
-                    email_body += f'- {addon.get_add_on_type_display()}: FJD {addon.price}\n'
+            guest_name = _display_name(booking.user) or "Valued Guest"
 
-            email_body += (
-                f'\nView your tickets: {request.build_absolute_uri(reverse("bookings:view_tickets", args=[booking.id]))}\n'
-                'Thank you for choosing our ferry service!'
+            # Arrival & duration
+            estimated_duration = booking.schedule.route.estimated_duration
+            arrival_str = "N/A"
+            duration_str = "N/A"
+            if estimated_duration:
+                estimated_arrival = booking.schedule.departure_time + estimated_duration
+                arrival_str = estimated_arrival.strftime("%A, %B %d, %Y at %H:%M")
+                total_minutes = int(estimated_duration.total_seconds() / 60)
+                hours = total_minutes // 60
+                minutes = total_minutes % 60
+                duration_str = f"{hours} hours {minutes} minutes" if minutes else f"{hours} hours"
+
+            dep_port = booking.schedule.route.departure_port.name
+            dest_port = booking.schedule.route.destination_port.name
+            vessel   = booking.schedule.ferry.name
+            depart   = booking.schedule.departure_time.strftime("%A, %B %d, %Y at %H:%M")
+            total_str = fmt_fjd(booking.total_price)
+
+            passenger_details = [
+                f"{p.first_name} {p.last_name} ({p.get_passenger_type_display()})"
+                for p in booking.passengers.all()
+            ]
+
+            # Build optional sections for plain text
+            vehicles_text = ""
+            if booking.vehicles.exists():
+                v_lines = []
+                for v in booking.vehicles.all():
+                    v_lines.extend([
+                        f"- Type: {v.get_vehicle_type_display()}",
+                        f"  Dimensions: {v.dimensions}",
+                        f"  License Plate: {v.license_plate or 'N/A'}",
+                        f"  Price: {fmt_fjd(v.price)}",
+                    ])
+                vehicles_text = "Vehicles:\n" + "\n".join(v_lines) + "\n\n"
+
+            cargo_text = ""
+            if booking.cargo.exists():
+                c_lines = []
+                for c in booking.cargo.all():
+                    c_lines.extend([
+                        f"- Type: {c.get_cargo_type_display()}",
+                        f"  Weight: {c.weight_kg} kg",
+                        f"  Dimensions: {c.dimensions_cm or 'N/A'}",
+                        f"  License Plate: {c.license_plate or 'N/A'}",
+                        f"  Price: {fmt_fjd(c.price)}",
+                    ])
+                cargo_text = "Cargo:\n" + "\n".join(c_lines) + "\n\n"
+
+            addons_text = ""
+            if booking.add_ons.exists():
+                a_lines = []
+                for a in booking.add_ons.all():
+                    qty = getattr(a, "quantity", 1) or 1
+                    a_lines.append(f"- {a.get_add_on_type_display()} (x{qty}): {fmt_fjd(a.price)}")
+                addons_text = "Add-ons:\n" + "\n".join(a_lines) + "\n\n"
+
+            # Plain text (Fijian greeting/closing; detailed sections)
+            email_text = (
+                f"Bula {guest_name},\n\n"
+                f"Vinaka vakalevu for your booking. We are pleased to confirm that your payment "
+                f"has been received and your journey is confirmed.\n\n"
+                f"Booking ID: {booking.id}\n"
+                f"Route: {dep_port} \u2192 {dest_port}\n"
+                f"Vessel: {vessel}\n"
+                f"Departure: {depart}\n"
+                f"Estimated Arrival: {arrival_str}\n"
+                f"Estimated Duration: {duration_str}\n\n"
+                f"Passengers:\n" + "\n".join([f"- {pd}" for pd in passenger_details]) + "\n\n"
+                + vehicles_text
+                + cargo_text
+                + addons_text +
+                f"Total Amount Paid: {total_str}\n"
+                f"Payment Method: Stripe\n"
+                f"Status: Completed\n\n"
+                f"View your tickets: {request.build_absolute_uri(reverse('bookings:view_tickets', args=[booking.id]))}\n\n"
+                f"Please arrive 30–60 minutes before departure for check-in and boarding, and bring a valid photo ID. "
+                f"If travelling with a vehicle, ensure your vehicle documents are available for inspection.\n\n"
+                f"For assistance, email support@yourferryservice.com or call +679-7388496.\n\n"
+                f"Vinaka vakalevu, and safe travels,\n"
+                f"Fiji Ferry Service Team"
             )
+
+            # HTML blocks for vehicles/cargo/add-ons
+            vehicles_html = ""
+            if booking.vehicles.exists():
+                rows = []
+                for v in booking.vehicles.all():
+                    rows.append(f"""
+                        <tr><td>Type</td><td>{v.get_vehicle_type_display()}</td></tr>
+                        <tr><td>Dimensions</td><td>{v.dimensions}</td></tr>
+                        <tr><td>License Plate</td><td>{v.license_plate or 'N/A'}</td></tr>
+                        <tr><td>Price</td><td>{fmt_fjd(v.price)}</td></tr>
+                        <tr class="spacer"><td colspan="2"></td></tr>
+                    """)
+                vehicles_html = f"""
+                    <h3 class="section-title">Vehicles</h3>
+                    <table class="info-table">{''.join(rows)}</table>
+                """
+
+            cargo_html = ""
+            if booking.cargo.exists():
+                rows = []
+                for c in booking.cargo.all():
+                    rows.append(f"""
+                        <tr><td>Type</td><td>{c.get_cargo_type_display()}</td></tr>
+                        <tr><td>Weight</td><td>{c.weight_kg} kg</td></tr>
+                        <tr><td>Dimensions</td><td>{c.dimensions_cm or 'N/A'}</td></tr>
+                        <tr><td>License Plate</td><td>{c.license_plate or 'N/A'}</td></tr>
+                        <tr><td>Price</td><td>{fmt_fjd(c.price)}</td></tr>
+                        <tr class="spacer"><td colspan="2"></td></tr>
+                    """)
+                cargo_html = f"""
+                    <h3 class="section-title">Cargo</h3>
+                    <table class="info-table">{''.join(rows)}</table>
+                """
+
+            addons_html = ""
+            if booking.add_ons.exists():
+                rows = []
+                for a in booking.add_ons.all():
+                    qty = getattr(a, "quantity", 1) or 1
+                    rows.append(f"<tr><td>{a.get_add_on_type_display()}</td><td>x{qty} — {fmt_fjd(a.price)}</td></tr>")
+                addons_html = f"""
+                    <h3 class="section-title">Add-ons</h3>
+                    <table class="info-table">{''.join(rows)}</table>
+                """
+
+            # Polished HTML (inline CSS)
+            email_html = f"""
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Booking Confirmation #{booking.id}</title>
+  <style>
+    body {{
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+      background: #f6f8fb; margin:0; padding:0; color:#1f2937;
+    }}
+    .container {{
+      max-width: 680px; margin: 32px auto; background:#ffffff; border-radius:16px;
+      box-shadow: 0 10px 30px rgba(2,6,23,0.06); overflow:hidden; border:1px solid #eef2f7;
+    }}
+    .header {{
+      padding: 20px 24px; background: linear-gradient(135deg,#0ea5e9,#6366f1);
+      color:#fff; display:flex; align-items:center; gap:12px;
+    }}
+    .header h1 {{ font-size:18px; font-weight:700; margin:0; }}
+    .content {{ padding: 24px; }}
+    .hello {{ margin:0 0 16px 0; font-size:16px; }}
+    .lead {{ margin:0 0 20px 0; color:#475569; }}
+    .section-title {{
+      font-size:15px; font-weight:700; margin: 24px 0 8px; color:#111827;
+      border-left:4px solid #3b82f6; padding-left:8px;
+    }}
+    .info-grid {{
+      display:grid; grid-template-columns: 160px 1fr; gap:8px 16px;
+      background:#f9fafb; border:1px solid #eef2f7; border-radius:12px; padding:16px;
+    }}
+    .label {{ color:#6b7280; }}
+    .value {{ color:#111827; font-weight:600; }}
+    .info-table {{ width:100%; border-collapse:separate; border-spacing:0 6px; }}
+    .info-table td {{ background:#f9fafb; padding:10px 12px; border:1px solid #eef2f7; }}
+    .info-table tr td:first-child {{ width:40%; color:#6b7280; }}
+    .info-table .spacer td {{ background:transparent; border:none; padding:4px; }}
+    .badge {{
+      display:inline-block; padding:6px 10px; border-radius:999px; font-size:12px; font-weight:700;
+      background:#ecfeff; color:#155e75; border:1px solid #a5f3fc;
+    }}
+    .total {{
+      display:flex; justify-content:space-between; align-items:center;
+      background:#f3f4f6; border:1px solid #e5e7eb; border-radius:12px; padding:14px 16px; margin-top:8px;
+    }}
+    .total .amount {{ font-size:20px; font-weight:800; color:#111827; }}
+    .cta {{
+      display:block; text-align:center; margin:24px 0 8px 0;
+      background:#2563eb; color:#fff; text-decoration:none;
+      padding:12px 16px; border-radius:10px; font-weight:700;
+    }}
+    .footer {{
+      color:#6b7280; font-size:12px; padding: 0 24px 24px 24px; text-align:center;
+    }}
+    a {{ color:#2563eb; text-decoration:none; }}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M3 18c3 0 3-2 6-2s3 2 6 2 3-2 6-2" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+        <path d="M10 14l3-7 3 7" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <h1>Booking Confirmation #{booking.id}</h1>
+    </div>
+    <div class="content">
+      <p class="hello">Bula {guest_name},</p>
+      <p class="lead">Vinaka vakalevu for your booking. Your payment has been received and your trip is confirmed. Here are your details:</p>
+
+      <h3 class="section-title">Trip Details</h3>
+      <div class="info-grid">
+        <div class="label">Route</div><div class="value">{dep_port} → {dest_port}</div>
+        <div class="label">Vessel</div><div class="value">{vessel}</div>
+        <div class="label">Departure</div><div class="value">{depart}</div>
+        <div class="label">Estimated Arrival</div><div class="value">{arrival_str}</div>
+        <div class="label">Duration</div><div class="value">{duration_str}</div>
+        <div class="label">Status</div><div class="value"><span class="badge">Payment Completed</span></div>
+      </div>
+
+      <h3 class="section-title">Passengers</h3>
+      <table class="info-table">
+        {''.join(f'<tr><td>Passenger</td><td>{pd}</td></tr>' for pd in passenger_details)}
+      </table>
+
+      {vehicles_html}
+      {cargo_html}
+      {addons_html}
+
+      <h3 class="section-title">Payment Summary</h3>
+      <div class="total">
+        <div>Total Amount Paid</div>
+        <div class="amount">{total_str}</div>
+      </div>
+
+      <a class="cta" href="{request.build_absolute_uri(reverse('bookings:view_tickets', args=[booking.id]))}">
+        View Your Tickets
+      </a>
+
+      <p class="footer">
+        Please arrive 30–60 minutes early for check-in and boarding, and bring a valid photo ID.
+        If you need help, contact us at <a href="mailto:support@yourferryservice.com">support@yourferryservice.com</a> or +679-738-8496.
+        <br/><br/>Vinaka vakalevu, and safe travels,<br/>Fiji Ferry Service Team
+      </p>
+    </div>
+  </div>
+</body>
+</html>
+"""
+
+            # Recipient
+            recipient = None
+            if booking.user and getattr(booking.user, "email", None):
+                recipient = booking.user.email
+            else:
+                recipient = request.session.get('guest_email') or booking.guest_email
 
             send_mail(
-                email_subject,
-                email_body,
-                settings.DEFAULT_FROM_EMAIL,
-                [booking.user.email if booking.user else booking.guest_email],
+                subject=f"Your Ferry Booking Confirmation - ID {booking.id}",
+                message=email_text,  # plain text fallback
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[recipient] if recipient else [],
+                html_message=email_html,
                 fail_silently=True
             )
             logger.info(f"Confirmation email sent for booking {booking.id}")
         except Exception as e:
             logger.error(f"Error sending confirmation email for booking {booking.id}: {str(e)}")
-            messages.warning(request, "Booking confirmed, but there was an issue sending the confirmation email. Please check your email later or contact support.")
+            messages.warning(
+                request,
+                "Booking confirmed, but there was an issue sending the confirmation email. "
+                "Please check your email later or contact support."
+            )
 
+        # Cleanup session & redirect
         messages.success(request, f'Booking #{booking.id} confirmed! Tickets have been generated and emailed.')
         request.session.pop('booking_id', None)
         request.session.pop('stripe_session_id', None)
@@ -1939,6 +2371,7 @@ def payment_success(request):
         logger.error(f"Unexpected error for booking {booking_id}: {str(e)}")
         messages.error(request, "An unexpected error occurred during payment processing. Please contact support.")
         return redirect('bookings:booking_history')
+
 
 
 @login_required_allow_anonymous
@@ -1976,6 +2409,92 @@ def payment_cancel(request):
         messages.error(request, "No booking found to cancel.")
 
     return redirect('bookings:booking_history')
+
+
+@login_required
+def cancel_booking(request, booking_id):
+    # Get the booking first so we can give precise feedback instead of a 404
+    booking = get_object_or_404(Booking, id=booking_id)
+
+    # Ownership/authorization check
+    if booking.user_id != request.user.id and not request.user.is_staff:
+        # Show a clear message to the user and avoid 404
+        messages.error(request, "You can only cancel your own bookings.")
+        logger.warning(
+            "User %s attempted to cancel booking %s not owned by them.",
+            request.user.id, booking_id
+        )
+        # For web flow, redirect with a message; for strict API, you could return HttpResponseForbidden
+        return redirect('bookings:booking_history')
+
+    now = timezone.now()
+    cutoff = now + datetime.timedelta(hours=6)
+
+    # Business rule messaging
+    if booking.status != 'confirmed':
+        messages.error(request, "Only confirmed bookings can be cancelled.")
+        return redirect('bookings:booking_history')
+
+    if booking.schedule.departure_time <= cutoff:
+        # Be explicit why: departure too soon or already departed
+        if booking.schedule.departure_time <= now:
+            messages.error(request, "This trip has already departed and cannot be cancelled.")
+        else:
+            leave_in = booking.schedule.departure_time - now
+            minutes_left = max(0, int(leave_in.total_seconds() // 60))
+            messages.error(
+                request,
+                f"This booking cannot be cancelled within 6 hours of departure "
+                f"(only {minutes_left} minute(s) remaining)."
+            )
+        return redirect('bookings:booking_history')
+
+    if request.method == 'POST':
+        try:
+            # Process refund if we have a Stripe PaymentIntent
+            if booking.payment_intent_id:
+                refund = stripe.Refund.create(
+                    payment_intent=booking.payment_intent_id,
+                    amount=int(booking.total_price * 100)  # amount in cents
+                )
+                Payment.objects.create(
+                    booking=booking,
+                    payment_method='stripe',
+                    amount=-booking.total_price,
+                    payment_status='refunded',
+                    transaction_id=refund.id
+                )
+
+            # Update booking and related objects
+            booking.status = 'cancelled'
+            booking.schedule.available_seats += (
+                booking.passenger_adults + booking.passenger_children + booking.passenger_infants
+            )
+            booking.schedule.save()
+            booking.save()
+
+            # Mark tickets cancelled
+            for ticket in booking.tickets.all():
+                ticket.ticket_status = 'cancelled'
+                ticket.save()
+
+            messages.success(request, f"Booking #{booking.id} has been cancelled and refunded.")
+            return redirect('bookings:booking_history')
+
+        except stripe.error.StripeError as e:
+            logger.error(f"Refund error for booking {booking.id}: {str(e)}")
+            messages.error(request, f"Refund processing failed: {str(e)}. Please contact support.")
+            return redirect('bookings:booking_history')
+        except Exception as e:
+            logger.error(f"Unexpected error cancelling booking {booking.id}: {str(e)}")
+            messages.error(request, "An unexpected error occurred. Please contact support.")
+            return redirect('bookings:booking_history')
+
+    # GET -> show confirmation page
+    return render(request, 'bookings/cancel.html', {
+        'booking': booking,
+        'cutoff_time': cutoff
+    })
 
 
 @require_POST
@@ -2068,42 +2587,108 @@ def stripe_webhook(request):
                             return JsonResponse({'status': 'error', 'message': 'Error generating tickets'}, status=500)
 
             # Build confirmation email
-            email_subject = f'Booking Confirmation #{booking.id}'
+            from datetime import timedelta
+            from django.template.loader import render_to_string
+
+            # Derive guest name
+            guest_name = booking.user.get_full_name() if booking.user and booking.user.get_full_name() else "Valued Guest"
+
+            # Calculate arrival and duration strings
+            estimated_duration = booking.schedule.route.estimated_duration
+            arrival_str = "N/A"
+            duration_str = "N/A"
+            if estimated_duration:
+                estimated_arrival = booking.schedule.departure_time + estimated_duration
+                arrival_str = estimated_arrival.strftime("%A, %B %d, %Y at %H:%M")
+                total_minutes = int(estimated_duration.total_seconds() / 60)
+                hours = total_minutes // 60
+                minutes = total_minutes % 60
+                duration_str = f"{hours} hours {minutes} minutes" if minutes else f"{hours} hours"
+
+            # Passenger details list
+            passenger_details = []
+            for p in booking.passengers.all():
+                passenger_details.append(f"{p.first_name} {p.last_name} ({p.get_passenger_type_display()})")
+
+            # Plain text fallback
             email_body = (
-                f'Your booking has been confirmed!\n\n'
-                f'Booking ID: {booking.id}\n'
-                f'Route: {booking.schedule.route.departure_port.name} → {booking.schedule.route.destination_port.name}\n'
-                f'Departure: {booking.schedule.departure_time.strftime("%a, %b %d, %H:%M")}\n'
-                f'Estimated Duration: {int(booking.schedule.route.estimated_duration.total_seconds() / 60) if booking.schedule.route.estimated_duration else "N/A"} minutes\n'
-                f'Passengers: {booking.passenger_adults} Adults, {booking.passenger_children} Children, {booking.passenger_infants} Infants\n'
-                f'Total Price: FJD {booking.total_price}\n'
+                f"Dear {guest_name},\n\n"
+                f"Thank you for choosing our ferry service. We are pleased to confirm your booking.\n\n"
+                f"**Booking Details**\n"
+                f"Booking ID: {booking.id}\n"
+                f"Route: {booking.schedule.route.departure_port.name} to {booking.schedule.route.destination_port.name}\n"
+                f"Vessel: {booking.schedule.ferry.name}\n"
+                f"Departure: {booking.schedule.departure_time.strftime('%A, %B %d, %Y at %H:%M')}\n"
+                f"Estimated Arrival: {arrival_str}\n"
+                f"Estimated Duration: {duration_str}\n\n"
+                f"**Passengers**\n" + "\n".join([f"- {pd}" for pd in passenger_details]) + f"\nTotal: {len(passenger_details)}\n\n"
             )
+
+            if booking.vehicles.exists():
+                email_body += "**Vehicles**\n"
+                for vehicle in booking.vehicles.all():
+                    email_body += (
+                        f"- Type: {vehicle.get_vehicle_type_display()}\n"
+                        f"  Dimensions: {vehicle.dimensions}\n"
+                        f"  License Plate: {vehicle.license_plate or 'N/A'}\n"
+                        f"  Price: FJD {vehicle.price}\n\n"
+                    )
 
             if booking.cargo.exists():
-                cargo = booking.cargo.first()
-                email_body += (
-                    f'\nCargo Details:\n'
-                    f'Type: {cargo.cargo_type.capitalize()}\n'
-                    f'Weight: {cargo.weight_kg} kg\n'
-                    f'License Plate: {cargo.license_plate}\n'
-                    f'Price: FJD {cargo.price}\n'
-                )
+                email_body += "**Cargo**\n"
+                for cargo in booking.cargo.all():
+                    email_body += (
+                        f"- Type: {cargo.get_cargo_type_display()}\n"
+                        f"  Weight: {cargo.weight_kg} kg\n"
+                        f"  Dimensions: {cargo.dimensions_cm or 'N/A'}\n"
+                        f"  License Plate: {cargo.license_plate or 'N/A'}\n"
+                        f"  Price: FJD {cargo.price}\n\n"
+                    )
 
-            if booking.addons.exists():
-                email_body += '\nAdd-ons:\n'
-                for addon in booking.addons.all():
-                    email_body += f'- {addon.get_add_on_type_display()}: FJD {addon.price}\n'
+            if booking.add_ons.exists():
+                email_body += "**Add-ons**\n"
+                for addon in booking.add_ons.all():
+                    email_body += f"- {addon.get_add_on_type_display()} (x{addon.quantity}): FJD {addon.price}\n\n"
 
             email_body += (
-                f'\nView your tickets: {request.build_absolute_uri(reverse("bookings:view_tickets", args=[booking.id]))}\n'
-                'Thank you for choosing our ferry service!'
+                f"**Payment Summary**\n"
+                f"Total Price: FJD {booking.total_price}\n"
+                f"Payment Method: Stripe\n"
+                f"Status: Completed\n\n"
+                f"**Important Instructions**\n"
+                f"Please arrive at least 30-60 minutes before departure for check-in and boarding.\n"
+                f"Bring a valid ID for all passengers and vehicle documents if applicable.\n"
+                f"Wear comfortable clothing and consider bringing water and snacks.\n"
+                f"View your tickets: {request.build_absolute_uri(reverse('bookings:view_tickets', args=[booking.id]))}\n\n"
+                f"For any inquiries, contact us at support@yourferryservice.com or +679-123-4567.\n"
+                f"Review our cancellation policy: {request.build_absolute_uri(reverse('bookings:cancellation_policy'))}\n\n"
+                f"Best regards,\n"
+                f"Your Ferry Service Team"
             )
 
+            # HTML version (assume 'emails/booking_confirmation.html' template exists)
+            context = {
+                'guest_name': guest_name,
+                'booking': booking,
+                'arrival_str': arrival_str,
+                'duration_str': duration_str,
+                'passengers': passenger_details,
+                'vehicles': booking.vehicles.all(),
+                'cargos': booking.cargo.all(),
+                'add_ons': booking.add_ons.all(),
+                'view_tickets_url': request.build_absolute_uri(reverse('bookings:view_tickets', args=[booking.id])),
+                'policy_url': request.build_absolute_uri(reverse('bookings:cancellation_policy')),
+                'contact_email': 'support@yourferryservice.com',
+                'contact_phone': '+679-123-4567',
+            }
+            html_body = render_to_string('emails/booking_confirmation.html', context)
+
             send_mail(
-                email_subject,
+                f"Your Ferry Booking Confirmation - ID {booking.id}",
                 email_body,
                 settings.DEFAULT_FROM_EMAIL,
-                [booking.user.email if booking.user else booking.guest_email],
+                [booking.user.email if booking.user else guest_email],
+                html_message=html_body,
                 fail_silently=True
             )
 
@@ -2205,19 +2790,49 @@ def modify_booking(request, booking_id):
 
 @login_required
 def cancel_booking(request, booking_id):
-    booking = get_object_or_404(Booking, id=booking_id, user=request.user)
-    now = timezone.now()
+    # Get the booking first so we can give precise feedback instead of a 404
+    booking = get_object_or_404(Booking, id=booking_id)
 
-    if booking.status != 'confirmed' or booking.schedule.departure_time <= now + datetime.timedelta(hours=6):
-        messages.error(request, "This booking cannot be cancelled.")
+    # Ownership/authorization check
+    if booking.user_id != request.user.id and not request.user.is_staff:
+        # Show a clear message to the user and avoid 404
+        messages.error(request, "You can only cancel your own bookings.")
+        logger.warning(
+            "User %s attempted to cancel booking %s not owned by them.",
+            request.user.id, booking_id
+        )
+        # For web flow, redirect with a message; for strict API, you could return HttpResponseForbidden
+        return redirect('bookings:booking_history')
+
+    now = timezone.now()
+    cutoff = now + datetime.timedelta(hours=6)
+
+    # Business rule messaging
+    if booking.status != 'confirmed':
+        messages.error(request, "Only confirmed bookings can be cancelled.")
+        return redirect('bookings:booking_history')
+
+    if booking.schedule.departure_time <= cutoff:
+        # Be explicit why: departure too soon or already departed
+        if booking.schedule.departure_time <= now:
+            messages.error(request, "This trip has already departed and cannot be cancelled.")
+        else:
+            leave_in = booking.schedule.departure_time - now
+            minutes_left = max(0, int(leave_in.total_seconds() // 60))
+            messages.error(
+                request,
+                f"This booking cannot be cancelled within 6 hours of departure "
+                f"(only {minutes_left} minute(s) remaining)."
+            )
         return redirect('bookings:booking_history')
 
     if request.method == 'POST':
         try:
+            # Process refund if we have a Stripe PaymentIntent
             if booking.payment_intent_id:
                 refund = stripe.Refund.create(
                     payment_intent=booking.payment_intent_id,
-                    amount=int(booking.total_price * 100)
+                    amount=int(booking.total_price * 100)  # amount in cents
                 )
                 Payment.objects.create(
                     booking=booking,
@@ -2227,12 +2842,15 @@ def cancel_booking(request, booking_id):
                     transaction_id=refund.id
                 )
 
+            # Update booking and related objects
             booking.status = 'cancelled'
             booking.schedule.available_seats += (
-                        booking.passenger_adults + booking.passenger_children + booking.passenger_infants)
+                booking.passenger_adults + booking.passenger_children + booking.passenger_infants
+            )
             booking.schedule.save()
             booking.save()
 
+            # Mark tickets cancelled
             for ticket in booking.tickets.all():
                 ticket.ticket_status = 'cancelled'
                 ticket.save()
@@ -2249,9 +2867,10 @@ def cancel_booking(request, booking_id):
             messages.error(request, "An unexpected error occurred. Please contact support.")
             return redirect('bookings:booking_history')
 
+    # GET -> show confirmation page
     return render(request, 'bookings/cancel.html', {
         'booking': booking,
-        'cutoff_time': now + datetime.timedelta(hours=6)
+        'cutoff_time': cutoff
     })
 
 
