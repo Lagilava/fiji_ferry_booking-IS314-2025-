@@ -1271,6 +1271,12 @@ class VehicleInline(admin.TabularInline):
         super().save_model(request, obj, form, change)
         clear_analytics_cache()
 
+class CargoInline(admin.TabularInline):
+    model = Cargo
+    extra = 0
+    fields = ('cargo_type', 'weight_kg', 'dimensions_cm', 'license_plate')
+    verbose_name = "Cargo"
+    verbose_name_plural = "Cargo"
 
 class AddOnInline(admin.TabularInline):
     model = AddOn
@@ -1468,11 +1474,16 @@ class ScheduleAdmin(EnhancedModelAdmin):
 
 @admin.register(Booking, site=admin_site)
 class BookingAdmin(EnhancedModelAdmin):
-    list_display = ('id', 'user_email', 'schedule', 'booking_date', 'passenger_adults', 'passenger_children',
-                    'passenger_infants', 'total_price', 'status')
+    list_display = (
+        'id', 'user_email', 'schedule', 'booking_date', 'passenger_adults',
+        'passenger_children', 'passenger_infants', 'total_price', 'status'
+    )
     list_filter = ('status', 'schedule__route', 'booking_date')
-    search_fields = ('user__email', 'guest_email', 'schedule__ferry__name', 'passengers__first_name',
-                     'passengers__last_name')
+    search_fields = (
+        'user__email', 'guest_email', 'schedule__ferry__name',
+        'passengers__first_name', 'passengers__last_name',
+        'cargo__cargo_type', 'cargo__license_plate'
+    )
     autocomplete_fields = ['user', 'schedule']
     date_hierarchy = 'booking_date'
     list_editable = ('status',)
@@ -1480,14 +1491,28 @@ class BookingAdmin(EnhancedModelAdmin):
     ordering = ('-booking_date',)
     list_display_links = ('id', 'user_email')
     readonly_fields = ('total_price', 'booking_date')
-    inlines = [PassengerInline, VehicleInline, AddOnInline]
+
+    # INLINES — CARGO INLINE ADDED
+    inlines = [PassengerInline, VehicleInline, CargoInline, AddOnInline]
+
     fieldsets = (
-        ('General Info', {'fields': ('user', 'guest_email', 'schedule', 'booking_date'), 'classes': ('collapse',)}),
-        ('Passenger Details',
-         {'fields': ('passenger_adults', 'passenger_children', 'passenger_infants'), 'classes': ('collapse',)}),
-        ('Status and Pricing', {'fields': ('status', 'total_price')}),
+        ('General Info', {
+            'fields': ('user', 'guest_email', 'schedule', 'booking_date'),
+            'classes': ('collapse',)
+        }),
+        ('Number of Passengers', {
+            'fields': ('passenger_adults', 'passenger_children', 'passenger_infants'),
+            'classes': ('collapse',)
+        }),
+        ('Status and Pricing', {
+            'fields': ('status', 'total_price')
+        }),
     )
-    actions = ['reschedule_bookings', 'cancel_bookings', 'export_bookings', 'mark_tickets_used', 'mark_tickets_unused']
+
+    actions = [
+        'reschedule_bookings', 'cancel_bookings',
+        'export_bookings', 'mark_tickets_used', 'mark_tickets_unused'
+    ]
 
     def changelist_view(self, request, extra_context=None):
         """Override to add WebSocket context"""
@@ -1515,12 +1540,13 @@ class BookingAdmin(EnhancedModelAdmin):
 
     user_email.short_description = 'User/Guest Email'
 
+    # === ACTIONS ===
+
     def reschedule_bookings(self, request, queryset):
         count = queryset.update(status='pending_reschedule')
         self.message_user(request, f"{count} bookings marked for rescheduling.")
         clear_analytics_cache()
 
-        # WebSocket notification
         if get_channel_layer():
             channel_layer = get_channel_layer()
             async_to_sync(channel_layer.group_send)(
@@ -1541,7 +1567,6 @@ class BookingAdmin(EnhancedModelAdmin):
         self.message_user(request, f"{count} bookings canceled.")
         clear_analytics_cache()
 
-        # WebSocket notification
         if get_channel_layer():
             channel_layer = get_channel_layer()
             async_to_sync(channel_layer.group_send)(
@@ -1565,7 +1590,6 @@ class BookingAdmin(EnhancedModelAdmin):
         self.message_user(request, f"{count} tickets marked as used.")
         clear_analytics_cache()
 
-        # WebSocket notification
         if get_channel_layer():
             channel_layer = get_channel_layer()
             async_to_sync(channel_layer.group_send)(
@@ -1584,13 +1608,11 @@ class BookingAdmin(EnhancedModelAdmin):
     def mark_tickets_unused(self, request, queryset):
         count = 0
         for booking in queryset:
-            tickets_updated = Ticket.objects.filter(booking=booking).update(
-                ticket_status='active')
+            tickets_updated = Ticket.objects.filter(booking=booking).update(ticket_status='active')
             count += tickets_updated
         self.message_user(request, f"{count} tickets marked as unused.")
         clear_analytics_cache()
 
-        # WebSocket notification
         if get_channel_layer():
             channel_layer = get_channel_layer()
             async_to_sync(channel_layer.group_send)(
@@ -1606,47 +1628,64 @@ class BookingAdmin(EnhancedModelAdmin):
 
     mark_tickets_unused.short_description = "Mark tickets as unused"
 
+    # === EXPORT WITH CARGO ===
     def export_bookings(self, request, queryset):
         response = HttpResponse(content_type='text/csv')
         response['Content-Disposition'] = 'attachment; filename="selected_bookings_export.csv"'
         writer = csv.writer(response)
         writer.writerow([
             'ID', 'User/Guest Email', 'Route', 'Booking Date', 'Status', 'Total Price',
-            'Passengers', 'Vehicles', 'Add-Ons'
+            'Passengers', 'Vehicles', 'Cargo', 'Add-Ons'
         ])
-        for item in queryset.select_related('user', 'schedule__route__departure_port',
-                                            'schedule__route__destination_port').prefetch_related('passengers',
-                                                                                                  'vehicles',
-                                                                                                  'add_ons'):
+
+        for item in queryset.select_related(
+                'user', 'schedule__route__departure_port', 'schedule__route__destination_port'
+        ).prefetch_related(
+            'passengers', 'vehicles', 'cargo', 'add_ons'
+        ):
             passengers = ", ".join([p.get_full_name() for p in item.passengers.all()]) or 'None'
             vehicles = ", ".join([f"{v.vehicle_type} ({v.license_plate})" for v in item.vehicles.all()]) or 'None'
-            add_ons = ", ".join(
-                [f"{a.get_add_on_type_display()} (x{a.quantity})" for a in item.add_ons.all()]) or 'None'
+            cargo_list = ", ".join([
+                f"{c.get_cargo_type_display()} ({c.weight_kg}kg, {c.dimensions_cm})"
+                for c in item.cargo.all()
+            ]) or 'None'
+            add_ons = ", ".join([
+                f"{a.get_add_on_type_display()} (x{a.quantity})" for a in item.add_ons.all()
+            ]) or 'None'
+
             writer.writerow([
                 item.id,
                 item.user.email if item.user else item.guest_email or 'Guest',
-                f"{item.schedule.route.departure_port} to {item.schedule.route.destination_port}" if item.schedule and item.schedule.route else 'N/A',
+                f"{item.schedule.route.departure_port} to {item.schedule.route.destination_port}"
+                if item.schedule and item.schedule.route else 'N/A',
                 item.booking_date.strftime('%Y-%m-%d %H:%M') if item.booking_date else 'N/A',
                 item.status,
                 f"{item.total_price:.2f}" if item.total_price else '0.00',
                 passengers,
                 vehicles,
+                cargo_list,
                 add_ons
             ])
-        logger.info(f"Exported {queryset.count()} bookings as CSV")
+
+        logger.info(f"Exported {queryset.count()} bookings as CSV (with cargo)")
         clear_analytics_cache()
         return response
 
-    def get_queryset(self, request):
-        return super().get_queryset(request).select_related('user', 'schedule__route__departure_port',
-                                                            'schedule__route__destination_port').prefetch_related(
-            'passengers', 'vehicles', 'add_ons')
+    export_bookings.short_description = "Export selected bookings (CSV)"
 
+    # === OPTIMIZED QUERIES ===
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related(
+            'user', 'schedule__route__departure_port', 'schedule__route__destination_port'
+        ).prefetch_related(
+            'passengers', 'vehicles', 'cargo', 'add_ons'
+        )
+
+    # === SAVE HOOK ===
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
         clear_analytics_cache()
 
-        # WebSocket notification for booking updates
         if get_channel_layer():
             channel_layer = get_channel_layer()
             async_to_sync(channel_layer.group_send)(
@@ -1663,24 +1702,49 @@ class BookingAdmin(EnhancedModelAdmin):
 
 @admin.register(Passenger, site=admin_site)
 class PassengerAdmin(EnhancedModelAdmin):
-    list_display = ('booking', 'first_name', 'last_name', 'passenger_type', 'age', 'date_of_birth',
-                    'linked_adult_display')
-    list_filter = ('passenger_type',)
+    list_display = (
+        'booking', 'first_name', 'last_name',
+        'passenger_type', 'age', 'date_of_birth',
+        'linked_adult_display', 'document_link',
+    )
+    list_filter = ('passenger_type', 'verification_status')
     search_fields = ('first_name', 'last_name', 'booking__id')
     autocomplete_fields = ['booking', 'linked_adult']
     list_per_page = 25
     ordering = ('booking__booking_date', 'last_name')
     list_display_links = ('booking', 'first_name')
+    list_select_related = ('booking', 'linked_adult')
+    empty_value_display = '—'
+
     fieldsets = (
-        ('General Info', {'fields': ('booking', 'first_name', 'last_name')}),
-        ('Details', {'fields': ('passenger_type', 'age', 'date_of_birth', 'linked_adult')}),
+        ('General Info', {
+            'fields': ('booking', 'first_name', 'last_name')
+        }),
+        ('Details', {
+            'fields': ('passenger_type', 'age', 'date_of_birth', 'linked_adult')
+        }),
+        ('Documents & Verification', {
+            'fields': ('document', 'verification_status', 'is_group_leader')
+        }),
     )
 
-    def linked_adult_display(self, obj):
-        name = obj.linked_adult.get_full_name() if obj.linked_adult else 'None'
-        return format_html('<span aria-label="Linked adult name">{}</span>', name)
+    @admin.display(description='Linked Adult', ordering='linked_adult__last_name')
+    def linked_adult_display(self, obj: Passenger):
+        la = obj.linked_adult
+        if not la:
+            return format_html('<span aria-label="Linked adult name">—</span>')
+        name = la.get_full_name() if hasattr(la, 'get_full_name') else f"{la.first_name} {la.last_name}".strip()
+        return format_html('<span aria-label="Linked adult name">{}</span>', name or '—')
 
-    linked_adult_display.short_description = 'Linked Adult'
+    @admin.display(description="Document")
+    def document_link(self, obj):
+        if not obj.document:
+            return "—"
+        # Renders as a clickable download link
+        return format_html(
+            '<a href="{}" target="_blank">View</a>',
+            obj.document.url
+        )
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('booking', 'linked_adult')
@@ -1689,6 +1753,7 @@ class PassengerAdmin(EnhancedModelAdmin):
         super().save_model(request, obj, form, change)
         clear_analytics_cache()
         logger.info("Cache invalidated after Passenger update")
+
 
 
 @admin.register(Vehicle, site=admin_site)

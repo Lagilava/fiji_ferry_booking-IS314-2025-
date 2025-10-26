@@ -52,8 +52,9 @@
 
 /* Main booking container */
 .booking-form-container {
-    background: #10b98114;
+    background: #10b98100;
     border: 1px solid var(--border);
+    backdrop-filter: blur(55px) saturate(160%) contrast(1.05);
     border-radius: 12px;
     box-shadow: var(--shadow-md);
     position: relative;

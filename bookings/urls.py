@@ -38,4 +38,7 @@ urlpatterns = [
     path('terms_of_service/', views.terms_of_service, name='terms_of_service'),  # Updated: Consistent naming
     path('get_pricing/', views.get_pricing, name='get-pricing'),
     path('check-schedule-availability/', views.check_schedule_availability, name='check_schedule_availability'),
+    path('api/availability/', views.availability_api, name='availability_api'),
+    path("api/send_otp/", views.api_send_otp, name="api_send_otp"),
+    path("api/verify_otp/", views.api_verify_otp, name="api_verify_otp"),
 ]

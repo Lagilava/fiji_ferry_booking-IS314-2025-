@@ -5978,3 +5978,847 @@ ValueError: No handler for message type weather_alerts
 [WS] 2025-10-24 23:02:09,431 INFO Admin WebSocket disconnected: Lagilava
 [WS] 2025-10-24 23:02:09,576 INFO Admin WebSocket connected: Lagilava
 [WS] 2025-10-24 23:02:09,605 INFO Initial data sent to admin dashboard
+[WS] 2025-10-24 23:12:38,821 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-24 23:12:41,020 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-24 23:12:41,204 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 10:40:36,921 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-25 10:40:36,922 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-25 10:40:36,923 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-25 10:46:17,897 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-25 10:46:17,897 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-25 10:46:17,898 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-25 11:01:04,272 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-25 11:01:04,273 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-25 11:01:04,274 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-25 11:28:25,001 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-25 11:28:25,001 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-25 11:28:25,002 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-25 12:58:02,612 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 12:58:02,650 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 13:05:30,407 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 13:05:38,848 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 13:05:38,875 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 13:07:32,698 ERROR Exception inside application: No handler for message type weather_alerts
+Traceback (most recent call last):
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\django\contrib\staticfiles\handlers.py", line 101, in __call__
+    return await self.application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\ferry_system\asgi.py", line 49, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\routing.py", line 62, in __call__
+    return await application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\sessions.py", line 47, in __call__
+    return await self.inner(dict(scope, cookies=cookies), receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\sessions.py", line 263, in __call__
+    return await self.inner(wrapper.scope, receive, wrapper.send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\auth.py", line 185, in __call__
+    return await super().__call__(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\middleware.py", line 24, in __call__
+    return await self.inner(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\routing.py", line 132, in __call__
+    return await application(
+           ^^^^^^^^^^^^^^^^^^
+    ...<10 lines>...
+    )
+    ^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\consumer.py", line 94, in app
+    return await consumer(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\consumer.py", line 58, in __call__
+    await await_many_dispatch(
+        [receive, self.channel_receive], self.dispatch
+    )
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\utils.py", line 50, in await_many_dispatch
+    await dispatch(result)
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\consumer.py", line 75, in dispatch
+    raise ValueError("No handler for message type %s" % message["type"])
+ValueError: No handler for message type weather_alerts
+[WS] 2025-10-25 13:07:43,499 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 13:07:43,518 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 13:08:48,631 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 13:16:17,859 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 13:16:17,885 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 13:16:35,088 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 13:16:39,107 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 13:16:39,157 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 13:21:38,843 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 13:21:45,255 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 13:21:45,297 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 13:22:13,900 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 13:22:20,169 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 13:22:20,200 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 13:24:38,827 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 13:24:49,299 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 13:24:49,326 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 13:31:49,687 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 13:31:51,675 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 13:31:51,713 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 13:31:58,143 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 13:31:58,336 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 13:31:58,369 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 13:32:27,992 ERROR Exception inside application: No handler for message type weather_alerts
+Traceback (most recent call last):
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\django\contrib\staticfiles\handlers.py", line 101, in __call__
+    return await self.application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\ferry_system\asgi.py", line 49, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\routing.py", line 62, in __call__
+    return await application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\sessions.py", line 47, in __call__
+    return await self.inner(dict(scope, cookies=cookies), receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\sessions.py", line 263, in __call__
+    return await self.inner(wrapper.scope, receive, wrapper.send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\auth.py", line 185, in __call__
+    return await super().__call__(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\middleware.py", line 24, in __call__
+    return await self.inner(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\routing.py", line 132, in __call__
+    return await application(
+           ^^^^^^^^^^^^^^^^^^
+    ...<10 lines>...
+    )
+    ^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\consumer.py", line 94, in app
+    return await consumer(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\consumer.py", line 58, in __call__
+    await await_many_dispatch(
+        [receive, self.channel_receive], self.dispatch
+    )
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\utils.py", line 50, in await_many_dispatch
+    await dispatch(result)
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\consumer.py", line 75, in dispatch
+    raise ValueError("No handler for message type %s" % message["type"])
+ValueError: No handler for message type weather_alerts
+[WS] 2025-10-25 13:32:33,053 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 13:32:33,076 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 14:00:28,666 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 14:34:10,298 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 14:34:10,328 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 14:55:20,255 ERROR Missing 'schedule_id' in schedule_update event: {'type': 'schedule_update', 'model': 'schedule', 'action': 'save', 'instance_id': 981, 'timestamp': '2025-10-25T02:55:20.222832+00:00', 'recent_activities': [{'timestamp': '2025-10-23T02:26:45.400410+00:00', 'operator': 'Lagilava', 'action': 'Changed Payment status.', 'resource': 'Bookings | payment (Payment pi_3SKcvGE00EqGlVqe04yYVjKp for Booking 26)', 'count': 1}, {'timestamp': '2025-10-20T13:32:22.580420+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Natovi)', 'count': 1}, {'timestamp': '2025-10-20T13:31:31.959169+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Nabouwalu)', 'count': 1}, {'timestamp': '2025-10-20T13:30:04.694106+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Kadavu (Vunisea))', 'count': 1}, {'timestamp': '2025-10-20T13:26:31.809406+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Levuka)', 'count': 1}, {'timestamp': '2025-10-19T13:17:25.972041+00:00', 'operator': 'Martin', 'action': 'Changed Departure time, Arrival time, Available seats and Status.', 'resource': 'Bookings | schedule (Lomaiviti Princess - Suva to Kadavu (Vunisea) at 2025-10-29 06:00:00+12:00)', 'count': 1}, {'timestamp': '2025-10-19T13:16:23.213463+00:00', 'operator': 'Martin', 'action': 'Changed Departure time and Arrival time.', 'resource': 'Bookings | schedule (Lomaiviti Princess - Natovi to Levuka at 2025-11-26 12:30:00+12:00)', 'count': 1}, {'timestamp': '2025-10-19T13:14:54.326785+00:00', 'operator': 'Lagilava', 'action': 'Changed Wind speed.', 'resource': 'Bookings | weather condition (Weather for Suva - Suva to Natovi)', 'count': 1}, {'timestamp': '2025-10-19T13:14:46.976759+00:00', 'operator': 'Lagilava', 'action': 'Changed Wind speed.', 'resource': 'Bookings | weather condition (Weather for Levuka - Levuka to Natovi)', 'count': 1}, {'timestamp': '2025-10-19T13:00:39.828986+00:00', 'operator': 'Martin', 'action': '', 'resource': 'Bookings | booking (Booking 2 by paulolagilava@gmail.com)', 'count': 1}]}
+[WS] 2025-10-25 14:59:02,644 INFO Payment update broadcast: booking None -> None
+[WS] 2025-10-25 14:59:02,689 INFO Payment update broadcast: booking None -> None
+[WS] 2025-10-25 14:59:02,752 INFO Ticket update broadcast: 25 -> unknown
+[WS] 2025-10-25 14:59:03,145 INFO Ticket update broadcast: 25 -> unknown
+[WS] 2025-10-25 15:03:19,719 ERROR Exception inside application: No handler for message type weather_alerts
+Traceback (most recent call last):
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\django\contrib\staticfiles\handlers.py", line 101, in __call__
+    return await self.application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\ferry_system\asgi.py", line 49, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\routing.py", line 62, in __call__
+    return await application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\sessions.py", line 47, in __call__
+    return await self.inner(dict(scope, cookies=cookies), receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\sessions.py", line 263, in __call__
+    return await self.inner(wrapper.scope, receive, wrapper.send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\auth.py", line 185, in __call__
+    return await super().__call__(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\middleware.py", line 24, in __call__
+    return await self.inner(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\routing.py", line 132, in __call__
+    return await application(
+           ^^^^^^^^^^^^^^^^^^
+    ...<10 lines>...
+    )
+    ^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\consumer.py", line 94, in app
+    return await consumer(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\consumer.py", line 58, in __call__
+    await await_many_dispatch(
+        [receive, self.channel_receive], self.dispatch
+    )
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\utils.py", line 50, in await_many_dispatch
+    await dispatch(result)
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\consumer.py", line 75, in dispatch
+    raise ValueError("No handler for message type %s" % message["type"])
+ValueError: No handler for message type weather_alerts
+[WS] 2025-10-25 15:03:25,502 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 15:03:25,525 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 15:15:16,734 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 15:26:28,200 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-25 15:26:28,200 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-25 15:26:28,201 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-25 15:26:55,460 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-25 15:26:55,460 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-25 15:26:55,461 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-25 15:42:42,527 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-25 15:42:42,528 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-25 15:42:42,529 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-25 16:03:21,057 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 16:03:21,085 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 16:03:22,022 ERROR Exception inside application: No handler for message type weather_alerts
+Traceback (most recent call last):
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\django\contrib\staticfiles\handlers.py", line 101, in __call__
+    return await self.application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\ferry_system\asgi.py", line 49, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\routing.py", line 62, in __call__
+    return await application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\sessions.py", line 47, in __call__
+    return await self.inner(dict(scope, cookies=cookies), receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\sessions.py", line 263, in __call__
+    return await self.inner(wrapper.scope, receive, wrapper.send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\auth.py", line 185, in __call__
+    return await super().__call__(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\middleware.py", line 24, in __call__
+    return await self.inner(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\routing.py", line 132, in __call__
+    return await application(
+           ^^^^^^^^^^^^^^^^^^
+    ...<10 lines>...
+    )
+    ^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\consumer.py", line 94, in app
+    return await consumer(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\consumer.py", line 58, in __call__
+    await await_many_dispatch(
+        [receive, self.channel_receive], self.dispatch
+    )
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\utils.py", line 50, in await_many_dispatch
+    await dispatch(result)
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\consumer.py", line 75, in dispatch
+    raise ValueError("No handler for message type %s" % message["type"])
+ValueError: No handler for message type weather_alerts
+[WS] 2025-10-25 16:03:27,068 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 16:03:27,087 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 16:03:37,974 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 16:03:38,089 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 16:03:38,114 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 16:03:43,836 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 16:03:44,004 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 16:03:44,030 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 16:04:02,410 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 16:04:02,511 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 16:04:02,542 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 16:04:07,387 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 16:04:07,496 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 16:04:07,520 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 16:04:24,576 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 16:04:25,338 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 16:04:25,353 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 16:04:29,771 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 16:04:29,889 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 16:04:29,913 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 16:04:31,553 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 16:04:31,667 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 16:04:31,688 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 16:04:40,305 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 16:04:40,415 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 16:04:40,436 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 16:04:42,599 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 16:04:42,718 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 16:04:42,741 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 16:05:35,443 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 16:05:35,856 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 16:05:35,876 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 16:05:38,142 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 16:05:38,214 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 16:05:38,235 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 16:06:48,168 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 16:06:48,738 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 16:06:48,757 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 16:08:36,314 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 16:14:11,100 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-25 16:14:11,101 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-25 16:14:11,102 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-25 16:16:15,683 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-25 16:16:15,683 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-25 16:16:15,684 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-25 16:16:28,738 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-25 16:16:28,738 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-25 16:16:28,739 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-25 16:16:29,975 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 16:16:29,997 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 16:16:34,422 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 16:16:34,832 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 16:16:34,861 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 16:17:05,680 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 16:17:05,790 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 16:17:05,818 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 16:17:10,944 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 16:17:12,310 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 16:17:12,373 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 16:17:25,241 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 16:17:25,355 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 16:17:25,374 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 16:17:40,802 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 16:17:40,906 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 16:17:40,935 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 16:17:52,034 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 16:17:52,055 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 16:18:08,305 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 16:19:30,817 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-25 16:19:30,817 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-25 16:19:30,818 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-25 16:19:31,756 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 16:19:31,783 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 16:19:35,116 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 16:19:35,227 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 16:19:35,277 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 16:24:49,508 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 16:24:52,646 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 16:24:52,697 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 16:25:49,499 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 16:25:52,964 ERROR Exception inside application: cannot schedule new futures after interpreter shutdown
+Traceback (most recent call last):
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\django\contrib\staticfiles\handlers.py", line 101, in __call__
+    return await self.application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\ferry_system\asgi.py", line 49, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\routing.py", line 62, in __call__
+    return await application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\sessions.py", line 47, in __call__
+    return await self.inner(dict(scope, cookies=cookies), receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\sessions.py", line 263, in __call__
+    return await self.inner(wrapper.scope, receive, wrapper.send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\auth.py", line 183, in __call__
+    await self.resolve_scope(scope)
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\auth.py", line 176, in resolve_scope
+    scope["user"]._wrapped = await get_user(scope)
+                             ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\asgiref\sync.py", line 426, in __call__
+    exec_coro = loop.run_in_executor(
+        executor,
+    ...<7 lines>...
+        ),
+    )
+  File "C:\Users\emi\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 901, in run_in_executor
+    executor.submit(func, *args), loop=self)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\emi\AppData\Local\Programs\Python\Python313\Lib\concurrent\futures\thread.py", line 173, in submit
+    raise RuntimeError('cannot schedule new futures after '
+                       'interpreter shutdown')
+RuntimeError: cannot schedule new futures after interpreter shutdown
+[WS] 2025-10-25 16:26:05,024 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-25 16:26:05,036 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-25 16:26:05,058 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-25 16:26:06,301 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 16:26:06,353 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 16:26:13,342 ERROR Exception inside application: No handler for message type weather_alerts
+Traceback (most recent call last):
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\django\contrib\staticfiles\handlers.py", line 101, in __call__
+    return await self.application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\ferry_system\asgi.py", line 49, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\routing.py", line 62, in __call__
+    return await application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\sessions.py", line 47, in __call__
+    return await self.inner(dict(scope, cookies=cookies), receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\sessions.py", line 263, in __call__
+    return await self.inner(wrapper.scope, receive, wrapper.send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\auth.py", line 185, in __call__
+    return await super().__call__(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\middleware.py", line 24, in __call__
+    return await self.inner(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\routing.py", line 132, in __call__
+    return await application(
+           ^^^^^^^^^^^^^^^^^^
+    ...<10 lines>...
+    )
+    ^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\consumer.py", line 94, in app
+    return await consumer(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\consumer.py", line 58, in __call__
+    await await_many_dispatch(
+        [receive, self.channel_receive], self.dispatch
+    )
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\utils.py", line 50, in await_many_dispatch
+    await dispatch(result)
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\consumer.py", line 75, in dispatch
+    raise ValueError("No handler for message type %s" % message["type"])
+ValueError: No handler for message type weather_alerts
+[WS] 2025-10-25 16:26:15,481 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 16:26:15,503 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 16:31:11,125 ERROR Missing 'schedule_id' in schedule_update event: {'type': 'schedule_update', 'model': 'schedule', 'action': 'save', 'instance_id': 922, 'timestamp': '2025-10-25T04:31:11.102191+00:00', 'recent_activities': [{'timestamp': '2025-10-23T02:26:45.400410+00:00', 'operator': 'Lagilava', 'action': 'Changed Payment status.', 'resource': 'Bookings | payment (Payment pi_3SKcvGE00EqGlVqe04yYVjKp for Booking 26)', 'count': 1}, {'timestamp': '2025-10-20T13:32:22.580420+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Natovi)', 'count': 1}, {'timestamp': '2025-10-20T13:31:31.959169+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Nabouwalu)', 'count': 1}, {'timestamp': '2025-10-20T13:30:04.694106+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Kadavu (Vunisea))', 'count': 1}, {'timestamp': '2025-10-20T13:26:31.809406+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Levuka)', 'count': 1}, {'timestamp': '2025-10-19T13:17:25.972041+00:00', 'operator': 'Martin', 'action': 'Changed Departure time, Arrival time, Available seats and Status.', 'resource': 'Bookings | schedule (Lomaiviti Princess - Suva to Kadavu (Vunisea) at 2025-10-29 06:00:00+12:00)', 'count': 1}, {'timestamp': '2025-10-19T13:16:23.213463+00:00', 'operator': 'Martin', 'action': 'Changed Departure time and Arrival time.', 'resource': 'Bookings | schedule (Lomaiviti Princess - Natovi to Levuka at 2025-11-26 12:30:00+12:00)', 'count': 1}, {'timestamp': '2025-10-19T13:14:54.326785+00:00', 'operator': 'Lagilava', 'action': 'Changed Wind speed.', 'resource': 'Bookings | weather condition (Weather for Suva - Suva to Natovi)', 'count': 1}, {'timestamp': '2025-10-19T13:14:46.976759+00:00', 'operator': 'Lagilava', 'action': 'Changed Wind speed.', 'resource': 'Bookings | weather condition (Weather for Levuka - Levuka to Natovi)', 'count': 1}, {'timestamp': '2025-10-19T13:00:39.828986+00:00', 'operator': 'Martin', 'action': '', 'resource': 'Bookings | booking (Booking 2 by paulolagilava@gmail.com)', 'count': 1}]}
+[WS] 2025-10-25 16:31:30,874 INFO Payment update broadcast: booking None -> None
+[WS] 2025-10-25 16:31:30,958 INFO Payment update broadcast: booking None -> None
+[WS] 2025-10-25 16:31:31,011 INFO Ticket update broadcast: 27 -> unknown
+[WS] 2025-10-25 16:31:31,165 INFO Ticket update broadcast: 27 -> unknown
+[WS] 2025-10-25 16:31:49,492 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 16:31:52,525 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 16:31:52,565 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 16:32:24,480 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 16:32:27,133 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 16:32:27,152 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 16:33:47,880 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-25 16:33:47,881 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-25 16:33:47,882 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-25 16:33:48,955 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 16:33:48,977 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 16:34:18,855 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-25 16:34:19,018 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-25 16:34:19,044 INFO Initial data sent to admin dashboard
+[WS] 2025-10-25 16:38:50,503 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-26 11:29:23,481 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-26 11:29:23,482 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-26 11:29:23,483 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-26 12:10:44,818 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-26 12:10:44,818 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-26 12:10:44,819 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-26 12:14:04,058 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-26 12:14:04,082 INFO Initial data sent to admin dashboard
+[WS] 2025-10-26 12:15:00,202 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-26 12:15:00,587 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-26 12:15:00,608 INFO Initial data sent to admin dashboard
+[WS] 2025-10-26 12:15:04,058 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-26 12:15:04,478 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-26 12:15:04,494 INFO Initial data sent to admin dashboard
+[WS] 2025-10-26 12:16:12,292 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-26 12:16:12,797 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-26 12:16:12,813 INFO Initial data sent to admin dashboard
+[WS] 2025-10-26 12:16:21,945 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-26 12:16:22,048 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-26 12:16:22,075 INFO Initial data sent to admin dashboard
+[WS] 2025-10-26 12:16:24,804 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-26 12:16:24,897 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-26 12:16:24,920 INFO Initial data sent to admin dashboard
+[WS] 2025-10-26 12:16:37,775 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-26 12:16:37,893 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-26 12:16:37,916 INFO Initial data sent to admin dashboard
+[WS] 2025-10-26 12:19:39,559 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-26 12:19:40,196 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-26 12:19:40,212 INFO Initial data sent to admin dashboard
+[WS] 2025-10-26 12:19:52,427 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-26 12:19:52,560 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-26 12:19:52,590 INFO Initial data sent to admin dashboard
+[WS] 2025-10-26 12:21:04,167 ERROR Exception inside application: No handler for message type weather_alerts
+Traceback (most recent call last):
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\django\contrib\staticfiles\handlers.py", line 101, in __call__
+    return await self.application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\ferry_system\asgi.py", line 49, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\routing.py", line 62, in __call__
+    return await application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\sessions.py", line 47, in __call__
+    return await self.inner(dict(scope, cookies=cookies), receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\sessions.py", line 263, in __call__
+    return await self.inner(wrapper.scope, receive, wrapper.send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\auth.py", line 185, in __call__
+    return await super().__call__(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\middleware.py", line 24, in __call__
+    return await self.inner(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\routing.py", line 132, in __call__
+    return await application(
+           ^^^^^^^^^^^^^^^^^^
+    ...<10 lines>...
+    )
+    ^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\consumer.py", line 94, in app
+    return await consumer(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\consumer.py", line 58, in __call__
+    await await_many_dispatch(
+        [receive, self.channel_receive], self.dispatch
+    )
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\utils.py", line 50, in await_many_dispatch
+    await dispatch(result)
+  File "C:\Users\emi\fiji_ferry_booking\venv\Lib\site-packages\channels\consumer.py", line 75, in dispatch
+    raise ValueError("No handler for message type %s" % message["type"])
+ValueError: No handler for message type weather_alerts
+[WS] 2025-10-26 12:21:10,074 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-26 12:21:10,091 INFO Initial data sent to admin dashboard
+[WS] 2025-10-26 12:32:37,796 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-26 12:32:37,797 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-26 12:32:37,798 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-26 12:32:38,199 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-26 12:32:38,224 INFO Initial data sent to admin dashboard
+[WS] 2025-10-26 12:33:22,878 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-26 12:33:22,878 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-26 12:33:22,879 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-26 12:33:26,099 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-26 12:33:26,123 INFO Initial data sent to admin dashboard
+[WS] 2025-10-26 12:34:16,226 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-26 12:39:56,591 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-26 12:39:56,591 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-26 12:39:56,592 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-26 12:41:23,857 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-26 12:41:23,858 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-26 12:41:23,859 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-26 12:41:42,767 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-26 12:41:42,768 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-26 12:41:42,769 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-26 12:51:49,648 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-26 12:51:49,668 INFO Initial data sent to admin dashboard
+[WS] 2025-10-26 12:54:14,171 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-26 12:54:14,171 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-26 12:54:14,172 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-26 12:54:14,638 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-26 12:54:14,654 INFO Initial data sent to admin dashboard
+[WS] 2025-10-26 12:56:02,426 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-26 12:56:02,426 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-26 12:56:02,427 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-26 12:56:04,101 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-26 12:56:04,125 INFO Initial data sent to admin dashboard
+[WS] 2025-10-26 13:07:58,558 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-26 13:07:58,559 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-26 13:07:58,561 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-26 13:07:59,121 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-26 13:07:59,147 INFO Initial data sent to admin dashboard
+[WS] 2025-10-26 13:09:55,781 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-26 13:17:19,153 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-26 13:17:19,184 INFO Initial data sent to admin dashboard
+[WS] 2025-10-26 14:20:22,912 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-26 17:14:37,418 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-26 17:14:37,454 INFO Initial data sent to admin dashboard
+[WS] 2025-10-26 17:14:46,858 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-26 17:14:47,829 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-26 17:14:47,853 INFO Initial data sent to admin dashboard
+[WS] 2025-10-26 17:41:52,127 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-26 17:41:52,127 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-26 17:41:52,128 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-26 17:41:53,123 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-26 17:41:53,149 INFO Initial data sent to admin dashboard
+[WS] 2025-10-26 17:46:54,537 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-26 19:07:06,024 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-26 19:07:06,058 INFO Initial data sent to admin dashboard
+[WS] 2025-10-26 19:18:09,015 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-26 22:21:44,069 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-26 22:21:44,134 INFO Initial data sent to admin dashboard
+[WS] 2025-10-26 23:29:15,575 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-26 23:46:54,592 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-26 23:46:54,652 INFO Initial data sent to admin dashboard
+[WS] 2025-10-26 23:48:10,020 ERROR Missing 'schedule_id' in schedule_update event: {'type': 'schedule_update', 'model': 'schedule', 'action': 'save', 'instance_id': 983, 'timestamp': '2025-10-26T11:48:09.976086+00:00', 'recent_activities': [{'timestamp': '2025-10-23T02:26:45.400410+00:00', 'operator': 'Lagilava', 'action': 'Changed Payment status.', 'resource': 'Bookings | payment (Payment pi_3SKcvGE00EqGlVqe04yYVjKp for Booking 26)', 'count': 1}, {'timestamp': '2025-10-20T13:32:22.580420+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Natovi)', 'count': 1}, {'timestamp': '2025-10-20T13:31:31.959169+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Nabouwalu)', 'count': 1}, {'timestamp': '2025-10-20T13:30:04.694106+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Kadavu (Vunisea))', 'count': 1}, {'timestamp': '2025-10-20T13:26:31.809406+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Levuka)', 'count': 1}, {'timestamp': '2025-10-19T13:17:25.972041+00:00', 'operator': 'Martin', 'action': 'Changed Departure time, Arrival time, Available seats and Status.', 'resource': 'Bookings | schedule (Lomaiviti Princess - Suva to Kadavu (Vunisea) at 2025-10-29 06:00:00+12:00)', 'count': 1}, {'timestamp': '2025-10-19T13:16:23.213463+00:00', 'operator': 'Martin', 'action': 'Changed Departure time and Arrival time.', 'resource': 'Bookings | schedule (Lomaiviti Princess - Natovi to Levuka at 2025-11-26 12:30:00+12:00)', 'count': 1}, {'timestamp': '2025-10-19T13:14:54.326785+00:00', 'operator': 'Lagilava', 'action': 'Changed Wind speed.', 'resource': 'Bookings | weather condition (Weather for Suva - Suva to Natovi)', 'count': 1}, {'timestamp': '2025-10-19T13:14:46.976759+00:00', 'operator': 'Lagilava', 'action': 'Changed Wind speed.', 'resource': 'Bookings | weather condition (Weather for Levuka - Levuka to Natovi)', 'count': 1}, {'timestamp': '2025-10-19T13:00:39.828986+00:00', 'operator': 'Martin', 'action': '', 'resource': 'Bookings | booking (Booking 2 by paulolagilava@gmail.com)', 'count': 1}]}
+[WS] 2025-10-26 23:48:11,622 ERROR Missing 'schedule_id' in schedule_update event: {'type': 'schedule_update', 'model': 'schedule', 'action': 'save', 'instance_id': 983, 'timestamp': '2025-10-26T11:48:11.615086+00:00', 'recent_activities': [{'timestamp': '2025-10-23T02:26:45.400410+00:00', 'operator': 'Lagilava', 'action': 'Changed Payment status.', 'resource': 'Bookings | payment (Payment pi_3SKcvGE00EqGlVqe04yYVjKp for Booking 26)', 'count': 1}, {'timestamp': '2025-10-20T13:32:22.580420+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Natovi)', 'count': 1}, {'timestamp': '2025-10-20T13:31:31.959169+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Nabouwalu)', 'count': 1}, {'timestamp': '2025-10-20T13:30:04.694106+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Kadavu (Vunisea))', 'count': 1}, {'timestamp': '2025-10-20T13:26:31.809406+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Levuka)', 'count': 1}, {'timestamp': '2025-10-19T13:17:25.972041+00:00', 'operator': 'Martin', 'action': 'Changed Departure time, Arrival time, Available seats and Status.', 'resource': 'Bookings | schedule (Lomaiviti Princess - Suva to Kadavu (Vunisea) at 2025-10-29 06:00:00+12:00)', 'count': 1}, {'timestamp': '2025-10-19T13:16:23.213463+00:00', 'operator': 'Martin', 'action': 'Changed Departure time and Arrival time.', 'resource': 'Bookings | schedule (Lomaiviti Princess - Natovi to Levuka at 2025-11-26 12:30:00+12:00)', 'count': 1}, {'timestamp': '2025-10-19T13:14:54.326785+00:00', 'operator': 'Lagilava', 'action': 'Changed Wind speed.', 'resource': 'Bookings | weather condition (Weather for Suva - Suva to Natovi)', 'count': 1}, {'timestamp': '2025-10-19T13:14:46.976759+00:00', 'operator': 'Lagilava', 'action': 'Changed Wind speed.', 'resource': 'Bookings | weather condition (Weather for Levuka - Levuka to Natovi)', 'count': 1}, {'timestamp': '2025-10-19T13:00:39.828986+00:00', 'operator': 'Martin', 'action': '', 'resource': 'Bookings | booking (Booking 2 by paulolagilava@gmail.com)', 'count': 1}]}
+[WS] 2025-10-26 23:50:52,259 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-26 23:50:53,889 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-26 23:50:53,928 INFO Initial data sent to admin dashboard
+[WS] 2025-10-26 23:53:02,647 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-26 23:53:20,467 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-26 23:53:20,497 INFO Initial data sent to admin dashboard
+[WS] 2025-10-26 23:53:34,270 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-26 23:53:34,785 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-26 23:53:34,811 INFO Initial data sent to admin dashboard
+[WS] 2025-10-26 23:53:54,315 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-26 23:53:54,425 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-26 23:53:54,456 INFO Initial data sent to admin dashboard
+[WS] 2025-10-26 23:54:04,166 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-26 23:54:04,674 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-26 23:54:04,697 INFO Initial data sent to admin dashboard
+[WS] 2025-10-26 23:54:09,907 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-26 23:54:09,935 INFO Initial data sent to admin dashboard
+[WS] 2025-10-26 23:54:13,700 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-26 23:54:15,306 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-26 23:54:15,330 INFO Initial data sent to admin dashboard
+[WS] 2025-10-26 23:54:24,817 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-26 23:56:11,919 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-26 23:56:11,919 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-26 23:56:11,920 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-26 23:56:12,885 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-26 23:56:12,907 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 00:00:39,427 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 00:00:39,428 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 00:00:39,429 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 00:00:44,168 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 00:00:44,209 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 00:00:58,848 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 00:00:58,848 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 00:00:58,849 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 00:01:00,923 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 00:01:00,947 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 00:01:46,259 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 00:01:46,755 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 00:01:46,778 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 00:01:49,893 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 00:01:50,024 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 00:01:50,050 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 00:03:17,407 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 00:03:17,408 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 00:03:17,409 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 00:03:17,739 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 00:03:17,759 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 00:03:18,069 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 00:03:19,620 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 00:03:19,648 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 00:03:46,291 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 00:03:46,450 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 00:03:46,475 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 00:03:53,705 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 00:03:54,772 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 00:03:54,867 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 00:05:25,106 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 00:05:28,135 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 00:05:28,151 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 00:05:55,093 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 00:05:57,110 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 00:05:57,126 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 00:06:26,098 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 00:06:29,119 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 00:06:29,138 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 00:08:42,791 ERROR Missing 'schedule_id' in schedule_update event: {'type': 'schedule_update', 'model': 'schedule', 'action': 'save', 'instance_id': 922, 'timestamp': '2025-10-26T12:08:42.774494+00:00', 'recent_activities': [{'timestamp': '2025-10-23T02:26:45.400410+00:00', 'operator': 'Lagilava', 'action': 'Changed Payment status.', 'resource': 'Bookings | payment (Payment pi_3SKcvGE00EqGlVqe04yYVjKp for Booking 26)', 'count': 1}, {'timestamp': '2025-10-20T13:32:22.580420+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Natovi)', 'count': 1}, {'timestamp': '2025-10-20T13:31:31.959169+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Nabouwalu)', 'count': 1}, {'timestamp': '2025-10-20T13:30:04.694106+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Kadavu (Vunisea))', 'count': 1}, {'timestamp': '2025-10-20T13:26:31.809406+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Levuka)', 'count': 1}, {'timestamp': '2025-10-19T13:17:25.972041+00:00', 'operator': 'Martin', 'action': 'Changed Departure time, Arrival time, Available seats and Status.', 'resource': 'Bookings | schedule (Lomaiviti Princess - Suva to Kadavu (Vunisea) at 2025-10-29 06:00:00+12:00)', 'count': 1}, {'timestamp': '2025-10-19T13:16:23.213463+00:00', 'operator': 'Martin', 'action': 'Changed Departure time and Arrival time.', 'resource': 'Bookings | schedule (Lomaiviti Princess - Natovi to Levuka at 2025-11-26 12:30:00+12:00)', 'count': 1}, {'timestamp': '2025-10-19T13:14:54.326785+00:00', 'operator': 'Lagilava', 'action': 'Changed Wind speed.', 'resource': 'Bookings | weather condition (Weather for Suva - Suva to Natovi)', 'count': 1}, {'timestamp': '2025-10-19T13:14:46.976759+00:00', 'operator': 'Lagilava', 'action': 'Changed Wind speed.', 'resource': 'Bookings | weather condition (Weather for Levuka - Levuka to Natovi)', 'count': 1}, {'timestamp': '2025-10-19T13:00:39.828986+00:00', 'operator': 'Martin', 'action': '', 'resource': 'Bookings | booking (Booking 2 by paulolagilava@gmail.com)', 'count': 1}]}
+[WS] 2025-10-27 00:12:41,110 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 00:12:44,132 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 00:12:44,160 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 00:14:41,091 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 00:14:43,118 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 00:14:43,139 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 00:19:41,112 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 00:19:44,232 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 00:19:44,269 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 00:20:41,104 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 00:20:44,133 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 00:20:44,161 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 00:21:23,859 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 00:21:35,585 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 00:21:35,612 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 00:25:35,778 ERROR Missing 'schedule_id' in schedule_update event: {'type': 'schedule_update', 'model': 'schedule', 'action': 'save', 'instance_id': 953, 'timestamp': '2025-10-26T12:25:35.746913+00:00', 'recent_activities': [{'timestamp': '2025-10-23T02:26:45.400410+00:00', 'operator': 'Lagilava', 'action': 'Changed Payment status.', 'resource': 'Bookings | payment (Payment pi_3SKcvGE00EqGlVqe04yYVjKp for Booking 26)', 'count': 1}, {'timestamp': '2025-10-20T13:32:22.580420+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Natovi)', 'count': 1}, {'timestamp': '2025-10-20T13:31:31.959169+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Nabouwalu)', 'count': 1}, {'timestamp': '2025-10-20T13:30:04.694106+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Kadavu (Vunisea))', 'count': 1}, {'timestamp': '2025-10-20T13:26:31.809406+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Levuka)', 'count': 1}, {'timestamp': '2025-10-19T13:17:25.972041+00:00', 'operator': 'Martin', 'action': 'Changed Departure time, Arrival time, Available seats and Status.', 'resource': 'Bookings | schedule (Lomaiviti Princess - Suva to Kadavu (Vunisea) at 2025-10-29 06:00:00+12:00)', 'count': 1}, {'timestamp': '2025-10-19T13:16:23.213463+00:00', 'operator': 'Martin', 'action': 'Changed Departure time and Arrival time.', 'resource': 'Bookings | schedule (Lomaiviti Princess - Natovi to Levuka at 2025-11-26 12:30:00+12:00)', 'count': 1}, {'timestamp': '2025-10-19T13:14:54.326785+00:00', 'operator': 'Lagilava', 'action': 'Changed Wind speed.', 'resource': 'Bookings | weather condition (Weather for Suva - Suva to Natovi)', 'count': 1}, {'timestamp': '2025-10-19T13:14:46.976759+00:00', 'operator': 'Lagilava', 'action': 'Changed Wind speed.', 'resource': 'Bookings | weather condition (Weather for Levuka - Levuka to Natovi)', 'count': 1}, {'timestamp': '2025-10-19T13:00:39.828986+00:00', 'operator': 'Martin', 'action': '', 'resource': 'Bookings | booking (Booking 2 by paulolagilava@gmail.com)', 'count': 1}]}
+[WS] 2025-10-27 00:25:54,087 INFO Payment update broadcast: booking None -> None
+[WS] 2025-10-27 00:25:54,137 INFO Payment update broadcast: booking None -> None
+[WS] 2025-10-27 00:25:54,252 INFO Ticket update broadcast: 28 -> unknown
+[WS] 2025-10-27 00:25:54,596 INFO Ticket update broadcast: 28 -> unknown
+[WS] 2025-10-27 00:27:41,110 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 00:27:44,123 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 00:27:44,151 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 00:28:01,230 ERROR Missing 'schedule_id' in schedule_update event: {'type': 'schedule_update', 'model': 'schedule', 'action': 'save', 'instance_id': 922, 'timestamp': '2025-10-26T12:28:01.221406+00:00', 'recent_activities': [{'timestamp': '2025-10-23T02:26:45.400410+00:00', 'operator': 'Lagilava', 'action': 'Changed Payment status.', 'resource': 'Bookings | payment (Payment pi_3SKcvGE00EqGlVqe04yYVjKp for Booking 26)', 'count': 1}, {'timestamp': '2025-10-20T13:32:22.580420+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Natovi)', 'count': 1}, {'timestamp': '2025-10-20T13:31:31.959169+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Nabouwalu)', 'count': 1}, {'timestamp': '2025-10-20T13:30:04.694106+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Kadavu (Vunisea))', 'count': 1}, {'timestamp': '2025-10-20T13:26:31.809406+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Levuka)', 'count': 1}, {'timestamp': '2025-10-19T13:17:25.972041+00:00', 'operator': 'Martin', 'action': 'Changed Departure time, Arrival time, Available seats and Status.', 'resource': 'Bookings | schedule (Lomaiviti Princess - Suva to Kadavu (Vunisea) at 2025-10-29 06:00:00+12:00)', 'count': 1}, {'timestamp': '2025-10-19T13:16:23.213463+00:00', 'operator': 'Martin', 'action': 'Changed Departure time and Arrival time.', 'resource': 'Bookings | schedule (Lomaiviti Princess - Natovi to Levuka at 2025-11-26 12:30:00+12:00)', 'count': 1}, {'timestamp': '2025-10-19T13:14:54.326785+00:00', 'operator': 'Lagilava', 'action': 'Changed Wind speed.', 'resource': 'Bookings | weather condition (Weather for Suva - Suva to Natovi)', 'count': 1}, {'timestamp': '2025-10-19T13:14:46.976759+00:00', 'operator': 'Lagilava', 'action': 'Changed Wind speed.', 'resource': 'Bookings | weather condition (Weather for Levuka - Levuka to Natovi)', 'count': 1}, {'timestamp': '2025-10-19T13:00:39.828986+00:00', 'operator': 'Martin', 'action': '', 'resource': 'Bookings | booking (Booking 2 by paulolagilava@gmail.com)', 'count': 1}]}
+[WS] 2025-10-27 00:28:41,106 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 00:28:44,119 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 00:28:44,139 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 00:33:41,097 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 00:33:43,189 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 00:33:43,221 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 00:34:20,833 ERROR Missing 'schedule_id' in schedule_update event: {'type': 'schedule_update', 'model': 'schedule', 'action': 'save', 'instance_id': 953, 'timestamp': '2025-10-26T12:34:20.818535+00:00', 'recent_activities': [{'timestamp': '2025-10-23T02:26:45.400410+00:00', 'operator': 'Lagilava', 'action': 'Changed Payment status.', 'resource': 'Bookings | payment (Payment pi_3SKcvGE00EqGlVqe04yYVjKp for Booking 26)', 'count': 1}, {'timestamp': '2025-10-20T13:32:22.580420+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Natovi)', 'count': 1}, {'timestamp': '2025-10-20T13:31:31.959169+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Nabouwalu)', 'count': 1}, {'timestamp': '2025-10-20T13:30:04.694106+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Kadavu (Vunisea))', 'count': 1}, {'timestamp': '2025-10-20T13:26:31.809406+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Levuka)', 'count': 1}, {'timestamp': '2025-10-19T13:17:25.972041+00:00', 'operator': 'Martin', 'action': 'Changed Departure time, Arrival time, Available seats and Status.', 'resource': 'Bookings | schedule (Lomaiviti Princess - Suva to Kadavu (Vunisea) at 2025-10-29 06:00:00+12:00)', 'count': 1}, {'timestamp': '2025-10-19T13:16:23.213463+00:00', 'operator': 'Martin', 'action': 'Changed Departure time and Arrival time.', 'resource': 'Bookings | schedule (Lomaiviti Princess - Natovi to Levuka at 2025-11-26 12:30:00+12:00)', 'count': 1}, {'timestamp': '2025-10-19T13:14:54.326785+00:00', 'operator': 'Lagilava', 'action': 'Changed Wind speed.', 'resource': 'Bookings | weather condition (Weather for Suva - Suva to Natovi)', 'count': 1}, {'timestamp': '2025-10-19T13:14:46.976759+00:00', 'operator': 'Lagilava', 'action': 'Changed Wind speed.', 'resource': 'Bookings | weather condition (Weather for Levuka - Levuka to Natovi)', 'count': 1}, {'timestamp': '2025-10-19T13:00:39.828986+00:00', 'operator': 'Martin', 'action': '', 'resource': 'Bookings | booking (Booking 2 by paulolagilava@gmail.com)', 'count': 1}]}
+[WS] 2025-10-27 00:34:41,096 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 00:34:43,114 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 00:34:43,138 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 00:36:23,869 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 00:36:23,869 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 00:36:23,871 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 00:37:19,027 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 00:37:19,027 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 00:37:19,028 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 00:43:30,109 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 00:43:30,110 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 00:43:30,111 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 00:47:04,636 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 00:47:04,637 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 00:47:04,638 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 01:03:43,172 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 01:03:43,173 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 01:03:43,174 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 01:04:31,362 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 01:04:31,362 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 01:04:31,363 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 01:17:39,177 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 01:17:39,183 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 01:17:39,184 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 01:19:20,931 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 01:19:20,932 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 01:19:20,933 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 01:30:06,968 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 01:30:06,969 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 01:30:06,971 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 01:31:04,238 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 01:31:04,238 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 01:31:04,240 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 01:31:29,847 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 01:31:29,847 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 01:31:29,848 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 01:34:26,202 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 01:34:26,203 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 01:34:26,203 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 01:40:10,244 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 01:40:10,245 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 01:40:10,246 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 02:11:43,925 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 02:11:43,976 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 02:17:41,139 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 02:17:44,278 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 02:17:44,324 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 02:19:41,098 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 02:19:44,128 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 02:19:44,161 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 02:24:41,123 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 02:24:44,157 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 02:24:44,196 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 02:25:41,105 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 02:25:43,133 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 02:25:43,155 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 02:31:41,116 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 02:31:44,154 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 02:31:44,202 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 02:32:41,107 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 02:32:44,117 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 02:32:44,144 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 02:37:06,766 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 02:44:52,672 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 02:44:52,673 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 02:44:52,674 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 02:51:10,472 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 02:51:10,473 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 02:51:10,474 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 02:53:06,877 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 02:53:06,877 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 02:53:06,878 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 02:53:16,943 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 02:53:16,943 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 02:53:16,944 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 02:53:41,509 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 02:53:41,509 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 02:53:41,510 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 02:54:55,375 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 02:54:55,421 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 03:00:41,143 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 03:00:44,352 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 03:00:44,439 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 03:01:41,106 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 03:01:44,115 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 03:01:44,149 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 03:07:41,099 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 03:07:43,132 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 03:07:43,161 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 03:08:16,467 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 03:26:43,206 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 03:26:43,243 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 03:28:31,771 ERROR Missing 'schedule_id' in schedule_update event: {'type': 'schedule_update', 'model': 'schedule', 'action': 'save', 'instance_id': 982, 'timestamp': '2025-10-26T15:28:31.740455+00:00', 'recent_activities': [{'timestamp': '2025-10-23T02:26:45.400410+00:00', 'operator': 'Lagilava', 'action': 'Changed Payment status.', 'resource': 'Bookings | payment (Payment pi_3SKcvGE00EqGlVqe04yYVjKp for Booking 26)', 'count': 1}, {'timestamp': '2025-10-20T13:32:22.580420+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Natovi)', 'count': 1}, {'timestamp': '2025-10-20T13:31:31.959169+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Nabouwalu)', 'count': 1}, {'timestamp': '2025-10-20T13:30:04.694106+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Kadavu (Vunisea))', 'count': 1}, {'timestamp': '2025-10-20T13:26:31.809406+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Levuka)', 'count': 1}]}
+[WS] 2025-10-27 03:28:45,818 INFO Payment update broadcast: booking None -> None
+[WS] 2025-10-27 03:28:45,864 INFO Payment update broadcast: booking None -> None
+[WS] 2025-10-27 03:28:45,935 INFO Ticket update broadcast: 30 -> unknown
+[WS] 2025-10-27 03:28:46,040 INFO Ticket update broadcast: 30 -> unknown
+[WS] 2025-10-27 03:30:01,816 ERROR Missing 'schedule_id' in schedule_update event: {'type': 'schedule_update', 'model': 'schedule', 'action': 'save', 'instance_id': 982, 'timestamp': '2025-10-26T15:30:01.808731+00:00', 'recent_activities': [{'timestamp': '2025-10-23T02:26:45.400410+00:00', 'operator': 'Lagilava', 'action': 'Changed Payment status.', 'resource': 'Bookings | payment (Payment pi_3SKcvGE00EqGlVqe04yYVjKp for Booking 26)', 'count': 1}, {'timestamp': '2025-10-20T13:32:22.580420+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Natovi)', 'count': 1}, {'timestamp': '2025-10-20T13:31:31.959169+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Nabouwalu)', 'count': 1}, {'timestamp': '2025-10-20T13:30:04.694106+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Kadavu (Vunisea))', 'count': 1}, {'timestamp': '2025-10-20T13:26:31.809406+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Levuka)', 'count': 1}]}
+[WS] 2025-10-27 03:30:35,782 INFO Payment update broadcast: booking None -> None
+[WS] 2025-10-27 03:30:35,819 INFO Payment update broadcast: booking None -> None
+[WS] 2025-10-27 03:30:35,868 INFO Ticket update broadcast: 31 -> unknown
+[WS] 2025-10-27 03:30:35,888 INFO Ticket update broadcast: 31 -> unknown
+[WS] 2025-10-27 03:31:41,293 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 03:31:44,148 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 03:31:44,183 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 03:33:41,109 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 03:33:44,239 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 03:33:44,285 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 03:34:47,963 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 03:34:47,964 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 03:34:47,966 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 03:34:56,165 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 03:34:56,207 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 03:35:21,234 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 03:35:21,234 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 03:35:21,235 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 03:35:25,840 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 03:35:26,249 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 03:35:35,304 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 03:35:35,305 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 03:35:35,305 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 03:35:35,665 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 03:35:35,692 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 03:36:01,843 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 03:36:01,843 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 03:36:01,844 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 03:36:02,151 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 03:36:02,176 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 03:37:42,439 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 03:37:42,442 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 03:37:42,444 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 03:37:46,159 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 03:37:46,184 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 03:39:29,669 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 03:39:29,669 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 03:39:29,670 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 03:39:32,154 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 03:39:32,186 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 03:41:33,055 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 03:43:15,608 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 03:43:15,609 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 03:43:15,611 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 03:45:38,978 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 03:45:38,979 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 03:45:38,980 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 03:46:15,735 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 03:46:15,735 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 03:46:15,736 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 03:46:59,896 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 03:46:59,897 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 03:46:59,897 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 03:48:06,472 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 03:48:06,472 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 03:48:06,476 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 03:50:23,308 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 03:50:23,308 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 03:50:23,309 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 03:51:50,248 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 03:51:50,248 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 03:51:50,251 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 03:53:21,466 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 03:53:21,467 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 03:53:21,468 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 03:56:42,113 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 03:56:42,114 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 03:56:42,115 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 04:00:19,539 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 04:00:19,540 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 04:00:19,540 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 04:05:35,648 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 04:05:35,649 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 04:05:35,650 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 04:08:53,952 INFO HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+[WS] 2025-10-27 04:08:53,952 INFO Configuring endpoint tcp:port=8000:interface=127.0.0.1
+[WS] 2025-10-27 04:08:53,954 INFO Listening on TCP address 127.0.0.1:8000
+[WS] 2025-10-27 09:56:51,742 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 09:56:52,141 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 09:56:56,582 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 09:56:56,800 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 09:56:57,059 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 09:57:26,555 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 09:57:27,359 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 09:57:27,406 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 09:58:50,849 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 09:58:51,571 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 09:58:51,636 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 09:59:07,317 ERROR Missing 'schedule_id' in schedule_update event: {'type': 'schedule_update', 'model': 'schedule', 'action': 'save', 'instance_id': 1037, 'timestamp': '2025-10-26T21:59:07.238748+00:00', 'recent_activities': [{'timestamp': '2025-10-23T02:26:45.400410+00:00', 'operator': 'Lagilava', 'action': 'Changed Payment status.', 'resource': 'Bookings | payment (Payment pi_3SKcvGE00EqGlVqe04yYVjKp for Booking 26)', 'count': 1}, {'timestamp': '2025-10-20T13:32:22.580420+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Natovi)', 'count': 1}, {'timestamp': '2025-10-20T13:31:31.959169+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Nabouwalu)', 'count': 1}, {'timestamp': '2025-10-20T13:30:04.694106+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Kadavu (Vunisea))', 'count': 1}, {'timestamp': '2025-10-20T13:26:31.809406+00:00', 'operator': 'Lagilava', 'action': 'Changed Lat and Lng.', 'resource': 'Bookings | port (Levuka)', 'count': 1}]}
+[WS] 2025-10-27 09:59:08,141 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 09:59:08,984 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 09:59:09,018 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 09:59:18,536 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 09:59:18,731 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 09:59:18,781 INFO Initial data sent to admin dashboard
+[WS] 2025-10-27 09:59:23,282 INFO Admin WebSocket disconnected: Lagilava
+[WS] 2025-10-27 09:59:23,472 INFO Admin WebSocket connected: Lagilava
+[WS] 2025-10-27 09:59:23,510 INFO Initial data sent to admin dashboard

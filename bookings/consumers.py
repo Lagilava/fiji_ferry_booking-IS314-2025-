@@ -236,6 +236,15 @@ class AdminDashboardConsumer(AsyncWebsocketConsumer):
             'timestamp': event['timestamp']
         }))
 
+    async def weather_alerts(self, event):
+        # Normalize old producer payloads to the current shape
+        normalized = {
+            "type": "weather_alerts_update",
+            "weather_alerts": event.get("weather_alerts") or event.get("data") or event,
+            "timestamp": event.get("timestamp") or timezone.now().isoformat(),
+        }
+        await self.weather_alerts_update(normalized)
+
     async def cache_cleared(self, event):
         """Handle cache clear notifications"""
         await self.send(text_data=json.dumps({

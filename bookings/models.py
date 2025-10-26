@@ -283,6 +283,8 @@ class Passenger(models.Model):
         blank=True,
         related_name='dependents',
         help_text="Adult responsible for child/infant, if applicable"
+        # Optional hard guard (requires migration):
+        # , limit_choices_to={'passenger_type': 'adult'}
     )
     verification_status = models.CharField(
         max_length=20,
@@ -297,28 +299,39 @@ class Passenger(models.Model):
         verbose_name_plural = "Passengers"
         indexes = [models.Index(fields=['booking', 'passenger_type'])]
 
+    # ✅ Helper used by admin (and anywhere else)
+    def get_full_name(self) -> str:
+        return f"{self.first_name} {self.last_name}".strip()
+
     def __str__(self):
-        return f"{self.first_name} {self.last_name} ({self.passenger_type})"
+        return f"{self.get_full_name()} ({self.passenger_type})"
 
     def clean(self):
         """Validate passenger data based on type."""
         if self.passenger_type == 'infant' and not self.date_of_birth:
             raise ValidationError("Date of birth is required for infants.")
+
         if self.passenger_type == 'adult' and (not self.age or self.age < 18):
             raise ValidationError("Adults must be 18 or older.")
+
         if self.passenger_type == 'child' and (not self.age or self.age < 2 or self.age >= 18):
             raise ValidationError("Children must be between 2 and 17 years old.")
+
         if self.passenger_type == 'infant' and self.date_of_birth:
             today = date.today()
             age_days = (today - self.date_of_birth).days
             if age_days > 730:
                 raise ValidationError("Infants must be under 2 years old.")
+
         if self.linked_adult and self.linked_adult.passenger_type != 'adult':
             raise ValidationError("Linked adult must be an adult passenger.")
+
         if self.is_group_leader and self.passenger_type != 'adult':
             raise ValidationError("Group leader must be an adult.")
+
         if self.passenger_type in ['adult', 'child'] and not self.document:
             raise ValidationError("Document is required for adults and children.")
+
         if self.passenger_type == 'infant' and self.document:
             raise ValidationError("Documents are not allowed for infants.")
 

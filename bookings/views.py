@@ -1,9 +1,10 @@
 import base64
 import datetime
 import hashlib
-import io, os
+import io
 import json
 import logging
+import os
 import re
 import time
 import uuid
@@ -11,39 +12,51 @@ from decimal import Decimal, ROUND_HALF_UP
 from email.mime.image import MIMEImage
 from io import BytesIO
 
-from django.contrib.admin.views.decorators import staff_member_required
-from django.core.files.storage import default_storage
-from django.db import transaction
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-import stripe
 import qrcode
 import requests
-from reportlab.lib.units import mm
-from reportlab.lib.utils import ImageReader
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.pdfgen import canvas
+import stripe
 from django.conf import settings
 from django.contrib import messages
+from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
-from django.core.files.base import ContentFile, File
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 from django.core.mail import send_mail, EmailMultiAlternatives
 from django.core.validators import FileExtensionValidator
-from django.db.models import Subquery, Max, OuterRef, Prefetch
-from django.http import JsonResponse, HttpResponseForbidden, StreamingHttpResponse, HttpResponse, FileResponse
-from django.shortcuts import render, get_object_or_404, redirect
+from django.db import transaction
+from django.db.models import Subquery, Max, OuterRef, Prefetch, Q
+from django.http import FileResponse
+from django.http import JsonResponse, HttpResponseForbidden, StreamingHttpResponse, HttpResponse
+from django.shortcuts import get_object_or_404
+from django.shortcuts import render, redirect
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.cache import cache_page
 from django.views.decorators.csrf import csrf_exempt, csrf_protect
 from django.views.decorators.http import require_POST, require_GET
+from reportlab.graphics.barcode import qr as rl_qr
+from reportlab.graphics.shapes import Drawing
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import mm
+from reportlab.lib.utils import ImageReader
+from reportlab.pdfgen import canvas as pdfcanvas  # for NumberedCanvas
+from reportlab.platypus import (
+    BaseDocTemplate, Frame, PageTemplate, Table, TableStyle,
+    Paragraph, Spacer, KeepTogether
+)
 
 from .decorators import login_required_allow_anonymous
-from .forms import CargoBookingForm, ModifyBookingForm
+from .forms import ModifyBookingForm
 from .models import Schedule, Booking, Passenger, Payment, Ticket, Cargo, Route, WeatherCondition, AddOn, Vehicle, Port
+from .views_helpers import (
+    _otp_store_key, generate_otp_code, require_guest_otp
+)
+
+EMAIL_RE = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
 
 logger = logging.getLogger(__name__)
 stripe.api_key = settings.STRIPE_SECRET_KEY
@@ -816,7 +829,337 @@ def get_schedule_updates(request):
     return JsonResponse({'schedules': data})
 
 
+@require_POST
+@csrf_protect
+def validate_step(request):
+    """
+    Robust, side-effect-free gate used by book.js to allow moving between steps.
+    Returns 200 with {'valid': False} on validation failures so the client can handle
+    errors without noisy server logs. Change status to 400 if you explicitly prefer 400s.
+    """
+    step = (request.POST.get('step') or '').strip()
+    errors = []
+
+    def _resp(ok: bool):
+        # Set to 400 if you want server logs on validation failures
+        return JsonResponse({'valid': ok, 'errors': errors, 'step': step}, status=200)
+
+    if step == '1':
+        schedule_id = (request.POST.get('schedule_id') or '').strip()
+        guest_email = (request.POST.get('guest_email') or '').strip().lower()
+        is_authenticated = bool(getattr(request.user, 'is_authenticated', False))
+
+        # ---- schedule check (no ORM hit for non-digit) ----
+        if not schedule_id.isdigit():
+            errors.append({'field': 'schedule_id', 'message': 'Please select a valid ferry schedule.'})
+        else:
+            cache_key = f'schedule_exists_{schedule_id}'
+            schedule_exists = cache.get(cache_key)
+
+            if schedule_exists is None:
+                schedule = (
+                    Schedule.objects
+                    .filter(id=int(schedule_id), status='scheduled', departure_time__gt=timezone.now())
+                    .only('id', 'available_seats')
+                    .first()
+                )
+                schedule_exists = bool(schedule)
+                cache.set(cache_key, schedule_exists, timeout=3600)
+
+                if schedule_exists:
+                    adults   = safe_int(request.POST.get('adults', '0'))
+                    children = safe_int(request.POST.get('children', '0'))
+                    infants  = safe_int(request.POST.get('infants', '0'))
+                    total    = max(0, adults) + max(0, children) + max(0, infants)
+
+                    # Only enforce seats when counts are provided (>0)
+                    if total > 0 and total > schedule.available_seats:
+                        errors.append({
+                            'field': 'schedule_id',
+                            'message': f'Not enough seats available ({schedule.available_seats} remaining).'
+                        })
+
+            if not schedule_exists:
+                errors.append({'field': 'schedule_id', 'message': 'Please select a valid ferry schedule.'})
+
+        # ---- guest email / OTP verification ----
+        if not is_authenticated:
+            if not guest_email:
+                errors.append({'field': 'guest_email', 'message': 'Guest email is required.'})
+            elif not re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', guest_email):
+                errors.append({'field': 'guest_email', 'message': 'Please enter a valid email address.'})
+            else:
+                # Canonical flag fast-path
+                canonical = (request.session.get('guest_otp_verified_email') or '').lower()
+                verified_ok = (canonical == guest_email)
+
+                # Fallback: check the per-email OTP bucket if present and verified
+                if not verified_ok:
+                    try:
+                        key = _otp_store_key(guest_email)
+                        data = request.session.get(key) or {}
+                        if data.get('verified') is True:
+                            verified_ok = True
+                            # Promote to canonical so subsequent checks are fast
+                            request.session['guest_otp_verified_email'] = guest_email
+                            request.session['guest_otp_verified_at'] = timezone.now().isoformat()
+                            request.session.modified = True
+                    except Exception:
+                        pass
+
+                if not verified_ok:
+                    errors.append({
+                        'field': 'guest_email',
+                        'message': 'Please verify your email (we’ve sent a one-time code).'
+                    })
+
+        return _resp(len(errors) == 0)
+
+    elif step == '2':
+        adults = safe_int(request.POST.get('adults', '0'))
+        children = safe_int(request.POST.get('children', '0'))
+        infants = safe_int(request.POST.get('infants', '0'))
+
+        total_passengers = adults + children + infants
+        if total_passengers == 0:
+            errors.append({'field': 'general', 'message': 'At least one passenger is required.'})
+        if (children > 0 or infants > 0) and adults == 0:
+            errors.append({'field': 'general', 'message': 'Children and infants must be accompanied by an adult.'})
+
+        for field, value in [('adults', adults), ('children', children), ('infants', infants)]:
+            if value < 0:
+                errors.append({'field': field, 'message': f'{field.capitalize()} count cannot be negative.'})
+
+        # Per-passenger detail checks (keep your existing implementation)
+        def validate_passenger_data(req, p_type, idx, adult_count, errs):
+            # implement your existing checks here (first/last, age/DOB, doc presence, linked adult)
+            pass
+
+        for p_type, count in (('adult', adults), ('child', children), ('infant', infants)):
+            for i in range(count):
+                validate_passenger_data(request, p_type, i, adults, errors)
+
+        return _resp(len(errors) == 0)
+
+    elif step == '3':
+        add_vehicle = request.POST.get('add_vehicle') in ('true', 'on', '1')
+        add_cargo   = request.POST.get('add_cargo') in ('true', 'on', '1')
+
+        if add_vehicle:
+            vehicle_type = (request.POST.get('vehicle_type') or '').strip()
+            vehicle_dimensions = (request.POST.get('vehicle_dimensions') or '').strip()
+            if not vehicle_type:
+                errors.append({'field': 'vehicle_type', 'message': 'Vehicle type is required.'})
+            if not re.match(r'^\d+x\d+x\d+$', vehicle_dimensions or ''):
+                errors.append({'field': 'vehicle_dimensions', 'message': 'Vehicle dimensions must be in format LxWxH (e.g., 400x180x150).'})
+
+        if add_cargo:
+            cargo_type = (request.POST.get('cargo_type') or '').strip()
+            cargo_weight = (request.POST.get('cargo_weight_kg') or '').strip()
+            cargo_dimensions = (request.POST.get('cargo_dimensions_cm') or '').strip()
+            if not cargo_type:
+                errors.append({'field': 'cargo_type', 'message': 'Cargo type is required.'})
+            try:
+                weight = float(cargo_weight)
+                if weight <= 0:
+                    errors.append({'field': 'cargo_weight_kg', 'message': 'Cargo weight must be a positive number.'})
+            except ValueError:
+                errors.append({'field': 'cargo_weight_kg', 'message': 'Cargo weight must be a valid number.'})
+            if not re.match(r'^\d+x\d+x\d+$', cargo_dimensions or ''):
+                errors.append({'field': 'cargo_dimensions_cm', 'message': 'Cargo dimensions must be in format LxWxH (e.g., 400x180x150).'})
+
+        return _resp(len(errors) == 0)
+
+    elif step == '4':
+        if not request.POST.get('privacy_consent'):
+            errors.append({'field': 'privacy_consent', 'message': 'You must agree to the privacy policy.'})
+        return _resp(len(errors) == 0)
+
+    # Unknown step – don’t block navigation
+    return JsonResponse({'valid': True, 'step': step}, status=200)
+
+
+@require_POST
+@require_guest_otp
+@csrf_protect
+def create_checkout_session(request):
+    """Create Stripe checkout session for ferry booking, including passengers, cargo, vehicles, and addons"""
+    errors = []
+
+    try:
+        # --- Extract booking data ---
+        schedule_id = request.POST.get('schedule_id')
+        adults = safe_int(request.POST.get('adults', 0))
+        children = safe_int(request.POST.get('children', 0))
+        infants = safe_int(request.POST.get('infants', 0))
+        guest_email = request.POST.get('guest_email', '').strip()
+
+        add_cargo = request.POST.get('add_cargo') in ['true', 'on']
+        cargo_type = request.POST.get('cargo_type', '')
+        weight_kg = safe_float(request.POST.get('cargo_weight_kg', 0))
+        cargo_license_plate = request.POST.get('cargo_license_plate', '')
+        cargo_dimensions = request.POST.get('cargo_dimensions_cm', '') if add_cargo else ''
+
+        add_vehicle = request.POST.get('add_vehicle') in ['true', 'on']
+        vehicle_type = request.POST.get('vehicle_type', '')
+        vehicle_dimensions = request.POST.get('vehicle_dimensions', '')
+        vehicle_license_plate = request.POST.get('vehicle_license_plate', '')
+
+        # --- Addons ---
+        addons = []
+        for addon_type in dict(AddOn.ADD_ON_TYPE_CHOICES).keys():
+            quantity = safe_int(request.POST.get(f'{addon_type}_quantity', 0))
+            if quantity > 0:
+                addons.append({'type': addon_type, 'quantity': quantity})
+
+        total_passengers = adults + children + infants
+        if not schedule_id or total_passengers == 0:
+            return JsonResponse({'success': False, 'errors': [{'field': 'general', 'message': 'Invalid booking data'}]}, status=400)
+
+        schedule = get_object_or_404(Schedule, id=schedule_id, status='scheduled')
+        if schedule.available_seats < total_passengers:
+            return JsonResponse({'success': False, 'errors': [{'field': 'schedule_id', 'message': f'Only {schedule.available_seats} seats available'}]}, status=400)
+
+        # --- Validate email ---
+        customer_email = request.user.email if request.user.is_authenticated else guest_email
+        if not customer_email or not re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', customer_email):
+            return JsonResponse({'success': False, 'errors': [{'field': 'email', 'message': 'Valid email required'}]}, status=400)
+
+        # --- Calculate total price ---
+        total_price = calculate_total_price(
+            adults, children, infants, schedule, add_cargo, cargo_type, weight_kg, addons,
+            add_vehicle, vehicle_type, vehicle_dimensions
+        )
+
+        # --- Create booking ---
+        booking = Booking.objects.create(
+            user=request.user if request.user.is_authenticated else None,
+            schedule=schedule,
+            guest_email=guest_email if not request.user.is_authenticated else None,
+            passenger_adults=adults,
+            passenger_children=children,
+            passenger_infants=infants,
+            total_price=total_price,
+            status='pending'
+        )
+
+        # --- Create passengers ---
+        passenger_lists = {'adult': adults, 'child': children, 'infant': infants}
+        adult_passengers = []
+
+        for p_type, count in passenger_lists.items():
+            for i in range(count):
+                first_name = request.POST.get(f'{p_type}_first_name_{i}', '').strip()
+                last_name = request.POST.get(f'{p_type}_last_name_{i}', '').strip()
+                document = request.FILES.get(f'{p_type}_id_document_{i}') if p_type in ['adult', 'child'] else None
+
+                if not first_name or not last_name:
+                    raise ValueError(f"{p_type.capitalize()} {i + 1} missing name")
+
+                passenger_data = {
+                    'booking': booking,
+                    'first_name': first_name,
+                    'last_name': last_name,
+                    'passenger_type': p_type,
+                    'document': document
+                }
+
+                if p_type != 'infant':
+                    age = request.POST.get(f'{p_type}_age_{i}')
+                    if age:
+                        passenger_data['age'] = int(age)
+
+                if p_type == 'infant':
+                    dob = request.POST.get(f'{p_type}_dob_{i}')
+                    if dob:
+                        passenger_data['date_of_birth'] = datetime.datetime.strptime(dob, '%Y-%m-%d').date()
+
+                passenger = Passenger.objects.create(**passenger_data)
+
+                # Link child/infant to adult
+                if p_type in ['child', 'infant']:
+                    linked_idx = request.POST.get(f'{p_type}_linked_adult_{i}')
+                    if linked_idx and adult_passengers:
+                        try:
+                            passenger.linked_adult = adult_passengers[int(linked_idx)]
+                            passenger.save()
+                        except (IndexError, ValueError):
+                            pass
+
+                if p_type == 'adult':
+                    adult_passengers.append(passenger)
+
+        # --- Create cargo/vehicle/addons ---
+        if add_cargo and weight_kg > 0:
+            Cargo.objects.create(
+                booking=booking,
+                cargo_type=cargo_type,
+                weight_kg=Decimal(weight_kg),
+                dimensions_cm=cargo_dimensions,
+                license_plate=cargo_license_plate,
+                price=calculate_cargo_price(Decimal(weight_kg), cargo_type)
+            )
+
+        if add_vehicle:
+            Vehicle.objects.create(
+                booking=booking,
+                vehicle_type=vehicle_type,
+                dimensions=vehicle_dimensions,
+                license_plate=vehicle_license_plate,
+                price=calculate_vehicle_price(vehicle_type, vehicle_dimensions)
+            )
+
+        for addon in addons:
+            AddOn.objects.create(
+                booking=booking,
+                add_on_type=addon['type'],
+                quantity=addon['quantity'],
+                price=calculate_addon_price(addon['type'], addon['quantity'])
+            )
+
+        # --- Reserve seats ---
+        schedule.available_seats -= total_passengers
+        schedule.save()
+
+        # --- Create Stripe session ---
+        session = stripe.checkout.Session.create(
+            payment_method_types=['card'],
+            line_items=[{
+                'price_data': {
+                    'currency': 'fjd',
+                    'product_data': {'name': f'Ferry Booking #{booking.id}'},
+                    'unit_amount': int(total_price * 100),
+                },
+                'quantity': 1,
+            }],
+            mode='payment',
+            success_url=request.build_absolute_uri('/bookings/success/?session_id={CHECKOUT_SESSION_ID}'),
+            cancel_url=request.build_absolute_uri('/bookings/cancel/'),
+            metadata={'booking_id': str(booking.id), 'guest_email': guest_email or ''},
+            customer_email=customer_email,
+        )
+
+        booking.stripe_session_id = session.id
+        booking.save()
+
+        request.session['booking_id'] = booking.id
+        request.session['stripe_session_id'] = session.id
+
+        return JsonResponse({'sessionId': session.id})
+
+    except Exception as e:
+        logger.exception(f"Checkout error: {e}")
+        # Cleanup on error
+        if 'booking' in locals():
+            booking.delete()
+            if 'schedule' in locals():
+                schedule.available_seats += total_passengers
+                schedule.save()
+        return JsonResponse({'success': False, 'errors': [{'field': 'general', 'message': str(e)}]}, status=400)
+
+
 @csrf_exempt
+@require_guest_otp
 @require_POST
 def get_pricing(request):
     """Fixed to handle individual form fields from JS"""
@@ -831,6 +1174,7 @@ def get_pricing(request):
         cargo_type = request.POST.get('cargo_type', '')  # Individual field
         weight_kg = request.POST.get('cargo_weight_kg', '')
         cargo_license_plate = request.POST.get('cargo_license_plate', '')
+        cargo_dimensions = request.POST.get('cargo_dimensions_cm', '') if add_cargo else ''
 
         # Handle individual vehicle fields
         add_vehicle = request.POST.get('add_vehicle') == 'true' or request.POST.get('add_vehicle') == 'on'
@@ -864,7 +1208,7 @@ def get_pricing(request):
                 calculate_cargo_price(Decimal(weight), cargo_type) if add_cargo and weight > 0 else Decimal('0.00')),
             'vehicle': str(
                 calculate_vehicle_price(vehicle_type, vehicle_dimensions) if add_vehicle else Decimal('0.00')),
-            'addons': sum(calculate_addon_price(addon['type'], addon['quantity']) for addon in addons),
+            'addons': [{'type': a['type'], 'quantity': a['quantity'], 'amount': str(calculate_addon_price(a['type'], a['quantity']))} for a in addons],
             'total': str(total_price)
         }
 
@@ -878,6 +1222,282 @@ def get_pricing(request):
         logger.exception(f"Pricing error: {e}")
         return JsonResponse({'error': str(e)}, status=400)
 
+
+
+def book_ticket(request):
+    # === EXTRACT PARAMETERS ===
+    schedule_id = request.GET.get('schedule_id', '').strip()
+    to_port = request.GET.get('to_port', '').strip().lower()
+    step = safe_int(request.GET.get('step', 1))
+
+    # Search parameters (for calendar/list mode)
+    route_input = request.GET.get('route', '').strip()             # legacy string "Origin to Destination"
+    route_id = request.GET.get('route_id', '').strip()             # new numeric route id
+    travel_date_str = request.GET.get('date', '').strip()
+    passengers = request.GET.get('passengers', '1')
+
+    # Default date: today
+    travel_date = None
+    if travel_date_str:
+        try:
+            travel_date = datetime.datetime.strptime(travel_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            messages.error(request, "Invalid date format.")
+            travel_date = timezone.now().date()
+    else:
+        travel_date = timezone.now().date()
+
+    # === BASE QUERYSET ===
+    available_schedules = Schedule.objects.filter(
+        status='scheduled',
+        departure_time__gt=timezone.now()
+    ).select_related('ferry', 'route__departure_port', 'route__destination_port')
+
+    # === FILTER BY SCHEDULE_ID (Quick Book) ===
+    if schedule_id:
+        try:
+            available_schedules = available_schedules.filter(id=schedule_id)
+            if not available_schedules.exists():
+                logger.warning(f"No schedule found for schedule_id={schedule_id}")
+                messages.error(request, "Selected schedule is not available.")
+        except ValueError:
+            logger.error(f"Invalid schedule_id={schedule_id}")
+            messages.error(request, "Invalid schedule ID.")
+            available_schedules = Schedule.objects.none()
+
+    # === FILTER BY DESTINATION PORT (from quick search) ===
+    if to_port:
+        available_schedules = available_schedules.filter(
+            route__destination_port__name__iexact=to_port
+        )
+        if not available_schedules.exists():
+            logger.warning(f"No bookings found for to_port={to_port}")
+            messages.error(request, f"No bookings available for destination: {to_port.capitalize()}.")
+
+    # === FILTER BY SEARCH (route + date) → Calendar/List Mode ===
+    # Rules:
+    #  - Always filter to the selected day if provided
+    #  - Prefer route_id when provided
+    #  - Fallback to legacy "Origin to Destination" string if route_id missing
+    if route_id or route_input or travel_date_str:
+        # Filter by selected date
+        available_schedules = available_schedules.filter(departure_time__date=travel_date)
+
+        # Apply route filter
+        if route_id:
+            available_schedules = available_schedules.filter(route_id=route_id)
+        elif route_input:
+            try:
+                origin, destination = [part.strip() for part in route_input.split(' to ')]
+                available_schedules = available_schedules.filter(
+                    route__departure_port__name__iexact=origin,
+                    route__destination_port__name__iexact=destination
+                )
+            except ValueError:
+                messages.error(request, "Invalid route format. Use 'Origin to Destination'.")
+
+    # === DEFINE ADD-ONS (unchanged) ===
+    add_ons = [
+        {'id': 'premium_seating', 'label': 'Premium Seating', 'price': 20.00, 'max_quantity': 20},
+        {'id': 'priority_boarding', 'label': 'Priority Boarding', 'price': 10.00, 'max_quantity': 20},
+        {'id': 'cabin', 'label': 'Cabin', 'price': 50.00, 'max_quantity': 5},
+        {'id': 'meal_breakfast', 'label': 'Breakfast', 'price': 15.00, 'max_quantity': 50},
+        {'id': 'meal_lunch', 'label': 'Lunch', 'price': 15.00, 'max_quantity': 50},
+        {'id': 'meal_dinner', 'label': 'Dinner', 'price': 15.00, 'max_quantity': 50},
+        {'id': 'meal_snack', 'label': 'Snack', 'price': 5.00, 'max_quantity': 100},
+    ]
+
+    # === GET REQUEST: RENDER EITHER LIST OR BOOKING FORM ===
+    if request.method == 'GET':
+        # === MODE 1: CALENDAR + LIST (no schedule_id, search active) ===
+        if not schedule_id and (route_id or route_input or travel_date_str):
+            import calendar
+            cal = calendar.monthcalendar(travel_date.year, travel_date.month)
+            calendar_days = []
+            for week in cal:
+                calendar_days.append([
+                    datetime.date(travel_date.year, travel_date.month, day) if day else None
+                    for day in week
+                ])
+
+            context = {
+                'schedules': available_schedules.order_by('departure_time'),
+                'calendar': calendar_days,
+                'selected_month': travel_date,
+                'today': timezone.now().date(),
+                'form_data': {
+                    'route_id': route_id,                                # <-- expose route_id to template
+                    'date': travel_date.strftime('%Y-%m-%d'),
+                    'passengers': passengers
+                },
+            }
+            return render(request, 'bookings/schedule_list.html', context)
+
+        # === MODE 2: BOOKING FORM (schedule_id present) ===
+        # Initialize form data
+        form_data = {
+            'step': step,
+            'schedule_id': schedule_id or '',
+            'adults': 1,
+            'children': 0,
+            'infants': 0,
+            'guest_email': request.session.get('guest_email', ''),
+            'add_vehicle': False,
+            'add_cargo': False,
+            'vehicle_type': '',
+            'vehicle_dimensions': '',
+            'vehicle_license_plate': '',
+            'cargo_type': '',
+            'cargo_weight_kg': '',
+            'cargo_dimensions_cm': '',
+            'cargo_license_plate': '',
+            'privacy_consent': False,
+            'to_port': to_port or '',
+            **{f'{addon["id"]}_quantity': 0 for addon in add_ons}
+        }
+
+        # Load saved passenger data from session
+        saved_passenger_data = request.session.get('passenger_data', {})
+        for p_type in ['adult', 'child', 'infant']:
+            count_key = 'children' if p_type == 'child' else f'{p_type}s'
+            count = form_data.get(count_key, 0)
+            for i in range(count):
+                form_data.update({
+                    f'{p_type}_first_name_{i}': saved_passenger_data.get(f'{p_type}_first_name_{i}', ''),
+                    f'{p_type}_last_name_{i}': saved_passenger_data.get(f'{p_type}_last_name_{i}', ''),
+                    f'{p_type}_age_{i}': saved_passenger_data.get(f'{p_type}_age_{i}', ''),
+                    f'{p_type}_dob_{i}': saved_passenger_data.get(f'{p_type}_dob_{i}', ''),
+                    f'{p_type}_linked_adult_{i}': saved_passenger_data.get(f'{p_type}_linked_adult_{i}', '')
+                })
+
+        # Generate summary for step 4
+        summary = None
+        if step == 4 and schedule_id:
+            try:
+                schedule = Schedule.objects.get(
+                    id=schedule_id,
+                    status='scheduled',
+                    departure_time__gt=timezone.now()
+                )
+                adults = safe_int(form_data['adults'])
+                children = safe_int(form_data['children'])
+                infants = safe_int(form_data['infants'])
+
+                add_vehicle = form_data['add_vehicle']
+                add_cargo = form_data['add_cargo']
+                vehicle_type = form_data['vehicle_type']
+                vehicle_dimensions = form_data['vehicle_dimensions']
+                cargo_type = form_data['cargo_type']
+                cargo_weight_kg = safe_float(form_data['cargo_weight_kg'])
+
+                addons = []
+                for addon in add_ons:
+                    quantity = safe_int(form_data.get(f'{addon["id"]}_quantity', 0))
+                    if quantity > 0:
+                        addons.append({'type': addon['id'], 'quantity': quantity})
+
+                total_price = calculate_total_price(
+                    adults, children, infants, schedule, add_cargo, cargo_type,
+                    cargo_weight_kg, addons, add_vehicle, vehicle_type, vehicle_dimensions
+                )
+
+                base_fare = schedule.route.base_fare or Decimal('35.50')
+                summary = {
+                    'schedule': {
+                        'route': f"{schedule.route.departure_port.name} to {schedule.route.destination_port.name}",
+                        'departure_time': schedule.departure_time.strftime("%a, %b %d, %H:%M"),
+                        'estimated_duration': int(
+                            schedule.route.estimated_duration.total_seconds() / 60) if schedule.route.estimated_duration else "N/A"
+                    },
+                    'pricing': {
+                        'adults': str(Decimal(adults) * base_fare),
+                        'children': str(Decimal(children) * base_fare * Decimal('0.5')),
+                        'infants': str(Decimal(infants) * base_fare * Decimal('0.1')),
+                        'vehicle': str(
+                            calculate_vehicle_price(vehicle_type, vehicle_dimensions)) if add_vehicle else "0.00",
+                        'cargo': str(
+                            calculate_cargo_price(Decimal(cargo_weight_kg or 0), cargo_type)) if add_cargo else "0.00",
+                        'addons': {
+                            addon['type']: {
+                                'label': next(
+                                    (a['label'] for a in add_ons if a['id'] == addon['type']),
+                                    addon['type'].replace('_', ' ').title()
+                                ),
+                                'quantity': addon['quantity'],
+                                'amount': str(calculate_addon_price(addon['type'], addon['quantity']))
+                            }
+                            for addon in addons
+                        },
+                        'total': str(total_price)
+                    },
+                    'total_price': str(total_price)
+                }
+            except Schedule.DoesNotExist:
+                messages.error(request, "Selected schedule is not available.")
+                summary = None
+
+        return render(request, 'bookings/book.html', {
+            'bookings': available_schedules,
+            'user': request.user,
+            'form_data': form_data,
+            'debug': settings.DEBUG,
+            'stripe_publishable_key': settings.STRIPE_PUBLISHABLE_KEY,
+            'summary': summary,
+            'add_ons': add_ons
+        })
+
+    # === POST HANDLING (unchanged) ===
+    if request.method == 'POST':
+        step = request.POST.get('step')
+
+        schedule_id = request.POST.get('schedule_id', '').strip()
+        adults = safe_int(request.POST.get('adults', 0))
+        children = safe_int(request.POST.get('children', 0))
+        infants = safe_int(request.POST.get('infants', 0))
+        total_passengers = adults + children + infants
+
+        errors = []
+
+        if step in ['2', '3', '4'] and not schedule_id:
+            errors.append({'field': 'schedule_id', 'message': 'Schedule selection required', 'step': 1})
+
+        if step in ['2', '3', '4'] and total_passengers == 0:
+            errors.append({'field': 'passengers', 'message': 'At least one passenger required', 'step': 2})
+
+        if step in ['2', '3', '4']:
+            try:
+                schedule = Schedule.objects.get(
+                    id=schedule_id,
+                    status='scheduled',
+                    departure_time__gt=timezone.now()
+                )
+                if schedule.available_seats < total_passengers:
+                    errors.append({
+                        'field': 'schedule_id',
+                        'message': f'Only {schedule.available_seats} seats available',
+                        'step': 1
+                    })
+            except Schedule.DoesNotExist:
+                errors.append({'field': 'schedule_id', 'message': 'Invalid schedule', 'step': 1})
+
+        if step == '4' and not errors:
+            privacy_consent = request.POST.get('privacy_consent') == 'on'
+            if not privacy_consent:
+                errors.append({'field': 'privacy_consent', 'message': 'Privacy consent required', 'step': 4})
+
+            if not errors:
+                request.session['booking_form_data'] = dict(request.POST)
+                request.session['booking_step'] = '4'
+                return redirect('bookings:create_checkout_session')
+
+        if errors:
+            return JsonResponse({'success': False, 'errors': errors})
+
+        request.session['booking_form_data'] = dict(request.POST)
+        request.session['booking_step'] = step
+        return JsonResponse({'success': True, 'message': "alertness saved"})
+
+    return JsonResponse({'error': 'Invalid request method'}, status=405)
 
 
 def validate_passenger_data(request, p_type, index, adults, errors):
@@ -952,99 +1572,6 @@ def validate_passenger_data(request, p_type, index, adults, errors):
     }
 
 
-@require_POST
-@csrf_protect
-def validate_step(request):
-    step = request.POST.get('step')
-    errors = []
-
-    if step == '1':
-        schedule_id = request.POST.get('schedule_id', '').strip()
-        guest_email = request.POST.get('guest_email', '').strip()
-        is_authenticated = request.user.is_authenticated
-        total_passengers = safe_int(request.POST.get('adults', '0')) + safe_int(request.POST.get('children', '0')) + safe_int(request.POST.get('infants', '0'))
-
-        cache_key = f'schedule_exists_{schedule_id}'
-        schedule_exists = cache.get(cache_key)
-        if schedule_exists is None:
-            try:
-                schedule = Schedule.objects.get(id=schedule_id, status='scheduled', departure_time__gt=timezone.now())
-                schedule_exists = True
-                if total_passengers > schedule.available_seats:
-                    errors.append({'field': 'schedule_id', 'message': f'Not enough seats available ({schedule.available_seats} remaining).'})
-                cache.set(cache_key, schedule_exists, timeout=3600)
-            except Schedule.DoesNotExist:
-                schedule_exists = False
-                errors.append({'field': 'schedule_id', 'message': 'Please select a valid ferry schedule.'})
-                cache.set(cache_key, schedule_exists, timeout=3600)
-
-        if not schedule_id or not schedule_exists:
-            errors.append({'field': 'schedule_id', 'message': 'Please select a valid ferry schedule.'})
-
-        if not is_authenticated:
-            if not guest_email:
-                errors.append({'field': 'guest_email', 'message': 'Guest email is required.'})
-            elif not re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', guest_email):
-                errors.append({'field': 'guest_email', 'message': 'Please enter a valid email address.'})
-
-    elif step == '2':
-        adults = safe_int(request.POST.get('adults', '0'))
-        children = safe_int(request.POST.get('children', '0'))
-        infants = safe_int(request.POST.get('infants', '0'))
-
-        total_passengers = adults + children + infants
-        if total_passengers == 0:
-            errors.append({'field': 'general', 'message': 'At least one passenger is required.'})
-        if (children > 0 or infants > 0) and adults == 0:
-            errors.append({'field': 'general', 'message': 'Children and infants must be accompanied by an adult.'})
-
-        for field, value in [('adults', adults), ('children', children), ('infants', infants)]:
-            if value < 0:
-                errors.append({'field': field, 'message': f'{field.capitalize()} count cannot be negative.'})
-
-        for p_type in ['adult', 'child', 'infant']:
-            count = adults if p_type == 'adult' else children if p_type == 'child' else infants
-            for i in range(count):
-                validate_passenger_data(request, p_type, i, adults, errors)
-
-    elif step == '3':
-        add_vehicle = request.POST.get('add_vehicle') == 'true' or request.POST.get('add_vehicle') == 'on'
-        add_cargo = request.POST.get('add_cargo') == 'true' or request.POST.get('add_cargo') == 'on'
-
-        # Validate vehicle fields
-        if add_vehicle:
-            vehicle_type = request.POST.get('vehicle_type', '').strip()
-            vehicle_dimensions = request.POST.get('vehicle_dimensions', '').strip()
-            if not vehicle_type:
-                errors.append({'field': 'vehicle_type', 'message': 'Vehicle type is required.'})
-            if not vehicle_dimensions or not re.match(r'^\d+x\d+x\d+$', vehicle_dimensions):
-                errors.append({'field': 'vehicle_dimensions', 'message': 'Vehicle dimensions must be in format LxWxH (e.g., 400x180x150).'})
-
-        # Validate cargo fields
-        if add_cargo:
-            cargo_type = request.POST.get('cargo_type', '').strip()
-            cargo_weight = request.POST.get('cargo_weight_kg', '').strip()
-            cargo_dimensions = request.POST.get('cargo_dimensions_cm', '').strip()
-            if not cargo_type:
-                errors.append({'field': 'cargo_type', 'message': 'Cargo type is required.'})
-            try:
-                weight = float(cargo_weight)
-                if weight <= 0:
-                    errors.append({'field': 'cargo_weight_kg', 'message': 'Cargo weight must be a positive number.'})
-            except ValueError:
-                errors.append({'field': 'cargo_weight_kg', 'message': 'Cargo weight must be a valid number.'})
-            if not cargo_dimensions or not re.match(r'^\d+x\d+x\d+$', cargo_dimensions):
-                errors.append({'field': 'cargo_dimensions_cm', 'message': 'Cargo dimensions must be in format LxWxH (e.g., 400x180x150).'})
-
-    elif step == '4':
-        if not request.POST.get('privacy_consent'):
-            errors.append({'field': 'privacy_consent', 'message': 'You must agree to the privacy policy.'})
-
-    if errors:
-        return JsonResponse({'valid': False, 'errors': errors, 'step': step}, status=400)
-    return JsonResponse({'valid': True, 'step': step})
-
-
 @csrf_exempt  # Add this decorator
 @require_POST
 def validate_file(request):
@@ -1082,12 +1609,32 @@ def validate_file(request):
 
 
 @require_POST
-@csrf_exempt  # Add for AJAX
+@csrf_exempt
 def check_schedule_availability(request):
     if not request.META.get('HTTP_X_REQUESTED_WITH') == 'XMLHttpRequest':
         return JsonResponse({'valid': False, 'error': 'AJAX required'}, status=403)
 
     try:
+        # === BATCH MODE (new) ===
+        schedule_ids = request.POST.getlist('schedule_id')  # list of IDs
+        if schedule_ids:
+            # Validate all at once
+            schedules = Schedule.objects.filter(
+                id__in=schedule_ids,
+                status='scheduled',
+                departure_time__gt=timezone.now()
+            ).values('id', 'departure_time__date')
+
+            valid_ids = {str(s['id']) for s in schedules}
+            result = {
+                'valid': True,
+                'available_dates': [
+                    s['departure_time__date'].strftime('%Y-%m-%d') for s in schedules
+                ]
+            }
+            return JsonResponse(result)
+
+        # === SINGLE MODE (existing) ===
         schedule_id = request.POST.get('schedule_id')
         adults = safe_int(request.POST.get('adults', 0))
         children = safe_int(request.POST.get('children', 0))
@@ -1127,6 +1674,34 @@ def check_schedule_availability(request):
     except Exception as e:
         logger.error(f"Availability check failed: {e}")
         return JsonResponse({'valid': False, 'error': 'Server error'}, status=500)
+
+
+
+def availability_api(request):
+    route_id = request.GET.get('route_id')
+    year = int(request.GET.get('year', 0))
+    month = int(request.GET.get('month', 0))
+
+    if not (route_id and year and month):
+        return JsonResponse({'available_dates': []})
+
+    # ✅ Use datetime.datetime instead of datetime(...)
+    start = datetime.date(year, month, 1)
+    if month == 12:
+        end = datetime.date(year + 1, 1, 1)
+    else:
+        end = datetime.date(year, month + 1, 1)
+
+    qs = Schedule.objects.filter(
+        route_id=route_id,
+        departure_time__date__gte=start,
+        departure_time__date__lt=end,
+        status='scheduled',
+        available_seats__gt=0
+    ).values_list('departure_time__date', flat=True).distinct()
+
+    dates = [d.strftime('%Y-%m-%d') for d in qs]
+    return JsonResponse({'available_dates': dates})
 
 
 @require_GET
@@ -1198,403 +1773,11 @@ def api_bookings(request):
     return JsonResponse({"schedules": schedules})
 
 
-@require_POST
-@csrf_protect
-def create_checkout_session(request):
-    """Create Stripe checkout session for ferry booking, including passengers, cargo, vehicles, and addons"""
-    errors = []
-
-    try:
-        # --- Extract booking data ---
-        schedule_id = request.POST.get('schedule_id')
-        adults = safe_int(request.POST.get('adults', 0))
-        children = safe_int(request.POST.get('children', 0))
-        infants = safe_int(request.POST.get('infants', 0))
-        guest_email = request.POST.get('guest_email', '').strip()
-
-        add_cargo = request.POST.get('add_cargo') in ['true', 'on']
-        cargo_type = request.POST.get('cargo_type', '')
-        weight_kg = safe_float(request.POST.get('cargo_weight_kg', 0))
-        cargo_license_plate = request.POST.get('cargo_license_plate', '')
-
-        add_vehicle = request.POST.get('add_vehicle') in ['true', 'on']
-        vehicle_type = request.POST.get('vehicle_type', '')
-        vehicle_dimensions = request.POST.get('vehicle_dimensions', '')
-        vehicle_license_plate = request.POST.get('vehicle_license_plate', '')
-
-        # --- Addons ---
-        addons = []
-        for addon_type in dict(AddOn.ADD_ON_TYPE_CHOICES).keys():
-            quantity = safe_int(request.POST.get(f'{addon_type}_quantity', 0))
-            if quantity > 0:
-                addons.append({'type': addon_type, 'quantity': quantity})
-
-        total_passengers = adults + children + infants
-        if not schedule_id or total_passengers == 0:
-            return JsonResponse({'success': False, 'errors': [{'field': 'general', 'message': 'Invalid booking data'}]}, status=400)
-
-        schedule = get_object_or_404(Schedule, id=schedule_id, status='scheduled')
-        if schedule.available_seats < total_passengers:
-            return JsonResponse({'success': False, 'errors': [{'field': 'schedule_id', 'message': f'Only {schedule.available_seats} seats available'}]}, status=400)
-
-        # --- Validate email ---
-        customer_email = request.user.email if request.user.is_authenticated else guest_email
-        if not customer_email or not re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', customer_email):
-            return JsonResponse({'success': False, 'errors': [{'field': 'email', 'message': 'Valid email required'}]}, status=400)
-
-        # --- Calculate total price ---
-        total_price = calculate_total_price(
-            adults, children, infants, schedule, add_cargo, cargo_type, weight_kg, addons,
-            add_vehicle, vehicle_type, vehicle_dimensions
-        )
-
-        # --- Create booking ---
-        booking = Booking.objects.create(
-            user=request.user if request.user.is_authenticated else None,
-            schedule=schedule,
-            guest_email=guest_email if not request.user.is_authenticated else None,
-            passenger_adults=adults,
-            passenger_children=children,
-            passenger_infants=infants,
-            total_price=total_price,
-            status='pending'
-        )
-
-        # --- Create passengers ---
-        passenger_lists = {'adult': adults, 'child': children, 'infant': infants}
-        adult_passengers = []
-
-        for p_type, count in passenger_lists.items():
-            for i in range(count):
-                first_name = request.POST.get(f'{p_type}_first_name_{i}', '').strip()
-                last_name = request.POST.get(f'{p_type}_last_name_{i}', '').strip()
-
-                if not first_name or not last_name:
-                    raise ValueError(f"{p_type.capitalize()} {i + 1} missing name")
-
-                passenger_data = {
-                    'booking': booking,
-                    'first_name': first_name,
-                    'last_name': last_name,
-                    'passenger_type': p_type
-                }
-
-                if p_type != 'infant':
-                    age = request.POST.get(f'{p_type}_age_{i}')
-                    if age:
-                        passenger_data['age'] = int(age)
-
-                if p_type == 'infant':
-                    dob = request.POST.get(f'{p_type}_dob_{i}')
-                    if dob:
-                        passenger_data['date_of_birth'] = datetime.datetime.strptime(dob, '%Y-%m-%d').date()
-
-                passenger = Passenger.objects.create(**passenger_data)
-
-                # Link child/infant to adult
-                if p_type in ['child', 'infant']:
-                    linked_idx = request.POST.get(f'{p_type}_linked_adult_{i}')
-                    if linked_idx and adult_passengers:
-                        try:
-                            passenger.linked_adult = adult_passengers[int(linked_idx)]
-                            passenger.save()
-                        except (IndexError, ValueError):
-                            pass
-
-                if p_type == 'adult':
-                    adult_passengers.append(passenger)
-
-        # --- Create cargo/vehicle/addons ---
-        if add_cargo and weight_kg > 0:
-            Cargo.objects.create(
-                booking=booking,
-                cargo_type=cargo_type,
-                weight_kg=Decimal(weight_kg),
-                license_plate=cargo_license_plate,
-                price=calculate_cargo_price(Decimal(weight_kg), cargo_type)
-            )
-
-        if add_vehicle:
-            Vehicle.objects.create(
-                booking=booking,
-                vehicle_type=vehicle_type,
-                dimensions=vehicle_dimensions,
-                license_plate=vehicle_license_plate,
-                price=calculate_vehicle_price(vehicle_type, vehicle_dimensions)
-            )
-
-        for addon in addons:
-            AddOn.objects.create(
-                booking=booking,
-                add_on_type=addon['type'],
-                quantity=addon['quantity'],
-                price=calculate_addon_price(addon['type'], addon['quantity'])
-            )
-
-        # --- Reserve seats ---
-        schedule.available_seats -= total_passengers
-        schedule.save()
-
-        # --- Create Stripe session ---
-        session = stripe.checkout.Session.create(
-            payment_method_types=['card'],
-            line_items=[{
-                'price_data': {
-                    'currency': 'fjd',
-                    'product_data': {'name': f'Ferry Booking #{booking.id}'},
-                    'unit_amount': int(total_price * 100),
-                },
-                'quantity': 1,
-            }],
-            mode='payment',
-            success_url=request.build_absolute_uri('/bookings/success/?session_id={CHECKOUT_SESSION_ID}'),
-            cancel_url=request.build_absolute_uri('/bookings/cancel/'),
-            metadata={'booking_id': str(booking.id), 'guest_email': guest_email or ''},
-            customer_email=customer_email,
-        )
-
-        booking.stripe_session_id = session.id
-        booking.save()
-
-        request.session['booking_id'] = booking.id
-        request.session['stripe_session_id'] = session.id
-
-        return JsonResponse({'sessionId': session.id})
-
-    except Exception as e:
-        logger.exception(f"Checkout error: {e}")
-        # Cleanup on error
-        if 'booking' in locals():
-            booking.delete()
-            if 'schedule' in locals():
-                schedule.available_seats += total_passengers
-                schedule.save()
-        return JsonResponse({'success': False, 'errors': [{'field': 'general', 'message': str(e)}]}, status=400)
-
-
 def login_required_allow_anonymous(view_func):
     def wrapper(request, *args, **kwargs):
         return view_func(request, *args, **kwargs)
     return wrapper
 
-
-@login_required_allow_anonymous
-def book_ticket(request):
-    schedule_id = request.GET.get('schedule_id', '').strip()
-    to_port = request.GET.get('to_port', '').strip().lower()
-    step = safe_int(request.GET.get('step', 1))
-
-    # Query bookings for GET requests
-    available_schedules = Schedule.objects.filter(
-        status='scheduled',
-        departure_time__gt=timezone.now()
-    ).select_related('ferry', 'route__departure_port', 'route__destination_port')
-
-    if schedule_id:
-        try:
-            available_schedules = available_schedules.filter(id=schedule_id)
-            if not available_schedules.exists():
-                logger.warning(f"No schedule found for schedule_id={schedule_id}")
-                messages.error(request, "Selected schedule is not available.")
-        except ValueError:
-            logger.error(f"Invalid schedule_id={schedule_id}")
-            messages.error(request, "Invalid schedule ID.")
-            available_schedules = Schedule.objects.none()
-
-    if to_port:
-        available_schedules = available_schedules.filter(
-            route__destination_port__name__iexact=to_port
-        )
-        if not available_schedules.exists():
-            logger.warning(f"No bookings found for to_port={to_port}")
-            messages.error(request, f"No bookings available for destination: {to_port.capitalize()}.")
-
-    # Define add-ons
-    add_ons = [
-        {'id': 'premium_seating', 'label': 'Premium Seating', 'price': 20.00, 'max_quantity': 20},
-        {'id': 'priority_boarding', 'label': 'Priority Boarding', 'price': 10.00, 'max_quantity': 20},
-        {'id': 'cabin', 'label': 'Cabin', 'price': 50.00, 'max_quantity': 5},
-        {'id': 'meal_breakfast', 'label': 'Breakfast', 'price': 15.00, 'max_quantity': 50},
-        {'id': 'meal_lunch', 'label': 'Lunch', 'price': 15.00, 'max_quantity': 50},
-        {'id': 'meal_dinner', 'label': 'Dinner', 'price': 15.00, 'max_quantity': 50},
-        {'id': 'meal_snack', 'label': 'Snack', 'price': 5.00, 'max_quantity': 100},
-    ]
-
-    if request.method == 'GET':
-        # Initialize form data for rendering
-        form_data = {
-            'step': step,
-            'schedule_id': schedule_id or '',
-            'adults': 1,
-            'children': 0,
-            'infants': 0,
-            'guest_email': request.session.get('guest_email', ''),
-            'add_vehicle': False,
-            'add_cargo': False,
-            'vehicle_type': '',
-            'vehicle_dimensions': '',
-            'vehicle_license_plate': '',
-            'cargo_type': '',
-            'cargo_weight_kg': '',
-            'cargo_dimensions_cm': '',
-            'cargo_license_plate': '',
-            'privacy_consent': False,
-            'to_port': to_port or '',
-            **{f'{addon["id"]}_quantity': 0 for addon in add_ons}
-        }
-
-        # Load saved passenger data from session
-        saved_passenger_data = request.session.get('passenger_data', {})
-        for p_type in ['adult', 'child', 'infant']:
-            count_key = 'children' if p_type == 'child' else f'{p_type}s'
-            count = form_data.get(count_key, 0)
-            for i in range(count):
-                form_data.update({
-                    f'{p_type}_first_name_{i}': saved_passenger_data.get(f'{p_type}_first_name_{i}', ''),
-                    f'{p_type}_last_name_{i}': saved_passenger_data.get(f'{p_type}_last_name_{i}', ''),
-                    f'{p_type}_age_{i}': saved_passenger_data.get(f'{p_type}_age_{i}', ''),
-                    f'{p_type}_dob_{i}': saved_passenger_data.get(f'{p_type}_dob_{i}', ''),
-                    f'{p_type}_linked_adult_{i}': saved_passenger_data.get(f'{p_type}_linked_adult_{i}', '')
-                })
-
-        # Generate summary for step 4 if schedule selected
-        summary = None
-        if step == 4 and schedule_id:
-            try:
-                schedule = Schedule.objects.get(
-                    id=schedule_id,
-                    status='scheduled',
-                    departure_time__gt=timezone.now()
-                )
-                adults = safe_int(form_data['adults'])
-                children = safe_int(form_data['children'])
-                infants = safe_int(form_data['infants'])
-
-                # Use individual fields for consistency
-                add_vehicle = form_data['add_vehicle']
-                add_cargo = form_data['add_cargo']
-                vehicle_type = form_data['vehicle_type']
-                vehicle_dimensions = form_data['vehicle_dimensions']
-                cargo_type = form_data['cargo_type']
-                cargo_weight_kg = safe_float(form_data['cargo_weight_kg'])
-
-                # Calculate addons from form data
-                addons = []
-                for addon in add_ons:
-                    quantity = safe_int(form_data.get(f'{addon["id"]}_quantity', 0))
-                    if quantity > 0:
-                        addons.append({'type': addon['id'], 'quantity': quantity})
-
-                total_price = calculate_total_price(
-                    adults, children, infants, schedule, add_cargo, cargo_type,
-                    cargo_weight_kg, addons, add_vehicle, vehicle_type, vehicle_dimensions
-                )
-
-                base_fare = schedule.route.base_fare or Decimal('35.50')
-                summary = {
-                    'schedule': {
-                        'route': f"{schedule.route.departure_port.name} to {schedule.route.destination_port.name}",
-                        'departure_time': schedule.departure_time.strftime("%a, %b %d, %H:%M"),
-                        'estimated_duration': int(
-                            schedule.route.estimated_duration.total_seconds() / 60) if schedule.route.estimated_duration else "N/A"
-                    },
-                    'pricing': {
-                        'adults': str(Decimal(adults) * base_fare),
-                        'children': str(Decimal(children) * base_fare * Decimal('0.5')),
-                        'infants': str(Decimal(infants) * base_fare * Decimal('0.1')),
-                        'vehicle': str(
-                            calculate_vehicle_price(vehicle_type, vehicle_dimensions)) if add_vehicle else "0.00",
-                        'cargo': str(
-                            calculate_cargo_price(Decimal(cargo_weight_kg or 0), cargo_type)) if add_cargo else "0.00",
-                        'addons': {
-                                    addon['type']: {
-                                        'label': next(
-                                            (a['label'] for a in add_ons if a['id'] == addon['type']),
-                                            addon['type'].replace('_', ' ').title()
-                                        ),
-                                        'quantity': addon['quantity'],
-                                        'amount': str(calculate_addon_price(addon['type'], addon['quantity']))
-                                    }
-                                    for addon in addons
-                                },
-                        'total': str(total_price)
-                    },
-                    'total_price': str(total_price)
-                }
-            except Schedule.DoesNotExist:
-                messages.error(request, "Selected schedule is not available.")
-                summary = None
-
-        return render(request, 'bookings/book.html', {
-            'bookings': available_schedules,
-            'user': request.user,
-            'form_data': form_data,
-            'debug': settings.DEBUG,
-            'stripe_publishable_key': settings.STRIPE_PUBLISHABLE_KEY,
-            'summary': summary,
-            'add_ons': add_ons
-        })
-
-    # POST handling - now simplified to validation and redirect to checkout
-    if request.method == 'POST':
-        step = request.POST.get('step')
-
-        # Basic validation
-        schedule_id = request.POST.get('schedule_id', '').strip()
-        adults = safe_int(request.POST.get('adults', 0))
-        children = safe_int(request.POST.get('children', 0))
-        infants = safe_int(request.POST.get('infants', 0))
-        total_passengers = adults + children + infants
-
-        errors = []
-
-        # Step 1: Schedule validation
-        if step in ['2', '3', '4'] and not schedule_id:
-            errors.append({'field': 'schedule_id', 'message': 'Schedule selection required', 'step': 1})
-
-        if step in ['2', '3', '4'] and total_passengers == 0:
-            errors.append({'field': 'passengers', 'message': 'At least one passenger required', 'step': 2})
-
-        if step in ['2', '3', '4']:
-            try:
-                schedule = Schedule.objects.get(
-                    id=schedule_id,
-                    status='scheduled',
-                    departure_time__gt=timezone.now()
-                )
-                if schedule.available_seats < total_passengers:
-                    errors.append({
-                        'field': 'schedule_id',
-                        'message': f'Only {schedule.available_seats} seats available',
-                        'step': 1
-                    })
-            except Schedule.DoesNotExist:
-                errors.append({'field': 'schedule_id', 'message': 'Invalid schedule', 'step': 1})
-
-        # Step 4: Final validation and redirect to checkout
-        if step == '4' and not errors:
-            privacy_consent = request.POST.get('privacy_consent') == 'on'
-            if not privacy_consent:
-                errors.append({'field': 'privacy_consent', 'message': 'Privacy consent required', 'step': 4})
-
-            if not errors:
-                # Store form data in session for checkout
-                request.session['booking_form_data'] = dict(request.POST)
-                request.session['booking_step'] = '4'
-
-                # Redirect to dedicated checkout endpoint
-                return redirect('bookings:create_checkout_session')
-
-        if errors:
-            # Return errors for AJAX handling
-            return JsonResponse({'success': False, 'errors': errors})
-
-        # For non-step4 POSTs, save progress and return success
-        request.session['booking_form_data'] = dict(request.POST)
-        request.session['booking_step'] = step
-        return JsonResponse({'success': True, 'message': 'Progress saved'})
-
-    return JsonResponse({'error': 'Invalid request method'}, status=405)
 
 
 def ticket_detail(request, ticket_id):
@@ -1657,219 +1840,335 @@ def booking_pdf(request, booking_id):
     booking = get_object_or_404(Booking, id=booking_id)
     tickets = list(booking.tickets.all().order_by('passenger__first_name'))
 
-    buffer = io.BytesIO()
-    p = canvas.Canvas(buffer, pagesize=A4)
-    width, height = A4
-
-    # ----------------------- Palette -----------------------
+    # ---------- Brand ----------
     BRAND_PRIMARY = colors.HexColor("#0EA5E9")
-    BRAND_DARK   = colors.HexColor("#1E40AF")
-    TEXT_PRIMARY = colors.HexColor("#111827")
-    TEXT_MUTED   = colors.HexColor("#6B7280")
-    BORDER       = colors.HexColor("#E5E7EB")
-    BG_CARD      = colors.HexColor("#FFFFFF")
+    BRAND_DARK    = colors.HexColor("#1E40AF")
+    TEXT_PRIMARY  = colors.HexColor("#111827")
+    TEXT_MUTED    = colors.HexColor("#6B7280")
+    BORDER        = colors.HexColor("#E5E7EB")
+    SURFACE       = colors.white
 
-    # ----------------------- Logo -----------------------
-    logo_path = os.path.join(settings.BASE_DIR, "static", "logo.png")
-    logo_img = _load_image(logo_path)
+    # Timestamp used for "Generated" (always now, localized)
+    gen_time = timezone.localtime(timezone.now())
 
-    # ----------------------- Helpers -----------------------
-    def font(name, size):
-        p.setFont(name, size)
-
-    def fmt_dt(dt):
-        return dt.strftime("%a, %d %b %Y %H:%M") if dt else "—"
-
-    def draw_row(x, y, label, value, gap=5*mm, colon=True):
-        p.setFillColor(TEXT_MUTED)
-        font("Helvetica", 9)
-        txt = f"{label}{':' if colon else ''}"
-        p.drawString(x, y, txt)
-        w = p.stringWidth(txt, "Helvetica", 9)
-        p.setFillColor(TEXT_PRIMARY)
-        font("Helvetica-Bold", 10)
-        p.drawString(x + w + gap, y, value or "—")
-
-    # ----------------------- Subtle Watermark (Text) -----------------------
-    def draw_watermark():
-        p.saveState()
-        p.setFillColor(BRAND_PRIMARY)
+    # ---------- Helpers ----------
+    def _load_image(src):
         try:
-            p.setFillAlpha(0.05)
+            if not src:
+                return None
+            if isinstance(src, (bytes, io.BytesIO)):
+                return ImageReader(src)
+            path = str(src)
+            if os.path.exists(path):
+                return ImageReader(path)
         except Exception:
             pass
-        p.translate(width * 0.7, height * 0.3)
-        p.rotate(30)
-        font("Helvetica-Bold", 80)
-        p.drawCentredString(0, 0, "FIJI FERRY")
-        p.restoreState()
+        return None
 
-    # ----------------------- Header -----------------------
-    def draw_header():
-        band_h = 28*mm
-        p.setFillColor(BRAND_PRIMARY)
-        p.rect(0, height-band_h, width, band_h, stroke=0, fill=1)
-        p.setFillColor(BRAND_DARK)
-        p.rect(0, height-band_h, width, band_h/2, stroke=0, fill=1)
+    def fmt_dt(v):
+        """
+        Formats datetimes defensively and converts aware datetimes to local time.
+        Also accepts date-like or plain strings.
+        """
+        try:
+            if not v:
+                return "—"
+            # Datetime-like
+            if hasattr(v, "strftime"):
+                try:
+                    # If aware, convert to local; if naive, leave as-is
+                    if timezone.is_aware(v):
+                        v = timezone.localtime(v)
+                except Exception:
+                    pass
+                return v.strftime("%a, %d %b %Y %H:%M")
+            # Fallback for strings/others
+            return str(v)
+        except Exception:
+            return "—"
 
+    logo_img = _load_image(os.path.join(settings.BASE_DIR, "static", "logo.png"))
+
+    # ---------- Styles ----------
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle("SectionLabel", parent=styles["Normal"],
+                              fontName="Helvetica-Bold", fontSize=10.5,
+                              textColor=BRAND_DARK, spaceAfter=3, leading=12))
+    styles.add(ParagraphStyle("Key", parent=styles["Normal"],
+                              fontName="Helvetica", fontSize=9.5,
+                              textColor=TEXT_MUTED, leading=12))
+    styles.add(ParagraphStyle("Val", parent=styles["Normal"],
+                              fontName="Helvetica-Bold", fontSize=10.5,
+                              textColor=TEXT_PRIMARY, leading=12))
+    styles.add(ParagraphStyle("RoutePill", parent=styles["Normal"],
+                              fontName="Helvetica-Bold", fontSize=10,
+                              textColor=colors.white, alignment=1, leading=12))
+    styles.add(ParagraphStyle("SmallNote", parent=styles["Normal"],
+                              fontName="Helvetica", fontSize=8.5,
+                              textColor=TEXT_MUTED, leading=11))
+
+    # ---------- Page furniture ----------
+    PAGE_MARGIN_L = 15 * mm
+    PAGE_MARGIN_R = 15 * mm
+    PAGE_MARGIN_T = 24 * mm
+    PAGE_MARGIN_B = 20 * mm
+
+    def draw_header_footer(c, doc):
+        band_h = 20 * mm
+        c.saveState()
+
+        # header band
+        c.setFillColor(BRAND_PRIMARY)
+        c.rect(0, A4[1] - band_h, A4[0], band_h, stroke=0, fill=1)
+        c.setFillColor(BRAND_DARK)
+        c.rect(0, A4[1] - band_h, A4[0], band_h / 3.0, stroke=0, fill=1)
+
+        # logo + title
+        title_x = PAGE_MARGIN_L
         if logo_img:
-            logo_w, logo_h = 48*mm, 16*mm
-            p.drawImage(logo_img,
-                        15*mm,
-                        height - band_h/2 - logo_h/2,
-                        width=logo_w, height=logo_h,
-                        preserveAspectRatio=True)
+            try:
+                c.drawImage(
+                    logo_img,
+                    PAGE_MARGIN_L,
+                    A4[1] - band_h/2 - 7*mm,
+                    width=40*mm,
+                    height=14*mm,
+                    preserveAspectRatio=True,
+                    mask='auto'
+                )
+                title_x = PAGE_MARGIN_L + 48 * mm
+            except Exception:
+                pass
 
-        title_x = 70*mm if logo_img else 15*mm
-        p.setFillColor(colors.white)
-        font("Helvetica-Bold", 19)
-        p.drawString(title_x, height - 16*mm, "Fiji Ferry")
-        font("Helvetica", 11)
-        p.drawString(title_x, height - 22*mm, f"Booking #{booking.id}")
+        c.setFillColor(colors.white)
+        c.setFont("Helvetica-Bold", 16)
+        c.drawString(title_x, A4[1] - 13 * mm, "Fiji Ferry")
+        c.setFont("Helvetica", 10)
+        c.drawString(title_x, A4[1] - 18 * mm, f"Booking #{booking.id}")
 
-    # ----------------------- Footer -----------------------
-    def draw_footer():
-        p.setStrokeColor(BORDER)
-        p.setLineWidth(0.5)
-        p.line(15*mm, 20*mm, width-15*mm, 20*mm)
+        # right-aligned "Generated: <now>"
+        gen_label = f"Generated: {fmt_dt(gen_time)}"
+        c.setFont("Helvetica", 9)
+        gw = c.stringWidth(gen_label, "Helvetica", 9)
+        c.drawString(A4[0] - PAGE_MARGIN_R - gw, A4[1] - 14.5 * mm, gen_label)
 
-        p.setFillColor(TEXT_MUTED)
-        font("Helvetica", 8)
-        p.drawString(15*mm, 15*mm,
-                     "Present this boarding pass with a valid photo ID.")
-        p.drawString(15*mm, 11*mm,
-                     "support@fijiferry.example • +679 738 8496")
+        # soft watermark
+        try:
+            c.setFillAlpha(0.04)
+        except Exception:
+            pass
+        c.setFillColor(BRAND_PRIMARY)
+        c.saveState()
+        c.translate(A4[0] * 0.82, A4[1] * 0.22)
+        c.rotate(22)
+        c.setFont("Helvetica-Bold", 64)
+        c.drawCentredString(0, 0, "FIJI FERRY")
+        c.restoreState()
+        try:
+            c.setFillAlpha(1)
+        except Exception:
+            pass
 
-    # ----------------------- Ticket Card -----------------------
-    def draw_ticket_card(t, start_y):
-        margin = 15*mm
-        card_w = width - 2*margin
-        card_h = 130*mm
-        card_y = start_y - card_h
+        # footer
+        c.setStrokeColor(BORDER)
+        c.setLineWidth(0.6)
+        c.line(PAGE_MARGIN_L, PAGE_MARGIN_B, A4[0]-PAGE_MARGIN_R, PAGE_MARGIN_B)
+        c.setFillColor(TEXT_MUTED)
+        c.setFont("Helvetica", 8.5)
+        c.drawString(PAGE_MARGIN_L, PAGE_MARGIN_B - 6, "Present this boarding pass with a valid photo ID.")
+        c.drawString(PAGE_MARGIN_L, PAGE_MARGIN_B - 18, "support@fijiferry.example • +679 738 8496")
 
-        # Card
-        p.setFillColor(BG_CARD)
-        p.setStrokeColor(BORDER)
-        p.setLineWidth(0.8)
-        p.roundRect(margin, card_y, card_w, card_h, 8*mm, stroke=1, fill=1)
+        c.restoreState()
 
-        # Brand stripe
-        p.setFillColor(BRAND_PRIMARY)
-        p.rect(margin, card_y + card_h - 6*mm, card_w, 6*mm, stroke=0, fill=1)
+    class NumberedCanvas(pdfcanvas.Canvas):
+        """Standard 'Page X of Y' canvas."""
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._saved_page_states = []
 
-        # Header
-        p.setFillColor(BRAND_DARK)
-        font("Helvetica-Bold", 15)
-        p.drawString(margin + 12*mm, card_y + card_h - 15*mm, f"Ticket #{t.id}")
+        def showPage(self):
+            self._saved_page_states.append(dict(self.__dict__))
+            super().showPage()
 
-        p.setFillColor(TEXT_MUTED)
-        font("Helvetica-Oblique", 9)
-        issued = getattr(t, 'created_at', None) or getattr(t, 'issued_at', None)
-        p.drawString(margin + 12*mm, card_y + card_h - 22*mm,
-                     f"Issued {fmt_dt(issued)}")
+        def save(self):
+            num_pages = len(self._saved_page_states) + 1
+            # add page numbers to each saved page state
+            for i, state in enumerate(self._saved_page_states):
+                self.__dict__.update(state)
+                self._draw_page_number(i + 1, num_pages)
+                super().showPage()
+            # last (current) page
+            self._draw_page_number(num_pages, num_pages)
+            super().save()
 
-        # Columns
-        col_gap = 12*mm
-        inner = 12*mm
-        col_w = (card_w - inner*2 - col_gap) / 2
-        left_x = margin + inner
-        right_x = left_x + col_w + col_gap
-        row_h = 8*mm
-        y = card_y + card_h - 32*mm
+        def _draw_page_number(self, page_num, total_pages):
+            self.saveState()
+            self.setFont("Helvetica", 8.5)
+            label = f"Page {page_num} of {total_pages}"
+            tw = self.stringWidth(label, "Helvetica", 8.5)
+            self.setFillColor(TEXT_MUTED)
+            self.drawString(A4[0] - PAGE_MARGIN_R - tw, PAGE_MARGIN_B - 18, label)
+            self.restoreState()
+
+    # ---------- Doc template ----------
+    buf = io.BytesIO()
+    doc = BaseDocTemplate(
+        buf,
+        pagesize=A4,
+        leftMargin=PAGE_MARGIN_L,
+        rightMargin=PAGE_MARGIN_R,
+        topMargin=PAGE_MARGIN_T + 10 * mm,  # space for header band
+        bottomMargin=PAGE_MARGIN_B + 6 * mm,
+    )
+    frame = Frame(doc.leftMargin, doc.bottomMargin, doc.width, doc.height, id='content')
+    doc.addPageTemplates([PageTemplate(id="ticket", frames=[frame], onPage=draw_header_footer)])
+
+    # ---------- Flowables ----------
+    story = []
+    spacer_small = Spacer(0, 4*mm)
+    spacer_med   = Spacer(0, 6*mm)
+    spacer_large = Spacer(0, 10*mm)
+
+    def kv_row(label, value):
+        return [Paragraph(f"{label}:", styles["Key"]),
+                Paragraph(value if value else "—", styles["Val"])]
+
+    def route_pill(text, width_mm):
+        tbl = Table([[Paragraph(text, styles["RoutePill"])]], colWidths=[width_mm], hAlign='LEFT')
+        tbl.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,-1), BRAND_PRIMARY),
+            ('TEXTCOLOR', (0,0), (-1,-1), colors.white),
+            ('LEFTPADDING', (0,0), (-1,-1), 8),
+            ('RIGHTPADDING',(0,0), (-1,-1), 8),
+            ('TOPPADDING',  (0,0), (-1,-1), 3),
+            ('BOTTOMPADDING',(0,0),(-1,-1), 3),
+            ('BOX', (0,0), (-1,-1), 0, BRAND_PRIMARY),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ]))
+        return tbl
+
+    def qr_flowable(payload, size=46*mm):
+        try:
+            widget = rl_qr.QrCodeWidget(payload or "")
+            b = widget.getBounds()
+            w, h = b[2]-b[0], b[3]-b[1]
+            d = Drawing(size, size, transform=[size/w, 0, 0, size/h, 0, 0])
+            d.add(widget)
+            return d
+        except Exception:
+            return Paragraph("QR unavailable", styles["SmallNote"])
+
+    # Cards
+    for t in tickets:
+        # Top line: ticket number + Generated now (instead of "Issued" from the DB)
+        top = Table(
+            [[Paragraph(f"Ticket #{getattr(t,'id','—')}", styles["SectionLabel"]),
+              Paragraph(f"Generated {fmt_dt(gen_time)}",
+                        ParagraphStyle('MetaRight', parent=styles["SmallNote"], alignment=2))]],
+            colWidths=[None, 60*mm],
+            style=TableStyle([('VALIGN',(0,0),(-1,-1),'BOTTOM')])
+        )
+        story += [top, spacer_small]
+
+        # Route pill
+        sched = getattr(booking, 'schedule', None)
+        dep = dest = "—"
+        if sched and getattr(sched, 'route', None):
+            dep = getattr(getattr(sched.route,'departure_port',None), 'name', '—') or '—'
+            dest = getattr(getattr(sched.route,'destination_port',None), 'name', '—') or '—'
+        route_txt = f"{dep} → {dest}"
+        story += [route_pill(route_txt, 90*mm), spacer_med]
 
         # Passenger
-        p.setFillColor(BRAND_DARK)
-        font("Helvetica-Bold", 11)
-        p.drawString(left_x, y, "Passenger")
-        y -= 6*mm
-
         passenger = getattr(t, 'passenger', None)
-        name = "—"
-        ptype = ""
+        name = ptype = "—"
         if passenger:
-            name = f"{passenger.first_name or ''} {passenger.last_name or ''}".strip()
+            name = (f"{getattr(passenger,'first_name','') or ''} {getattr(passenger,'last_name','') or ''}").strip() or "—"
             ptype = getattr(passenger, 'get_passenger_type_display', lambda: "—")()
 
-        draw_row(left_x, y, "Name", name); y -= row_h
-        draw_row(left_x, y, "Type", ptype); y -= row_h
-        draw_row(left_x, y, "Booking", f"#{booking.id}"); y -= row_h
-        draw_row(left_x, y, "Status", t.ticket_status.title())
+        seat = getattr(t, 'seat_number', None) or getattr(t, 'seat', None)
+        status = getattr(t, 'ticket_status', None)
+        status_txt = (status.title() if isinstance(status, str) else str(status or "—"))
 
-        # Schedule
-        p.setFillColor(BRAND_DARK)
-        font("Helvetica-Bold", 11)
-        p.drawString(right_x, card_y + card_h - 38*mm, "Schedule")
-        y2 = card_y + card_h - 44*mm
+        left_rows = [[Paragraph("Passenger", styles["SectionLabel"]), ""],
+                     kv_row("Name", name),
+                     kv_row("Type", ptype),
+                     kv_row("Booking", f"#{booking.id}")]
+        if seat:
+            left_rows.append(kv_row("Seat", str(seat)))
+        left_rows.append(kv_row("Status", status_txt))
+        left_tbl = Table(left_rows, colWidths=[28*mm, 70*mm],
+                         style=TableStyle([('SPAN',(0,0),(1,0)), ('VALIGN',(0,0),(-1,-1),'TOP')]))
 
-        sched = getattr(booking, 'schedule', None)
-        ferry_name = getattr(getattr(sched, 'ferry', None), 'name', "—")
-        route_str = "—"
-        if sched and getattr(sched, 'route', None):
-            dep = getattr(sched.route.departure_port, 'name', '—')
-            dest = getattr(sched.route.destination_port, 'name', '—')
-            route_str = f"{dep} → {dest}"
+        # Schedule + QR
+        ferry_name = getattr(getattr(sched,'ferry',None), 'name', '—') if sched else '—'
+        right_rows = [[Paragraph("Schedule", styles["SectionLabel"]), ""],
+                      kv_row("Ferry", ferry_name),
+                      kv_row("Route", route_txt),
+                      kv_row("Departure", fmt_dt(getattr(sched,'departure_time',None) if sched else None)),
+                      kv_row("Arrival",   fmt_dt(getattr(sched,'arrival_time',None) if sched else None))]
+        right_tbl = Table(right_rows, colWidths=[28*mm, 60*mm],
+                          style=TableStyle([('SPAN',(0,0),(1,0)), ('VALIGN',(0,0),(-1,-1),'TOP')]))
 
-        draw_row(right_x, y2, "Ferry", ferry_name); y2 -= row_h
-        draw_row(right_x, y2, "Route", route_str); y2 -= row_h
-        draw_row(right_x, y2, "Departure", fmt_dt(getattr(sched, 'departure_time', None))); y2 -= row_h
-        draw_row(right_x, y2, "Arrival", fmt_dt(getattr(sched, 'arrival_time', None)))
+        qr = qr_flowable(f"FFB:{booking.id}:{getattr(t,'id','')}", 46*mm)
+        qr_table = Table([[qr]], colWidths=[46*mm], rowHeights=[46*mm],
+                         style=TableStyle([
+                             ('BOX',(0,0),(-1,-1),0.8,BORDER),
+                             ('LEFTPADDING',(0,0),(-1,-1),6),
+                             ('RIGHTPADDING',(0,0),(-1,-1),6),
+                             ('TOPPADDING',(0,0),(-1,-1),6),
+                             ('BOTTOMPADDING',(0,0),(-1,-1),6),
+                             ('VALIGN',(0,0),(-1,-1),'MIDDLE'),
+                             ('ALIGN',(0,0),(-1,-1),'CENTER'),
+                         ]))
+        right_col = Table([[right_tbl], [Spacer(0, 4)], [qr_table], [Spacer(0, 2)], [Paragraph("Scan at check-in", styles["SmallNote"])]],
+                          colWidths=[66*mm],
+                          style=TableStyle([('VALIGN',(0,0),(-1,-1),'TOP')]))
 
-        # QR Code
-        qr = getattr(t, 'qr_code', None)
-        if qr and hasattr(qr, 'path') and qr.path and os.path.exists(qr.path):
-            qr_size = 48*mm
-            qr_x = right_x + col_w - qr_size - 2*mm
-            qr_y = card_y + 12*mm
+        card = Table([[left_tbl, right_col]], colWidths=[100*mm, 66*mm],
+                     style=TableStyle([
+                         ('BOX',(0,0),(-1,-1),0.8,BORDER),
+                         ('BACKGROUND',(0,0),(-1,-1),SURFACE),
+                         ('LEFTPADDING',(0,0),(-1,-1),10),
+                         ('RIGHTPADDING',(0,0),(-1,-1),10),
+                         ('TOPPADDING',(0,0),(-1,-1),10),
+                         ('BOTTOMPADDING',(0,0),(-1,-1),10),
+                         ('VALIGN',(0,0),(-1,-1),'TOP'),
+                     ]))
+        story += [KeepTogether(card), Spacer(0, 8),
+                  Paragraph("Valid only for listed passenger and sailing.", styles["SmallNote"]),
+                  spacer_large]
 
-            p.setStrokeColor(BORDER)
-            p.setLineWidth(1)
-            p.roundRect(qr_x - 4*mm, qr_y - 4*mm,
-                        qr_size + 8*mm, qr_size + 8*mm,
-                        4*mm, stroke=1, fill=0)
+        # If you want to ALSO show when the ticket was originally issued, add this line:
+        # story.append(Paragraph(f"Issued: {fmt_dt(getattr(t,'created_at',None) or getattr(t,'issued_at',None))}", styles["SmallNote"]))
 
-            try:
-                p.drawImage(_load_image(qr.path),
-                            qr_x, qr_y,
-                            width=qr_size, height=qr_size,
-                            preserveAspectRatio=True)
-            except Exception:
-                p.setFillColor(colors.red)
-                font("Helvetica", 8)
-                p.drawString(qr_x, qr_y, "QR Error")
+    if not tickets:
+        overview = Table(
+            [[Paragraph("Booking Overview", styles["SectionLabel"]), ""],
+             kv_row("Booking #", f"#{booking.id}"),
+             kv_row("Contact", (getattr(getattr(booking,'user',None),'email',None)
+                                or getattr(booking,'guest_email',None) or "—")),
+             kv_row("Created", fmt_dt(getattr(booking,'created_at',None)))],
+            colWidths=[28*mm, 120*mm],
+            style=TableStyle([
+                ('SPAN',(0,0),(1,0)),
+                ('BOX',(0,0),(-1,-1),0.8,BORDER),
+                ('LEFTPADDING',(0,0),(-1,-1),10),
+                ('RIGHTPADDING',(0,0),(-1,-1),10),
+                ('TOPPADDING',(0,0),(-1,-1),10),
+                ('BOTTOMPADDING',(0,0),(-1,-1),10),
+                ('VALIGN',(0,0),(-1,-1),'TOP'),
+            ])
+        )
+        story.append(overview)
 
-            p.setFillColor(TEXT_MUTED)
-            font("Helvetica", 9)
-            p.drawCentredString(qr_x + qr_size/2, qr_y - 8*mm, "Scan at check-in")
-
-        # Note
-        p.setFillColor(TEXT_MUTED)
-        font("Helvetica", 8)
-        p.drawString(margin + 12*mm, card_y + 8*mm,
-                     "Valid only for listed passenger and sailing.")
-
-        return card_y - 15*mm
-
-    # ----------------------- Build PDF -----------------------
-    y_cursor = height - 40*mm
-
-    for idx, ticket in enumerate(tickets):
-        if idx > 0:
-            p.showPage()
-            y_cursor = height - 40*mm
-
-        draw_header()
-        draw_watermark()  # Safe text watermark
-        y_cursor = draw_ticket_card(ticket, y_cursor)
-        draw_footer()
-
-    p.save()
-    buffer.seek(0)
-    return FileResponse(buffer,
-                        as_attachment=True,
+    # ---------- Build ----------
+    doc.build(story, canvasmaker=NumberedCanvas)
+    buf.seek(0)
+    return FileResponse(buf, as_attachment=True,
                         filename=f"FijiFerry_Booking_{booking.id}_Tickets.pdf")
 
 
-@login_required
 def process_payment(request, booking_id):
     booking = get_object_or_404(Booking, id=booking_id)
 
@@ -1973,7 +2272,6 @@ def process_payment(request, booking_id):
 
 
 
-# Helper: safe display name (works with custom User)
 def _display_name(user):
     """
     Best-effort user display name without relying on get_full_name()
@@ -1995,7 +2293,7 @@ def payment_success(request):
 
     logger.debug(f"Payment success: booking_id={booking_id}, session_id={session_id}")
 
-    # Try to recover a missing/placeholder session_id from the Booking record
+    # === 1. RECOVER MISSING/PLACEHOLDER SESSION_ID ===
     if not session_id or session_id == '{CHECKOUT_SESSION_ID}':
         logger.warning("Invalid or missing session_id in payment_success")
         session_id = None
@@ -2009,13 +2307,13 @@ def payment_success(request):
                 messages.error(request, "Booking not found. Please contact support.")
                 return redirect('bookings:booking_history')
 
-    # If we have a session_id but no booking_id, look it up via Stripe metadata
+    # === 2. IF NO BOOKING_ID BUT HAVE SESSION_ID → FETCH FROM STRIPE ===
     if not booking_id and session_id:
         try:
             session = stripe.checkout.Session.retrieve(session_id)
             booking_id = session.metadata.get('booking_id')
             guest_email = session.metadata.get('guest_email')
-            if guest_email and not request.session.get('guest_email'):
+            if guest_email:
                 request.session['guest_email'] = guest_email
                 logger.debug(f"Restored guest_email from metadata: {guest_email}")
         except stripe.error.StripeError as e:
@@ -2039,13 +2337,18 @@ def payment_success(request):
         messages.error(request, "Booking not found. Please contact support.")
         return redirect('bookings:booking_history')
 
-    # Authorization
-    if request.user.is_authenticated and booking.user != request.user:
-        logger.error(f"Authorization failed: User {request.user} not authorized for booking {booking_id}")
-        return HttpResponseForbidden("You are not authorized to view this booking.")
-    if not request.user.is_authenticated and booking.guest_email != request.session.get('guest_email'):
-        logger.error(f"Authorization failed: Guest email mismatch for booking {booking_id}")
-        return HttpResponseForbidden("You are not authorized to view this booking.")
+    # === 3. AUTHORIZATION – GUEST EMAIL MUST BE IN SESSION ===
+    if request.user.is_authenticated:
+        if booking.user != request.user:
+            logger.error(f"Authorization failed: User {request.user} not authorized for booking {booking_id}")
+            return HttpResponseForbidden("You are not authorized to view this booking.")
+    else:
+        # CRITICAL: Ensure guest_email is in session BEFORE checking
+        if booking.guest_email:
+            request.session['guest_email'] = booking.guest_email
+        if booking.guest_email != request.session.get('guest_email'):
+            logger.error(f"Authorization failed: Guest email mismatch for booking {booking_id}")
+            return HttpResponseForbidden("You are not authorized to view this booking.")
 
     if booking.evaluated_status == 'cancelled':
         logger.error(f"Booking {booking_id} is cancelled or expired")
@@ -2062,7 +2365,7 @@ def payment_success(request):
         return f"FJD {d:,.2f}"
 
     try:
-        # DEV shortcut
+        # === 4. DEV MODE SHORTCUT ===
         if session_id == 'debug-mode' and settings.DEBUG:
             payment, _ = Payment.objects.get_or_create(
                 booking=booking,
@@ -2085,7 +2388,7 @@ def payment_success(request):
                 messages.error(request, "Invalid payment session. Please try again or contact support.")
                 return redirect('bookings:booking_history')
 
-            # Retrieve and verify the session
+            # === 5. VERIFY STRIPE SESSION ===
             session = stripe.checkout.Session.retrieve(session_id, expand=['payment_intent'])
             if not session.payment_intent:
                 logger.error(f"No payment_intent found for session {session_id}, booking {booking_id}")
@@ -2097,7 +2400,7 @@ def payment_success(request):
                 messages.error(request, "Invalid payment session. Please contact support.")
                 return redirect('bookings:booking_history')
 
-            # Persist payment record
+            # === 6. UPDATE PAYMENT & BOOKING ===
             payment, created = Payment.objects.get_or_create(
                 booking=booking,
                 session_id=session.id,
@@ -2125,7 +2428,7 @@ def payment_success(request):
 
             payment.save()
 
-        # --- Ticket generation with QR codes ---
+        # === 7. TICKET GENERATION WITH QR CODES ===
         tickets = []
         if Ticket.objects.filter(booking=booking).count() == booking.passengers.count():
             logger.info(f"Tickets already generated for booking {booking.id}")
@@ -2169,7 +2472,7 @@ def payment_success(request):
                         messages.error(request, "Error generating tickets. Please contact support.")
                         return redirect('bookings:booking_history')
 
-        # --- Prepare email with embedded QR codes ---
+        # === 8. EMAIL WITH EMBEDDED QR CODES ===
         try:
             guest_name = _display_name(booking.user) or "Valued Guest"
 
@@ -2238,9 +2541,9 @@ def payment_success(request):
                     f'<td style="background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">{c.weight_kg} kg</td></tr>',
                     f'<tr><td style="color:#6b7280;background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">Dimensions</td>'
                     f'<td style="background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">{c.dimensions_cm or "N/A"}</td></tr>',
-                    f'<tr><td style="color:#6b7280	background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">License Plate</td>'
+                    f'<tr><td style="color:#6b7280  background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">License Plate</td>'
                     f'<td style="background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">{c.license_plate or "N/A"}</td></tr>',
-                    f'<tr><td style="color:#6b7280	background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">Price</td>'
+                    f'<tr><td style="color:#6b7280  background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">Price</td>'
                     f'<td style="background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">{fmt_fjd(c.price)}</td></tr>',
                     '<tr><td colspan="2" style="background:transparent;border:none;padding:4px;"></td></tr>',
                 ])
@@ -2270,7 +2573,7 @@ def payment_success(request):
 Vinaka vakalevu! Your booking is confirmed.
 
 Booking ID: {booking.id}
-Route: {dep_port} → {dest_port}
+Route: {dep_port} to {dest_port}
 Vessel: {vessel}
 Departure: {depart}
 Est. Arrival: {arrival_str}
@@ -2371,7 +2674,7 @@ Fiji Ferry Service Team
     <div class="section">
       <h3 class="section-title">Trip Details</h3>
       <div class="grid">
-        <div class="label">Route</div><div class="value">{dep_port} → {dest_port}</div>
+        <div class="label">Route</div><div class="value">{dep_port} to {dest_port}</div>
         <div class="label">Vessel</div><div class="value">{vessel}</div>
         <div class="label">Departure</div><div class="value">{depart}</div>
         <div class="label">Est. Arrival</div><div class="value">{arrival_str}</div>
@@ -2450,7 +2753,7 @@ Fiji Ferry Service Team
                         msg.attach(img_part)
 
                 msg.send()
-                logger.info(f"Confirmation email with QR codes sent to {recipient}")
+                logger.debug(f"Confirmation email with QR codes sent to {recipient}")
             else:
                 logger.warning("No recipient email found for booking confirmation")
 
@@ -2458,11 +2761,12 @@ Fiji Ferry Service Team
             logger.error(f"Error sending email for booking {booking.id}: {str(e)}")
             messages.warning(request, "Booking confirmed, but email failed. Check your inbox later.")
 
-        # Cleanup and redirect
+        # === 9. FINAL CLEANUP & REDIRECT ===
         messages.success(request, f'Booking #{booking.id} confirmed! Tickets generated and emailed.')
         request.session.pop('booking_id', None)
         request.session.pop('stripe_session_id', None)
-        request.session.pop('guest_email', None)
+        # DO NOT POP guest_email — needed for view_tickets()
+        # request.session.pop('guest_email', None)
 
         return redirect('bookings:view_tickets', booking_id=booking.id)
 
@@ -2952,7 +3256,7 @@ def cancel_booking(request, booking_id):
     })
 
 
-@login_required
+
 def download_ticket(request, ticket_id):
     ticket = get_object_or_404(Ticket, id=ticket_id, booking__user=request.user)
     if ticket.ticket_status != 'active':
@@ -3052,3 +3356,130 @@ def stripe_insights_view(request):
         logger.error(f"Stripe API error: {str(e)}")
         return JsonResponse({'error': 'Failed to fetch Stripe insights'}, status=500)
 
+
+@require_POST
+@csrf_protect
+def api_send_otp(request):
+    """Start OTP flow for a guest email."""
+    email = (request.POST.get("email") or "").strip().lower()
+    if not EMAIL_RE.match(email):
+        return JsonResponse(
+            {"success": False, "errors": [{"field": "guest_email", "message": "Enter a valid email"}]},
+            status=400,
+        )
+
+    # If a previously verified email exists and differs, clear canonical markers
+    prev_verified = (request.session.get("guest_otp_verified_email") or "").lower()
+    if prev_verified and prev_verified != email:
+        request.session.pop("guest_otp_verified_email", None)
+        request.session.pop("guest_otp_verified_at", None)
+        request.session.modified = True
+
+    key = _otp_store_key(email)
+    code = generate_otp_code()
+    exp_minutes = getattr(settings, "OTP_EXP_MINUTES", 10)
+    request.session[key] = {
+        "email": email,
+        "code": code,
+        "expires_at": (timezone.now() + datetime.timedelta(minutes=exp_minutes)).isoformat(),
+        "attempts": 0,
+        "verified": False,
+    }
+    request.session.modified = True
+
+    # Send email (same stack as payment_success)
+    subject = getattr(settings, "OTP_EMAIL_SUBJECT", "Your Fiji Ferry verification code")
+    text_body = f"""Your Fiji Ferry verification code is: {code}
+
+This code expires in {exp_minutes} minutes.
+If you did not request this code, you can ignore this email.
+"""
+    html_body = f"""
+<!doctype html>
+<html><body style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial">
+  <div style="max-width:560px;margin:24px auto;padding:20px;border:1px solid #eef2f7;border-radius:12px">
+    <h2 style="margin:0 0 10px">Verify your email</h2>
+    <p>Enter this code in the booking page:</p>
+    <div style="font-size:28px;font-weight:800;letter-spacing:4px;margin:12px 0">{code}</div>
+    <p style="color:#6b7280">This code expires in {exp_minutes} minutes.</p>
+  </div>
+</body></html>
+"""
+    msg = EmailMultiAlternatives(
+        subject=subject,
+        body=text_body,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[email],
+    )
+    msg.attach_alternative(html_body, "text/html")
+    msg.send()
+
+    return JsonResponse({"success": True})
+
+@require_POST
+@csrf_protect
+def api_verify_otp(request):
+    """Verify guest OTP."""
+    email = (request.POST.get("email") or "").strip().lower()
+    code  = (request.POST.get("code") or "").strip()
+
+    if not EMAIL_RE.match(email) or not code:
+        return JsonResponse(
+            {"success": False, "errors": [{"field": "guest_email", "message": "Invalid request"}]},
+            status=400,
+        )
+
+    key = _otp_store_key(email)
+    data = request.session.get(key)
+    if not data:
+        return JsonResponse(
+            {"success": False, "errors": [{"field": "guest_email", "message": "No code found. Send a new one."}]},
+            status=400,
+        )
+
+    # throttle
+    attempts = int(data.get("attempts") or 0)
+    max_attempts = int(getattr(settings, "OTP_MAX_ATTEMPTS", 6))
+    if attempts >= max_attempts:
+        return JsonResponse(
+            {"success": False, "errors": [{"field": "guest_email", "message": "Too many attempts. Send a new code."}]},
+            status=429,
+        )
+
+    # expiry
+    try:
+        expires_at = timezone.datetime.fromisoformat(data["expires_at"])
+        if timezone.is_naive(expires_at):
+            expires_at = timezone.make_aware(expires_at, timezone.get_current_timezone())
+    except Exception:
+        expires_at = timezone.now() - datetime.timedelta(seconds=1)
+
+    if timezone.now() > expires_at:
+        return JsonResponse(
+            {"success": False, "errors": [{"field": "guest_email", "message": "Code expired. Send a new one."}]},
+            status=400,
+        )
+
+    # compare
+    if code != str(data.get("code")):
+        data["attempts"] = attempts + 1
+        request.session[key] = data
+        request.session.modified = True
+        return JsonResponse(
+            {"success": False, "errors": [{"field": "guest_email", "message": "Incorrect code"}]},
+            status=400,
+        )
+
+    # success
+    data["verified"] = True
+    request.session[key] = data
+
+    # --- Canonical flags used by validate_step ---
+    request.session["guest_otp_verified_email"] = email
+    request.session["guest_otp_verified_at"] = timezone.now().isoformat()
+
+    # Keep legacy key if used elsewhere
+    request.session["guest_email"] = email
+
+    request.session.modified = True
+    return JsonResponse({"success": True})

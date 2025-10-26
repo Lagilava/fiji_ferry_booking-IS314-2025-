@@ -1,13 +1,6 @@
 /**
  * validation.js - Comprehensive validation utilities for Fiji Ferry Booking
- * Provides global validation functions and error handling
- *
- * This file preserves the original API and adds front-end document scanning:
- *  - PDF: text extraction (PDF.js) + low-res render to detect blank pages
- *  - DOCX: text extraction (Mammoth) + optional media presence via JSZip
- *  - Images: pixel variance to detect near-blank images
- *
- * All additions are defensive: if a library fails to load, we log and continue.
+ * Provides global validation functions and error handling for multi-step booking form.
  */
 (function() {
     'use strict';
@@ -21,6 +14,7 @@
         scheduleUnavailable: 'Selected schedule is no longer available',
         emailRequired: 'Email address is required for guest bookings',
         emailInvalid: 'Please enter a valid email address',
+        emailNotVerified: 'Please verify your email (click send code to get code for verification).',
 
         // Step 2
         noPassengers: 'At least one passenger is required',
@@ -91,7 +85,9 @@
         try {
             if (check && check()) return;
         } catch(_) {}
-        if (document.querySelector(`script[src="${src}"]`)) {
+        const existing = Array.from(document.querySelectorAll('script[src]')).some(s => s.src === src || s.getAttribute('src') === src);
+        if (existing) {
+            // Give time for onload handlers elsewhere
             await new Promise(r => setTimeout(r, 50));
             return;
         }
@@ -99,6 +95,7 @@
             const s = document.createElement('script');
             s.src = src;
             s.async = true;
+            s.crossOrigin = 'anonymous';
             s.onload = resolve;
             s.onerror = () => reject(new Error(`Failed to load ${src}`));
             document.head.appendChild(s);
@@ -108,7 +105,7 @@
     // --- Pixel variance helper (detect “nearly blank”) ---
     function pixelStdDev(imageData) {
         const data = imageData.data;
-        const len = data.length / 4;
+        const len = Math.max(1, data.length / 4);
         let sum = 0, sumSq = 0;
         for (let i = 0; i < data.length; i += 4) {
             const y = 0.2126 * data[i] + 0.7152 * data[i+1] + 0.0722 * data[i+2];
@@ -122,12 +119,55 @@
 
     // --- Canvas factory (uses OffscreenCanvas when available) ---
     function makeCanvas(w, h) {
+        const W = Math.max(2, Math.floor(w));
+        const H = Math.max(2, Math.floor(h));
         if ('OffscreenCanvas' in window) {
-            return new OffscreenCanvas(w, h);
+            return new OffscreenCanvas(W, H);
         }
         const c = document.createElement('canvas');
-        c.width = w; c.height = h;
+        c.width = W; c.height = H;
         return c;
+    }
+
+    // ---------------------------------------------------------------
+    // 1. PDF.js Loader – NO manual GlobalWorkerOptions
+    // ---------------------------------------------------------------
+    let _pdfjsPromise = null;
+    async function ensurePdfJs() {
+        if (_pdfjsPromise) return _pdfjsPromise;
+
+        _pdfjsPromise = (async () => {
+            // Use pre-configured URL with worker + fonts
+            const base = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.10.111';
+            const pdfSrc = `${base}/pdf.min.js`;
+            const workerSrc = `${base}/pdf.worker.min.js`;
+
+            try {
+                // Load main script
+                await loadScriptOnce(pdfSrc, { check: () => window.pdfjsLib && typeof window.pdfjsLib.getDocument === 'function' });
+            } catch (e) {
+                console.warn('Failed to load PDF.js main script', e);
+                throw e;
+            }
+
+            // Set worker via URL param (safe, no getter issues)
+            if (window.pdfjsLib && !window.pdfjsLib.GlobalWorkerOptions?.workerSrc) {
+                try {
+                    // Modern PDF.js allows setting via getDocument params
+                    window.pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
+                } catch (e) {
+                    // Ignore – gives "getter-only" error in newer versions
+                    console.debug('PDF.js workerSrc is read-only; will auto-detect', e);
+                }
+            }
+
+            // Optional: suppress font warnings
+            if (window.pdfjsLib) {
+                window.pdfjsLib.GlobalWorkerOptions.standardFontDataUrl = `${base}/standard_fonts/`;
+            }
+        })();
+
+        return _pdfjsPromise;
     }
 
     // --- Image blank detection ---
@@ -136,21 +176,21 @@
         try {
             const img = await new Promise((res, rej) => {
                 const im = new Image();
+                im.crossOrigin = 'anonymous';
                 im.onload = () => res(im);
                 im.onerror = rej;
                 im.src = url;
             });
 
             const targetW = 640;
-            const scale = Math.min(1, targetW / img.width);
-            const w = Math.max(1, Math.round(img.width * scale));
-            const h = Math.max(1, Math.round(img.height * scale));
+            const scale = Math.min(1, targetW / (img.width || targetW));
+            const w = Math.max(1, Math.round((img.width || targetW) * scale));
+            const h = Math.max(1, Math.round((img.height || targetW) * scale));
 
             const canvas = makeCanvas(w, h);
-            const ctx = 'getContext' in canvas ? canvas.getContext('2d') : null;
-            const _ctx = ctx || canvas.getContext('2d');
-            _ctx.drawImage(img, 0, 0, w, h);
-            const imgData = _ctx.getImageData(0, 0, w, h);
+            const ctx = canvas.getContext?.('2d', { willReadFrequently: true }) ?? canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, w, h);
+            const imgData = ctx.getImageData(0, 0, w, h);
             const std = pixelStdDev(imgData);
 
             return {
@@ -167,17 +207,29 @@
 
     // --- DOCX content scan (Mammoth + optional JSZip for media) ---
     async function analyzeDocxFile(file, { minChars = 16 } = {}) {
-        await loadScriptOnce('https://unpkg.com/mammoth@1.6.0/mammoth.browser.min.js', {
-            check: () => window.mammoth
-        });
+        try {
+            await loadScriptOnce('https://unpkg.com/mammoth@1.6.0/mammoth.browser.min.js', {
+                check: () => window.mammoth
+            });
+        } catch (e) {
+            console.warn('Mammoth load failed, skipping DOCX scan:', e);
+            return { type: 'docx', contentPresent: true, blankPages: [], totalPages: 1, metrics: { textLen: 0, hasMedia: false }, warning: 'mammoth-load-failed' };
+        }
 
-        const arrayBuffer = await file.arrayBuffer();
+        let arrayBuffer;
+        try {
+            arrayBuffer = await file.arrayBuffer();
+        } catch (e) {
+            console.warn('DOCX arrayBuffer failed:', e);
+            return { type: 'docx', contentPresent: true, blankPages: [], totalPages: 1, metrics: { textLen: 0, hasMedia: false } };
+        }
+
         let rawText = '';
-
         try {
             const result = await window.mammoth.convertToRawText({ arrayBuffer });
             rawText = (result && result.value) ? result.value.trim() : '';
-        } catch {
+        } catch (e) {
+            console.warn('Mammoth convertToRawText failed:', e);
             rawText = '';
         }
 
@@ -192,7 +244,7 @@
                 if (path.startsWith('word/media/')) { hasMedia = true; return true; }
                 return false;
             });
-        } catch {
+        } catch (e) {
             // JSZip optional; ignore failures
         }
 
@@ -208,62 +260,78 @@
         };
     }
 
-    // --- PDF scan (PDF.js) text + per-page blank detection ---
+    // ---------------------------------------------------------------
+    // 2. PDF Analysis – Safe, no GlobalWorkerOptions mutation
+    // ---------------------------------------------------------------
     async function analyzePdfFile(file, {
         maxPages = 5,
         minCharsTotal = 20,
         renderScale = 0.8,
-        blankStdDevThreshold = 2.5
+        blankStdDevThreshold = 2.5,
+        pageTimeoutMs = 4000
     } = {}) {
-        await loadScriptOnce('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.js', {
-            check: () => window.pdfjsLib
-        });
-        if (!window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
-            window.pdfjsLib.GlobalWorkerOptions.workerSrc =
-                'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js';
+        try {
+            await ensurePdfJs();
+        } catch (e) {
+            console.warn('PDF.js failed to load – skipping PDF scan', e);
+            return { type: 'pdf', contentPresent: true, blankPages: [], totalPages: 1, metrics: { totalChars: 0, pagesScanned: 0 }, warning: 'pdfjs-load-failed' };
         }
 
-        const arrayBuffer = await file.arrayBuffer();
-        const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-        const totalPages = pdf.numPages;
+        if (!window.pdfjsLib || typeof window.pdfjsLib.getDocument !== 'function') {
+            console.warn('PDF.js not available after load');
+            return { type: 'pdf', contentPresent: true, blankPages: [], totalPages: 1, metrics: { totalChars: 0, pagesScanned: 0 } };
+        }
 
+        let arrayBuffer;
+        try { arrayBuffer = await file.arrayBuffer(); }
+        catch (e) {
+            console.warn('PDF arrayBuffer failed:', e);
+            return { type: 'pdf', contentPresent: true, blankPages: [], totalPages: 1, metrics: { totalChars: 0, pagesScanned: 0 } };
+        }
+
+        let pdf;
+        try {
+            pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        } catch (e) {
+            console.warn('PDF getDocument failed:', e);
+            return { type: 'pdf', contentPresent: true, blankPages: [], totalPages: 1, metrics: { totalChars: 0, pagesScanned: 0 } };
+        }
+
+        const totalPages = pdf.numPages || 0;
         let totalChars = 0;
         const blankPages = [];
-        const pagesToScan = Math.min(totalPages, Math.max(1, maxPages));
+        const pagesToScan = Math.min(Math.max(1, maxPages), totalPages);
+
+        const withTimeout = (p, ms) => Promise.race([
+            p,
+            new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))
+        ]);
 
         for (let i = 1; i <= pagesToScan; i++) {
-            const page = await pdf.getPage(i);
+            let page;
+            try { page = await withTimeout(pdf.getPage(i), pageTimeoutMs); }
+            catch (e) { console.warn(`PDF getPage(${i}) failed:`, e); continue; }
 
-            // Text extraction (best effort)
             try {
-                const textContent = await page.getTextContent();
-                const pageText = textContent.items.map(it => it.str).join(' ');
-                totalChars += pageText.trim().length;
-            } catch {
-                // ignore text errors
-            }
+                const textContent = await withTimeout(page.getTextContent(), pageTimeoutMs);
+                const pageText = (textContent.items || []).map(it => it.str).join(' ');
+                totalChars += (pageText || '').trim().length;
+            } catch (_) {}
 
-            // Visual blank detection
-            const viewport = page.getViewport({ scale: renderScale });
-            const w = Math.max(2, Math.round(viewport.width));
-            const h = Math.max(2, Math.round(viewport.height));
+            try {
+                const viewport = page.getViewport({ scale: renderScale });
+                const w = Math.max(2, Math.round(viewport.width));
+                const h = Math.max(2, Math.round(viewport.height));
+                const canvas = makeCanvas(w, h);
+                const ctx = canvas.getContext?.('2d', { willReadFrequently: true }) ?? canvas.getContext('2d');
 
-            const canvas = makeCanvas(w, h);
-            const ctx = 'getContext' in canvas ? canvas.getContext('2d') : null;
-            const _ctx = ctx || canvas.getContext('2d');
+                const renderTask = page.render({ canvasContext: ctx, viewport, intent: 'print' });
+                await withTimeout(renderTask.promise, pageTimeoutMs);
 
-            const renderTask = page.render({
-                canvasContext: _ctx,
-                viewport,
-                intent: 'print'
-            });
-            await renderTask.promise;
-
-            const imgData = _ctx.getImageData(0, 0, w, h);
-            const std = pixelStdDev(imgData);
-            if (std <= blankStdDevThreshold) {
-                blankPages.push(i - 1); // zero-based
-            }
+                const imgData = ctx.getImageData(0, 0, w, h);
+                const std = pixelStdDev(imgData);
+                if (std <= blankStdDevThreshold) blankPages.push(i - 1);
+            } catch (_) {}
         }
 
         const contentPresent = totalChars >= minCharsTotal || blankPages.length < pagesToScan;
@@ -282,28 +350,33 @@
         const mime = (file.type || '').toLowerCase();
         const name = (file.name || '').toLowerCase();
 
-        if (mime === 'application/pdf' || name.endsWith('.pdf')) {
-            return analyzePdfFile(file, options.pdf || {});
-        }
-        if (
-            mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-            name.endsWith('.docx')
-        ) {
-            return analyzeDocxFile(file, options.docx || {});
-        }
-        if (mime.startsWith('image/') || /\.(png|jpg|jpeg)$/i.test(name)) {
-            return analyzeImageFile(file, options.image || {});
-        }
+        try {
+            if (mime === 'application/pdf' || name.endsWith('.pdf')) {
+                return await analyzePdfFile(file, options.pdf || {});
+            }
+            if (
+                mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+                name.endsWith('.docx')
+            ) {
+                return await analyzeDocxFile(file, options.docx || {});
+            }
+            if (mime.startsWith('image/') || /\.(png|jpg|jpeg)$/i.test(name)) {
+                return await analyzeImageFile(file, options.image || {});
+            }
 
-        // Legacy .doc not supported client-side
-        if (name.endsWith('.doc') && mime === 'application/msword') {
-            return {
-                type: 'doc',
-                contentPresent: false,
-                blankPages: [0],
-                totalPages: 1,
-                warning: '.doc is not supported for client-side scanning; use server-side validation.'
-            };
+            // Legacy .doc not supported client-side
+            if (name.endsWith('.doc') && (mime === 'application/msword' || !mime)) {
+                return {
+                    type: 'doc',
+                    contentPresent: false,
+                    blankPages: [0],
+                    totalPages: 1,
+                    warning: '.doc is not supported for client-side scanning; use server-side validation.'
+                };
+            }
+        } catch (e) {
+            console.warn('frontEndScanDocument failed (non-blocking):', e);
+            // Fall through to permissive default
         }
 
         return {
@@ -357,6 +430,22 @@
         return ageInMonths <= 24; // Under 2 years
     }
 
+    // ---- NEW: Client-side check for OTP verification flag ----
+    // book.js sets sessionStorage.setItem('ffb_guest_verified', '1') on successful OTP verification.
+    // Optionally, if you also store 'ffb_guest_verified_email', we’ll ensure it matches the current email.
+    function isGuestEmailVerified(email) {
+        try {
+            const flag = sessionStorage.getItem('ffb_guest_verified');
+            if (flag !== '1') return false;
+            const storedEmail = (sessionStorage.getItem('ffb_guest_verified_email') || '').trim().toLowerCase();
+            if (!storedEmail) return true; // tolerate absence; treat as verified if flag is set
+            const current = (email || '').trim().toLowerCase();
+            return storedEmail === current;
+        } catch (_) {
+            return false;
+        }
+    }
+
     // =========================
     // File validation (original + client scanning hook)
     // =========================
@@ -372,7 +461,8 @@
             return { valid: false };
         }
 
-        const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf',
+        const validTypes = [
+            'image/jpeg', 'image/jpg', 'image/png', 'application/pdf',
             // allow docx for front-end content scan (legacy .doc not supported)
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         ];
@@ -416,22 +506,22 @@
             console.warn('File server validation failed (continuing with client checks):', error);
         }
 
-        // --- NEW: Front-end content presence & blank detection ---
+        // --- Front-end content presence & blank detection (best-effort) ---
         try {
             const scan = await frontEndScanDocument(file, {
-                pdf:  { maxPages: 5, minCharsTotal: 20, renderScale: 0.8, blankStdDevThreshold: 2.5 },
+                pdf:  { maxPages: 5, minCharsTotal: 20, renderScale: 0.8, blankStdDevThreshold: 2.3, pageTimeoutMs: 4000 },
                 docx: { minChars: 16 },
-                image:{ blankStdDevThreshold: 3 }
+                image:{ blankStdDevThreshold: 2.5 }
             });
 
-            if (!scan.contentPresent) {
+            if (scan && scan.contentPresent === false) {
                 showFieldError(inputElement, 'The document appears to be empty or invalid.');
                 return { valid: false };
             }
 
-            if (scan.type === 'pdf') {
+            if (scan && scan.type === 'pdf') {
                 const pagesScanned = scan.metrics?.pagesScanned || 1;
-                if (scan.blankPages.length === pagesScanned) {
+                if (pagesScanned > 0 && scan.blankPages && scan.blankPages.length === pagesScanned) {
                     showFieldError(inputElement, 'All scanned PDF pages appear blank.');
                     return { valid: false };
                 }
@@ -441,14 +531,14 @@
             // Continue — we already passed basic checks
         }
 
-        // Success – show preview (original behavior)
+        // Success – show preview (original behavior, UPDATED to use sibling .file-preview if available)
         showFilePreview(file, inputElement);
         clearFieldError(inputElement);
         return { valid: true, file };
     }
 
     // =========================
-    // Error Handling (original + normalization)
+    // Error Handling (UPDATED: Dark-mode safe colors)
     // =========================
     function displayBackendErrors(errors, targetElement) {
         const normalized = normalizeBackendErrors(errors);
@@ -472,7 +562,7 @@
                     if (!errorContainer) {
                         errorContainer = document.createElement('p');
                         errorContainer.id = containerId;
-                        errorContainer.className = 'error-message text-red-500 text-sm mt-1';
+                        errorContainer.className = 'error-message text-red-600 dark:text-red-400 text-sm mt-1 font-medium';
                         if (field.parentNode) {
                             field.parentNode.insertBefore(errorContainer, field.nextSibling);
                         } else {
@@ -480,8 +570,16 @@
                         }
                     }
 
-                    field.classList.add('border-red-500', 'ring-1', 'ring-red-200');
-                    setTimeout(() => field.classList.remove('border-red-500', 'ring-1', 'ring-red-200'), 5000);
+                    field.classList.add(
+                        'border-red-600', 'dark:border-red-400',
+                        'ring-1', 'ring-red-500', 'dark:ring-red-400'
+                    );
+                    setTimeout(() => {
+                        field.classList.remove(
+                            'border-red-600', 'dark:border-red-400',
+                            'ring-1', 'ring-red-500', 'dark:ring-red-400'
+                        );
+                    }, 5000);
                 }
             }
 
@@ -489,11 +587,11 @@
                 const messagesDiv = document.querySelector('.messages');
                 if (messagesDiv) {
                     errorContainer = document.createElement('div');
-                    errorContainer.className = 'alert alert-error p-4 mt-4 rounded bg-red-50 border border-red-200';
+                    errorContainer.className = 'alert alert-error p-4 mt-4 rounded bg-red-50 border border-red-200 dark:bg-red-950 dark:border-red-800';
                     messagesDiv.appendChild(errorContainer);
                 } else {
                     errorContainer = document.createElement('div');
-                    errorContainer.className = 'alert alert-error p-4 mt-4 rounded bg-red-50 border border-red-200';
+                    errorContainer.className = 'alert alert-error p-4 mt-4 rounded bg-red-50 border border-red-200 dark:bg-red-950 dark:border-red-800';
                     if (targetElement && targetElement.parentNode) {
                         targetElement.parentNode.insertBefore(errorContainer, targetElement.nextSibling);
                     } else {
@@ -546,7 +644,7 @@
         if (!errorEl) {
             errorEl = document.createElement('p');
             errorEl.id = `error-${key}`;
-            errorEl.className = 'error-message text-red-500 text-sm mt-1';
+            errorEl.className = 'error-message text-red-600 dark:text-red-400 text-sm mt-1 font-medium';
             if (field.parentNode) {
                 field.parentNode.insertBefore(errorEl, field.nextSibling);
             } else {
@@ -558,12 +656,18 @@
         errorEl.classList.add('show');
 
         try {
-            field.classList.add('border-red-500', 'ring-1', 'ring-red-200');
+            field.classList.add(
+                'border-red-600', 'dark:border-red-400',
+                'ring-1', 'ring-red-500', 'dark:ring-red-400'
+            );
             field.focus({ preventScroll: true });
         } catch (_) {}
 
         setTimeout(() => {
-            field.classList.remove('border-red-500', 'ring-1', 'ring-red-200');
+            field.classList.remove(
+                'border-red-600', 'dark:border-red-400',
+                'ring-1', 'ring-red-500', 'dark:ring-red-400'
+            );
             errorEl.classList.remove('show');
         }, 5000);
     }
@@ -582,7 +686,10 @@
             errorEl.classList.remove('show');
             errorEl.textContent = '';
         }
-        field.classList.remove('border-red-500', 'ring-1', 'ring-red-200');
+        field.classList.remove(
+            'border-red-600', 'dark:border-red-400',
+            'ring-1', 'ring-red-500', 'dark:ring-red-400'
+        );
     }
 
     function toggleButtonLoading(button, isLoading) {
@@ -611,8 +718,12 @@
     }
 
     function showFilePreview(file, input) {
-        const previewId = `preview-${input.name}`;
-        const preview = document.getElementById(previewId);
+        // UPDATED: prefer sibling .file-preview if present; fallback to #preview-${input.name}
+        let preview = input?.closest('.form-group')?.querySelector('.file-preview');
+        if (!preview) {
+            const previewId = `preview-${input.name}`;
+            preview = document.getElementById(previewId);
+        }
 
         if (!preview) return;
 
@@ -628,7 +739,7 @@
         } else {
             const icon = document.createElement('div');
             icon.className = 'w-48 h-32 border-2 border-dashed border-gray-300 rounded flex items-center justify-center';
-            icon.innerHTML = file.type === 'application/pdf' ? '📄 PDF' : (file.name.endsWith('.docx') ? '📄 DOCX' : '📎 Document');
+            icon.innerHTML = file.type === 'application/pdf' ? 'PDF' : (file.name.endsWith('.docx') ? 'DOCX' : 'Document');
             preview.appendChild(icon);
         }
     }
@@ -640,7 +751,7 @@
     }
 
     // =========================
-    // Step Validation (original)
+    // Step Validation (UPDATED: Step 1 now checks OTP verification)
     // =========================
     function validateStep(currentStep, formData) {
         const errors = [];
@@ -658,6 +769,11 @@
                         errors.push({ field: 'guest_email', message: ERROR_MESSAGES.emailRequired });
                     } else if (!isValidEmail(email)) {
                         errors.push({ field: 'guest_email', message: ERROR_MESSAGES.emailInvalid });
+                    } else {
+                        // NEW: require OTP verification on the client as well
+                        if (!isGuestEmailVerified(email)) {
+                            errors.push({ field: 'guest_email', message: ERROR_MESSAGES.emailNotVerified });
+                        }
                     }
                 }
                 break;
@@ -668,15 +784,20 @@
                 if (adults === 0) {
                     errors.push({ field: 'adults', message: ERROR_MESSAGES.noAdults });
                 }
+
                 passengerTypes.forEach(type => {
                     const count = parseInt(formData.get(`${type}s`) || 0);
                     for (let i = 0; i < count; i++) {
+
+                        // ---- names -------------------------------------------------
                         if (!formData.get(`${type}_first_name_${i}`)?.trim()) {
                             errors.push({ field: `${type}_first_name_${i}`, message: ERROR_MESSAGES.firstNameRequired });
                         }
                         if (!formData.get(`${type}_last_name_${i}`)?.trim()) {
                             errors.push({ field: `${type}_last_name_${i}`, message: ERROR_MESSAGES.lastNameRequired });
                         }
+
+                        // ---- age / DOB --------------------------------------------
                         if (type !== 'infant') {
                             const age = formData.get(`${type}_age_${i}`);
                             if (!age || !validateAge(type, age)) {
@@ -690,9 +811,31 @@
                                 errors.push({ field: `infant_dob_${i}`, message: ERROR_MESSAGES.dobInvalid });
                             }
                         }
-                        if (type !== 'infant' && !formData.get(`${type}_id_document_${i}`)) {
-                            errors.push({ field: `${type}_id_document_${i}`, message: ERROR_MESSAGES.idDocumentRequired });
+
+                        // ---- DOCUMENT (CRITICAL CHANGE) ---------------------------
+                        const docKey = `${type}_id_document_${i}`;
+                        const val = formData.get(docKey);
+                        const hasFile = val instanceof File ? (val.size > 0 && !!val.name) : !!val;
+
+                        if (type !== 'infant') {
+                            // Adults & Children MUST have a non-empty file
+                            if (!hasFile) {
+                                errors.push({
+                                    field: `${type}_id_document_${i}`,   // UI field name (matches template)
+                                    message: ERROR_MESSAGES.idDocumentRequired
+                                });
+                            }
+                        } else {
+                            // Infants MUST NOT have a file
+                            if (val instanceof File && val.size > 0) {
+                                errors.push({
+                                    field: `${type}_id_document_${i}`,
+                                    message: 'Infants must not upload documents'
+                                });
+                            }
                         }
+
+                        // ---- linked adult -----------------------------------------
                         if (type !== 'adult' && !formData.get(`${type}_linked_adult_${i}`)) {
                             errors.push({ field: `${type}_linked_adult_${i}`, message: ERROR_MESSAGES.linkedAdultRequired });
                         }
@@ -761,11 +904,13 @@
         clearFieldError,
         toggleButtonLoading,
         showFilePreview,
-        getCsrfToken
+        getCsrfToken,
+        // NEW export
+        isGuestEmailVerified
     };
 
     window.ERROR_MESSAGES = ERROR_MESSAGES;
 
-    console.log('✅ Validation utilities loaded successfully');
+    console.log('Validation utilities loaded successfully');
     console.log('Available validators:', Object.keys(window.validationUtils));
 })();
