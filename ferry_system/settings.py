@@ -38,6 +38,11 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'bookings.tasks.expire_pending_bookings',
         'schedule': crontab(minute='*/5'),
     },
+    # Failure recovery: confirm bookings that paid but never got confirmed.
+    'reconcile-pending-payments': {
+        'task': 'bookings.tasks.reconcile_pending_payments',
+        'schedule': crontab(minute='*/10'),
+    },
 }
 
 # Application definition

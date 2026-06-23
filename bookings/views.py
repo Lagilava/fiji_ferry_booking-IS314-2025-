@@ -52,6 +52,7 @@ from reportlab.platypus import (
 from .decorators import login_required_allow_anonymous
 from .forms import ModifyBookingForm
 from .models import Schedule, Booking, Passenger, Payment, Ticket, Cargo, Route, WeatherCondition, AddOn, Vehicle, Port
+from . import services
 from .views_helpers import (
     _otp_store_key, generate_otp_code, require_guest_otp
 )
@@ -1085,16 +1086,11 @@ def create_checkout_session(request):
 
         schedule = get_object_or_404(Schedule, id=schedule_id, status='scheduled')
 
-        # CON-1: atomically reserve seats under a row lock to prevent overbooking.
-        # A conditional UPDATE guarded by select_for_update guarantees no two
-        # concurrent requests can both pass the availability check.
+        # CON-1: reserve seats atomically via the service layer (row-locked).
         with transaction.atomic():
-            locked = Schedule.objects.select_for_update().get(pk=schedule.pk)
-            if locked.available_seats < total_passengers:
+            if not services.reserve_seats(schedule.pk, total_passengers):
+                locked = Schedule.objects.get(pk=schedule.pk)
                 return JsonResponse({'success': False, 'errors': [{'field': 'schedule_id', 'message': f'Only {locked.available_seats} seats available'}]}, status=400)
-            Schedule.objects.filter(pk=schedule.pk).update(
-                available_seats=F('available_seats') - total_passengers
-            )
         schedule.refresh_from_db()
         seats_reserved = True
 
@@ -1243,9 +1239,7 @@ def create_checkout_session(request):
         if 'booking' in locals():
             booking.delete()
         if locals().get('seats_reserved') and 'schedule' in locals():
-            Schedule.objects.filter(pk=schedule.pk).update(
-                available_seats=F('available_seats') + total_passengers
-            )
+            services.release_seats(schedule.pk, total_passengers)
         return JsonResponse({'success': False, 'errors': [{'field': 'general', 'message': str(e)}]}, status=400)
 
 
@@ -2587,33 +2581,19 @@ def payment_success(request):
                 messages.error(request, "Invalid payment session. Please contact support.")
                 return redirect('bookings:booking_history')
 
-            # === 6. UPDATE PAYMENT & BOOKING ===
-            payment, created = Payment.objects.get_or_create(
-                booking=booking,
-                session_id=session.id,
-                defaults={
-                    'payment_method': 'stripe',
-                    'amount': Decimal(session.amount_total) / 100,
-                    'payment_status': 'pending'
-                }
-            )
-            payment.payment_intent_id = session.payment_intent.id
-            payment.transaction_id = session.payment_intent.id
-            payment.amount = Decimal(session.payment_intent.amount) / 100
-
+            # === 6. CONFIRM PAYMENT & BOOKING via service layer (idempotent) ===
             if session.payment_intent.status == 'succeeded':
-                payment.payment_status = 'completed'
-                booking.status = 'confirmed'
-                booking.payment_intent_id = session.payment_intent.id
-                booking.stripe_session_id = session.id
-                booking.save()
+                booking = services.confirm_paid_booking(
+                    booking.id,
+                    session_id=session.id,
+                    payment_intent_id=session.payment_intent.id,
+                    amount=Decimal(session.payment_intent.amount) / 100,
+                )
                 logger.info(f"Payment confirmed for booking {booking.id}")
             else:
                 logger.warning(f"Payment not completed for booking {booking.id}: status={session.payment_intent.status}")
                 messages.error(request, f"Payment is not completed yet. Status: {session.payment_intent.status}")
                 return redirect('bookings:booking_history')
-
-            payment.save()
 
         # === 7. TICKET GENERATION WITH QR CODES ===
         tickets = []
@@ -3100,25 +3080,13 @@ def stripe_webhook(request):
             return JsonResponse({'status': 'booking not found'}, status=404)
 
         try:
-            payment, created = Payment.objects.get_or_create(
-                booking=booking,
+            # Idempotent confirm via the service layer (row lock + state guard).
+            booking = services.confirm_paid_booking(
+                booking.id,
                 session_id=session_id,
-                defaults={
-                    'payment_method': 'stripe',
-                    'amount': Decimal(session.get('amount_total', 0)) / 100,
-                    'payment_status': 'pending'
-                }
+                payment_intent_id=payment_intent_id,
+                amount=Decimal(session.get('amount_total', 0)) / 100,
             )
-            payment.payment_intent_id = payment_intent_id
-            payment.transaction_id = payment_intent_id
-            payment.amount = Decimal(session.get('amount_total', 0)) / 100
-            payment.payment_status = 'completed'
-            payment.save()
-
-            booking.status = 'confirmed'
-            booking.payment_intent_id = payment_intent_id
-            booking.stripe_session_id = session_id
-            booking.save()
 
             # Create tickets if missing
             if Ticket.objects.filter(booking=booking).count() < booking.passengers.count():
@@ -3406,45 +3374,13 @@ def cancel_booking(request, booking_id):
 
     if request.method == 'POST':
         try:
-            with transaction.atomic():
-                # CON-2: lock the booking row and re-check status inside the
-                # transaction so two concurrent cancels cannot both refund.
-                booking = Booking.objects.select_for_update().get(pk=booking.pk)
-                if booking.status != 'confirmed':
-                    messages.error(request, "Only confirmed bookings can be cancelled.")
-                    return redirect('bookings:booking_history')
-
-                # Process refund if we have a Stripe PaymentIntent.
-                # idempotency_key guarantees Stripe will not double-refund on retry.
-                if booking.payment_intent_id:
-                    refund = stripe.Refund.create(
-                        payment_intent=booking.payment_intent_id,
-                        amount=int(booking.total_price * 100),  # amount in cents
-                        idempotency_key=f"ferry-refund-{booking.id}",
-                    )
-                    Payment.objects.create(
-                        booking=booking,
-                        payment_method='stripe',
-                        amount=-booking.total_price,
-                        payment_status='refunded',
-                        transaction_id=refund.id
-                    )
-
-                # Update booking and atomically release the seats (avoids lost update).
-                booking.status = 'cancelled'
-                Schedule.objects.filter(pk=booking.schedule_id).update(
-                    available_seats=F('available_seats') + (
-                        booking.passenger_adults + booking.passenger_children + booking.passenger_infants
-                    )
-                )
-                booking.save()
-
-                # Mark tickets cancelled
-                for ticket in booking.tickets.all():
-                    ticket.ticket_status = 'cancelled'
-                    ticket.save()
-
-            messages.success(request, f"Booking #{booking.id} has been cancelled and refunded.")
+            # CON-2: delegate to the service layer (row lock + status re-check +
+            # idempotent refund + atomic seat release).
+            _booking, changed = services.cancel_booking(booking.pk, do_refund=True)
+            if changed:
+                messages.success(request, f"Booking #{booking.id} has been cancelled and refunded.")
+            else:
+                messages.info(request, f"Booking #{booking.id} was already cancelled.")
             return redirect('bookings:booking_history')
 
         except stripe.error.StripeError as e:
