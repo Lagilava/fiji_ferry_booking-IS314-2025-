@@ -9,8 +9,11 @@ from types import SimpleNamespace
 from unittest import mock
 
 from django.db import transaction, DatabaseError
-from django.test import TestCase, Client
+from django.test import TestCase, TransactionTestCase, Client, override_settings
 from django.utils import timezone
+
+INMEMORY_CHANNELS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
+LOCMEM_CACHE = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
 
 from accounts.models import User
 from bookings import services
@@ -421,3 +424,152 @@ class FileValidationTests(TestCase):
         png = SimpleUploadedFile("ok.png", b"\x89PNG\r\n\x1a\n" + b"\x00" * 32,
                                  content_type="image/png")
         _validate_id_document(png)
+
+
+# --------------------------------------------------------------------------- #
+# Celery tasks
+# --------------------------------------------------------------------------- #
+class TaskTests(TestCase):
+    def test_update_schedules_status_marks_departed(self):
+        from bookings import tasks
+        past = make_schedule(seats=5, departs_in_hours=-5)   # already departed
+        future = make_schedule(seats=5, departs_in_hours=48)
+        changed = tasks.update_schedules_status()
+        past.refresh_from_db(); future.refresh_from_db()
+        self.assertGreaterEqual(changed, 1)
+        self.assertEqual(past.status, "departed")
+        self.assertEqual(future.status, "scheduled")
+
+    def test_expire_pending_bookings_releases_old_holds(self):
+        from bookings import tasks
+        sch = make_schedule(seats=10)
+        with transaction.atomic():
+            services.reserve_seats(sch.pk, 2)
+        b = make_booking(sch, guest_email="g@x.com", status="pending")
+        # backdate so it is older than the expiry window
+        Booking.objects.filter(pk=b.pk).update(
+            booking_date=timezone.now() - datetime.timedelta(hours=2))
+        expired = tasks.expire_pending_bookings(max_age_minutes=30)
+        sch.refresh_from_db()
+        self.assertEqual(expired, 1)
+        self.assertEqual(sch.available_seats, 10)
+        self.assertEqual(Booking.objects.get(pk=b.pk).status, "cancelled")
+
+    def test_expire_pending_skips_recent(self):
+        from bookings import tasks
+        sch = make_schedule(seats=10)
+        make_booking(sch, guest_email="g@x.com", status="pending")  # fresh
+        self.assertEqual(tasks.expire_pending_bookings(max_age_minutes=30), 0)
+
+    @mock.patch("bookings.tasks.stripe")
+    def test_reconcile_confirms_paid_but_pending(self, mstripe):
+        from bookings import tasks
+        sch = make_schedule(seats=10)
+        b = make_booking(sch, guest_email="g@x.com", status="pending")
+        Booking.objects.filter(pk=b.pk).update(
+            stripe_session_id="cs_recon",
+            booking_date=timezone.now() - datetime.timedelta(minutes=30))
+        mstripe.checkout.Session.retrieve.return_value = SimpleNamespace(
+            id="cs_recon",
+            payment_intent=SimpleNamespace(id="pi_recon", status="succeeded", amount=10000),
+        )
+        confirmed = tasks.reconcile_pending_payments(max_age_minutes=5)
+        self.assertEqual(confirmed, 1)
+        self.assertEqual(Booking.objects.get(pk=b.pk).status, "confirmed")
+
+
+# --------------------------------------------------------------------------- #
+# Signals (real-time broadcast fan-out)
+# --------------------------------------------------------------------------- #
+@override_settings(CACHES=LOCMEM_CACHE)
+class SignalTests(TestCase):
+    @mock.patch("bookings.signals.async_to_sync")
+    def test_booking_save_broadcasts(self, m_ats):
+        sch = make_schedule()
+        make_booking(sch, guest_email="g@x.com", status="pending")
+        # async_to_sync(group_send)(...) must have been invoked for admin_dashboard
+        self.assertTrue(m_ats.called)
+
+    @mock.patch("bookings.signals.async_to_sync")
+    def test_schedule_save_broadcasts(self, m_ats):
+        sch = make_schedule()
+        m_ats.reset_mock()
+        sch.available_seats = 3
+        sch.save()
+        self.assertTrue(m_ats.called)
+
+
+# --------------------------------------------------------------------------- #
+# WebSocket consumers (in-memory channel layer, Redis mocked, locmem cache)
+# --------------------------------------------------------------------------- #
+@override_settings(CHANNEL_LAYERS=INMEMORY_CHANNELS, CACHES=LOCMEM_CACHE)
+class AdminDashboardConsumerTests(TransactionTestCase):
+    def setUp(self):
+        # Avoid the module-level Redis client used for rate-limit / ban checks.
+        self._patch = mock.patch("bookings.consumers.redis_client")
+        rc = self._patch.start()
+        rc.exists.return_value = 0
+        rc.incr.return_value = 1
+        self.addCleanup(self._patch.stop)
+        self.staff = make_user("wsadmin@x.com", staff=True)
+        self.sched = make_schedule(seats=10)
+
+    async def _connect(self, user):
+        from channels.testing import WebsocketCommunicator
+        from bookings.consumers import AdminDashboardConsumer
+        comm = WebsocketCommunicator(AdminDashboardConsumer.as_asgi(), "/ws/admin/dashboard/")
+        comm.scope["user"] = user
+        comm.scope["client"] = ("127.0.0.1", 5555)
+        connected, _ = await comm.connect()
+        return comm, connected
+
+    async def test_anonymous_rejected(self):
+        from django.contrib.auth.models import AnonymousUser
+        comm, connected = await self._connect(AnonymousUser())
+        self.assertFalse(connected)
+        await comm.disconnect()
+
+    async def test_staff_connects_and_gets_initial_data(self):
+        comm, connected = await self._connect(self.staff)
+        self.assertTrue(connected)
+        msg = await comm.receive_json_from(timeout=5)
+        self.assertEqual(msg["type"], "initial_data")
+        # both panels present (regression: schedules used to be dropped)
+        self.assertIn("bookings", msg)
+        self.assertIn("schedules", msg)
+        await comm.disconnect()
+
+    async def test_ping_pong(self):
+        comm, _ = await self._connect(self.staff)
+        await comm.receive_json_from(timeout=5)  # drain initial_data
+        await comm.send_json_to({"type": "ping"})
+        self.assertEqual((await comm.receive_json_from(timeout=5))["type"], "pong")
+        await comm.disconnect()
+
+    async def test_maintenancelog_save_does_not_kill_socket(self):
+        from channels.db import database_sync_to_async
+        from bookings.models import Ferry, MaintenanceLog
+        comm, _ = await self._connect(self.staff)
+        await comm.receive_json_from(timeout=5)  # initial_data
+
+        @database_sync_to_async
+        def _make_log():
+            ferry = Ferry.objects.first() or Ferry.objects.create(name="MX", capacity=10)
+            return MaintenanceLog.objects.create(
+                ferry=ferry, maintenance_date=timezone.now().date(), notes="x")
+
+        await _make_log()
+        # Prove the socket survived the save: ping and read until we see the pong
+        # (broadcasts like 'maintenancelog_update' may arrive first).
+        await comm.send_json_to({"type": "ping"})
+        got_pong = False
+        for _ in range(6):
+            try:
+                msg = await comm.receive_json_from(timeout=3)
+            except Exception:
+                break
+            if msg.get("type") == "pong":
+                got_pong = True
+                break
+        self.assertTrue(got_pong, "consumer did not respond to ping after MaintenanceLog save")
+        await comm.disconnect()
