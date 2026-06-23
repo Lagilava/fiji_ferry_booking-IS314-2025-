@@ -130,6 +130,27 @@ class CancelTests(TestCase):
         self.assertEqual(Booking.objects.get(pk=b.id).status, 'cancelled')
 
 
+class PricingTests(TestCase):
+    def test_passenger_and_total_pricing(self):
+        from bookings import pricing
+        sch = make_schedule()  # base_fare 50.00
+        # 2 adults (100) + 1 child (25) + 1 infant (5) = 130
+        self.assertEqual(
+            pricing.calculate_passenger_price(2, 1, 1, sch), Decimal("130.000")
+        )
+        total = pricing.calculate_total_price(
+            2, 0, 0, sch, add_cargo=False, cargo_type=None, weight_kg=0, addons=[]
+        )
+        self.assertEqual(total, Decimal("100.00"))
+
+    def test_addon_and_cargo_pricing(self):
+        from bookings import pricing
+        self.assertEqual(pricing.calculate_addon_price('cabin', 2), Decimal("100.00"))
+        self.assertEqual(pricing.calculate_cargo_price(10, 'Heavy Cargo'), Decimal("100.00"))
+        with self.assertRaises(ValueError):
+            pricing.calculate_addon_price('not_a_thing', 1)
+
+
 class BookingPdfAuthorizationTests(TestCase):
     """SEC-1: object-level authorization on the ticket PDF."""
 

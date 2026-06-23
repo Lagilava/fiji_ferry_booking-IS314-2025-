@@ -5,7 +5,7 @@ from accounts.models import User
 from django.core.validators import FileExtensionValidator, MinValueValidator, MaxValueValidator
 from django.core.exceptions import ValidationError
 import uuid
-from datetime import time, date
+from datetime import time, date, timedelta
 from django.db import transaction
 
 
@@ -67,7 +67,7 @@ class Route(models.Model):
         'Port', on_delete=models.CASCADE, related_name='arrivals'
     )
     distance_km = models.DecimalField(max_digits=10, decimal_places=2, default=0.0)
-    estimated_duration = models.DurationField(default='00:00:00')
+    estimated_duration = models.DurationField(default=timedelta)
     base_fare = models.DecimalField(max_digits=10, decimal_places=2, default=0.0)
     service_tier = models.CharField(
         max_length=20,
