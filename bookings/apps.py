@@ -31,6 +31,16 @@ class BookingsConfig(AppConfig):
         except Exception as e:
             logger.warning(f"Automation agent failed to start: {e}")
 
+        # Ensure the booking system is "ready when the server is up": active
+        # ferries, routes, and a rolling window of upcoming schedules. Runs in a
+        # short-delayed daemon thread (server processes only) so it stays off the
+        # app-initialization/DB path and is fully idempotent.
+        try:
+            from .seed import start_autoseed
+            start_autoseed()
+        except Exception as e:
+            logger.warning(f"Auto-seed failed to start: {e}")
+
         # Only initialize if explicitly enabled
         if getattr(settings, 'ADMIN_ENHANCEMENTS_ENABLED', False):
             try:

@@ -563,6 +563,11 @@ SERVER_MONITOR_INTERVAL = config('SERVER_MONITOR_INTERVAL', default=15, cast=int
 AUTOMATION_AGENT_ENABLED = config('AUTOMATION_AGENT_ENABLED', default=True, cast=bool)
 AUTOMATION_AGENT_INTERVAL = config('AUTOMATION_AGENT_INTERVAL', default=300, cast=int)
 
+# Auto-seed upcoming schedules on server startup (so the system is demo-ready)
+AUTO_SEED_SCHEDULES = config('AUTO_SEED_SCHEDULES', default=True, cast=bool)
+AUTO_SEED_DAYS = config('AUTO_SEED_DAYS', default=7, cast=int)
+AUTO_SEED_MIN_UPCOMING = config('AUTO_SEED_MIN_UPCOMING', default=6, cast=int)
+
 # WebSocket specific environment variables
 WS_REDIS_HOST = config('WS_REDIS_HOST', default='localhost')
 WS_REDIS_PORT = config('WS_REDIS_PORT', default=6379, cast=int)

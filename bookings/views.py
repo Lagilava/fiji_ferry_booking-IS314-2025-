@@ -621,10 +621,17 @@ def homepage(request):
             },
         ]
 
+    # --- Live tracking counts (real data, not placeholders) ---
+    upcoming_qs = Schedule.objects.filter(status='scheduled', departure_time__gt=now)
+    on_schedule_count = upcoming_qs.count()
+    active_ferries_count = upcoming_qs.values('ferry').distinct().count()
+
     # --- Context ---
     context = {
         'bookings': displayed_schedules,
         'total_schedules': total_schedules_count,
+        'active_ferries': active_ferries_count,
+        'on_schedule': on_schedule_count,
         'remaining_schedules': remaining_schedules,
         'routes': routes_data,
         'form_data': {

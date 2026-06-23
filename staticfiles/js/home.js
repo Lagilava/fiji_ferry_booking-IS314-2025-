@@ -1024,44 +1024,70 @@
                 if (!response.ok) throw new Error('Ports fetch failed');
                 const { routes } = await response.json();
 
-                // Determine active ports from schedule cards
+                // Active ports/routes inferred from the rendered schedule cards.
                 const activePorts = new Set();
+                const activeRoutes = new Set();
                 document.querySelectorAll('.schedule-card h3').forEach(h3 => {
                     const [depart, dest] = h3.textContent.split(' to ');
                     if (depart) activePorts.add(depart.trim());
                     if (dest) activePorts.add(dest.trim());
+                    if (depart && dest) activeRoutes.add(`${depart.trim()}→${dest.trim()}`);
                 });
 
-                // Add markers
+                const bounds = [];
+                const drawnPorts = new Map();   // name -> [lat,lng] (dedupe markers)
+
+                const coord = (p) => {
+                    const lat = parseFloat(p.lat), lng = parseFloat(p.lng);
+                    return (isNaN(lat) || isNaN(lng)) ? null : [lat, lng];
+                };
+
+                // 1) Draw the sea route lines (boat routes), not just ports.
                 routes.forEach(route => {
-                    const ports = [route.departure_port, route.destination_port];
-                    ports.forEach(p => {
-                        const lat = parseFloat(p.lat);
-                        const lng = parseFloat(p.lng);
-                        if (isNaN(lat) || isNaN(lng)) return;
-
-                        const isActive = activePorts.has(p.name);
-                        if (isActive) {
-                            L.circleMarker([lat, lng], {
-                                radius: 10,
-                                color: '#10b981',
-                                fillColor: '#10b981',
-                                fillOpacity: 0.7
-                            }).addTo(this.map)
-                              .bindPopup(`<b>${p.name}</b><br>Active schedule`);
-                            L.circle([lat, lng], {
-                                radius: 25000,
-                                color: '#10b981',
-                                fillColor: '#10b981',
-                                fillOpacity: 0.15,
-                                className: 'pulse-circle'
-                            }).addTo(this.map);
-                        } else {
-                            L.marker([lat, lng]).addTo(this.map).bindPopup(p.name);
-                        }
-                    });
+                    const a = coord(route.departure_port);
+                    const b = coord(route.destination_port);
+                    if (!a || !b) return;
+                    const key = `${route.departure_port.name}→${route.destination_port.name}`;
+                    const isActive = activeRoutes.has(key);
+                    // Use server waypoints if provided, else a straight dep→dest line.
+                    const line = (Array.isArray(route.waypoints) && route.waypoints.length >= 2)
+                        ? route.waypoints : [a, b];
+                    L.polyline(line, {
+                        color: isActive ? '#10b981' : '#94a3b8',
+                        weight: isActive ? 4 : 2,
+                        opacity: isActive ? 0.9 : 0.5,
+                        dashArray: isActive ? null : '6,8',
+                        lineJoin: 'round',
+                    }).addTo(this.map).bindPopup(
+                        `<b>${route.departure_port.name} → ${route.destination_port.name}</b>` +
+                        (route.base_fare ? `<br>From FJD ${route.base_fare}` : '') +
+                        (isActive ? '<br><span style="color:#10b981">● Active today</span>' : ''));
+                    bounds.push(a, b);
+                    drawnPorts.set(route.departure_port.name, a);
+                    drawnPorts.set(route.destination_port.name, b);
                 });
-                logger.log(`Map loaded – ${activePorts.size} active ports`);
+
+                // 2) Draw one marker per unique port (active ones emphasised).
+                drawnPorts.forEach((latlng, name) => {
+                    if (activePorts.has(name)) {
+                        L.circleMarker(latlng, {
+                            radius: 8, color: '#10b981', fillColor: '#10b981', fillOpacity: 0.85, weight: 2,
+                        }).addTo(this.map).bindPopup(`<b>${name}</b><br>Active schedule`);
+                        L.circle(latlng, {
+                            radius: 18000, color: '#10b981', fillColor: '#10b981',
+                            fillOpacity: 0.12, weight: 0, className: 'pulse-circle',
+                        }).addTo(this.map);
+                    } else {
+                        L.circleMarker(latlng, {
+                            radius: 5, color: '#64748b', fillColor: '#cbd5e1', fillOpacity: 0.8, weight: 1,
+                        }).addTo(this.map).bindPopup(name);
+                    }
+                });
+
+                if (bounds.length) {
+                    this.map.fitBounds(bounds, { padding: [40, 40], maxZoom: 9 });
+                }
+                logger.log(`Map loaded – ${routes.length} routes, ${drawnPorts.size} ports`);
             } catch (error) {
                 logger.warn('Failed to load ports from API:', error);
                 this.addHardcodedPorts();
@@ -1254,8 +1280,11 @@ class ScheduleManager {
             const liveFerryCount = document.getElementById('live-ferry-count');
             const onScheduleCount = document.getElementById('on-schedule-count');
             if (liveFerryCount && onScheduleCount) {
-                this.animateCounter(liveFerryCount, 5, 1500);
-                this.animateCounter(onScheduleCount, 4, 1500);
+                // Real values from the server (data-count); fall back to 0.
+                const ferries = parseInt(liveFerryCount.dataset.count, 10) || 0;
+                const onSchedule = parseInt(onScheduleCount.dataset.count, 10) || 0;
+                this.animateCounter(liveFerryCount, ferries, 1500);
+                this.animateCounter(onScheduleCount, onSchedule, 1500);
             }
             const heroSlides = document.querySelectorAll('.hero-slide');
             if (heroSlides.length > 0) {
