@@ -2763,7 +2763,7 @@ def stripe_webhook(request):
                 f"Wear comfortable clothing and consider bringing water and snacks.\n"
                 f"View your tickets: {request.build_absolute_uri(reverse('bookings:view_tickets', args=[booking.id]))}\n\n"
                 f"For any inquiries, contact us at support@yourferryservice.com or +679-123-4567.\n"
-                f"Review our cancellation policy: {request.build_absolute_uri(reverse('bookings:cancellation_policy'))}\n\n"
+                f"Review our terms of service: {request.build_absolute_uri(reverse('bookings:terms_of_service'))}\n\n"
                 f"Best regards,\n"
                 f"Your Ferry Service Team"
             )
@@ -2779,20 +2779,29 @@ def stripe_webhook(request):
                 'cargos': booking.cargo.all(),
                 'add_ons': booking.add_ons.all(),
                 'view_tickets_url': request.build_absolute_uri(reverse('bookings:view_tickets', args=[booking.id])),
-                'policy_url': request.build_absolute_uri(reverse('bookings:cancellation_policy')),
+                'policy_url': request.build_absolute_uri(reverse('bookings:terms_of_service')),
                 'contact_email': 'support@yourferryservice.com',
                 'contact_phone': '+679-123-4567',
             }
-            html_body = render_to_string('emails/booking_confirmation.html', context)
-
-            send_mail(
-                f"Your Ferry Booking Confirmation - ID {booking.id}",
-                email_body,
-                settings.DEFAULT_FROM_EMAIL,
-                [booking.user.email if booking.user else guest_email],
-                html_message=html_body,
-                fail_silently=True
-            )
+            # Confirmation email is best-effort: payment is already confirmed and
+            # tickets generated above, so an email/template failure must NOT fail
+            # the webhook (Stripe would otherwise retry a successful payment).
+            try:
+                try:
+                    html_body = render_to_string('emails/booking_confirmation.html', context)
+                except Exception as e:
+                    logger.warning(f"Confirmation email template unavailable for booking {booking.id}: {e}")
+                    html_body = None
+                send_mail(
+                    f"Your Ferry Booking Confirmation - ID {booking.id}",
+                    email_body,
+                    settings.DEFAULT_FROM_EMAIL,
+                    [booking.user.email if booking.user else guest_email],
+                    html_message=html_body,
+                    fail_silently=True,
+                )
+            except Exception as e:
+                logger.warning(f"Confirmation email failed for booking {booking.id}: {e}")
 
             logger.info(f"Webhook processed: Payment confirmed for booking {booking.id}")
             return JsonResponse({'status': 'success'})

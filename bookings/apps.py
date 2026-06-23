@@ -23,6 +23,14 @@ class BookingsConfig(AppConfig):
         except Exception as e:
             logger.warning(f"Server monitor failed to start: {e}")
 
+        # Offline automation agent: periodic non-destructive self-tests, also
+        # bound to the server lifecycle (daemon thread, dies with the server).
+        try:
+            from .automation import start_automation
+            start_automation()
+        except Exception as e:
+            logger.warning(f"Automation agent failed to start: {e}")
+
         # Only initialize if explicitly enabled
         if getattr(settings, 'ADMIN_ENHANCEMENTS_ENABLED', False):
             try:

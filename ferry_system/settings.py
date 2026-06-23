@@ -559,6 +559,10 @@ OPENWEATHERMAP_API_KEY = config('OPENWEATHERMAP_API_KEY', default='2ed7bcece5c9d
 SERVER_MONITOR_ENABLED = config('SERVER_MONITOR_ENABLED', default=True, cast=bool)
 SERVER_MONITOR_INTERVAL = config('SERVER_MONITOR_INTERVAL', default=15, cast=int)
 
+# Offline automation agent (periodic non-destructive self-tests)
+AUTOMATION_AGENT_ENABLED = config('AUTOMATION_AGENT_ENABLED', default=True, cast=bool)
+AUTOMATION_AGENT_INTERVAL = config('AUTOMATION_AGENT_INTERVAL', default=300, cast=int)
+
 # WebSocket specific environment variables
 WS_REDIS_HOST = config('WS_REDIS_HOST', default='localhost')
 WS_REDIS_PORT = config('WS_REDIS_PORT', default=6379, cast=int)
