@@ -157,6 +157,14 @@ class Schedule(models.Model):
             models.Index(fields=['departure_time', 'status']),
             models.Index(fields=['operational_day'])
         ]
+        constraints = [
+            # DB-level overbooking backstop: refuse to ever oversell, even if
+            # application logic is bypassed.
+            models.CheckConstraint(
+                check=models.Q(available_seats__gte=0),
+                name='schedule_available_seats_non_negative',
+            ),
+        ]
 
     def __str__(self):
         return f"{self.ferry.name} - {self.route} at {self.departure_time}"
