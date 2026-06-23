@@ -33,6 +33,11 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'bookings.tasks.update_schedules_status',
         'schedule': crontab(minute='*/5'),
     },
+    # LOG-2: release seats held by abandoned pending bookings.
+    'expire-pending-bookings': {
+        'task': 'bookings.tasks.expire_pending_bookings',
+        'schedule': crontab(minute='*/5'),
+    },
 }
 
 # Application definition

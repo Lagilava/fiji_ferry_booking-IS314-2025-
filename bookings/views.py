@@ -26,7 +26,7 @@ from django.core.files.storage import default_storage
 from django.core.mail import send_mail, EmailMultiAlternatives
 from django.core.validators import FileExtensionValidator
 from django.db import transaction
-from django.db.models import Subquery, Max, OuterRef, Prefetch, Q
+from django.db.models import Subquery, Max, OuterRef, Prefetch, Q, F
 from django.http import FileResponse
 from django.http import JsonResponse, HttpResponseForbidden, StreamingHttpResponse, HttpResponse
 from django.shortcuts import get_object_or_404
@@ -1011,6 +1011,29 @@ def validate_step(request):
     return JsonResponse({'valid': True, 'step': step}, status=200)
 
 
+def _validate_id_document(f):
+    """SEC-5: server-side validation of an uploaded ID document.
+
+    Checks size, extension, and magic bytes so a malicious file cannot be
+    stored by simply renaming its extension. Raises ValidationError on failure
+    (caught by the create_checkout_session error handler -> 400).
+    """
+    max_bytes = 2621440  # 2.5MB
+    if f.size > max_bytes:
+        raise ValidationError("ID document too large (2.5MB max).")
+    FileExtensionValidator(allowed_extensions=['pdf', 'jpg', 'jpeg', 'png'])(f)
+
+    head = f.read(8)
+    f.seek(0)
+    sigs = (
+        b'%PDF',                       # PDF
+        b'\xff\xd8\xff',               # JPEG
+        b'\x89PNG\r\n\x1a\n',          # PNG
+    )
+    if not any(head.startswith(s) for s in sigs):
+        raise ValidationError("ID document content does not match an allowed file type (PDF/JPG/PNG).")
+
+
 @require_POST
 @require_guest_otp
 @csrf_protect
@@ -1049,8 +1072,19 @@ def create_checkout_session(request):
             return JsonResponse({'success': False, 'errors': [{'field': 'general', 'message': 'Invalid booking data'}]}, status=400)
 
         schedule = get_object_or_404(Schedule, id=schedule_id, status='scheduled')
-        if schedule.available_seats < total_passengers:
-            return JsonResponse({'success': False, 'errors': [{'field': 'schedule_id', 'message': f'Only {schedule.available_seats} seats available'}]}, status=400)
+
+        # CON-1: atomically reserve seats under a row lock to prevent overbooking.
+        # A conditional UPDATE guarded by select_for_update guarantees no two
+        # concurrent requests can both pass the availability check.
+        with transaction.atomic():
+            locked = Schedule.objects.select_for_update().get(pk=schedule.pk)
+            if locked.available_seats < total_passengers:
+                return JsonResponse({'success': False, 'errors': [{'field': 'schedule_id', 'message': f'Only {locked.available_seats} seats available'}]}, status=400)
+            Schedule.objects.filter(pk=schedule.pk).update(
+                available_seats=F('available_seats') - total_passengers
+            )
+        schedule.refresh_from_db()
+        seats_reserved = True
 
         # --- Validate email ---
         customer_email = request.user.email if request.user.is_authenticated else guest_email
@@ -1084,6 +1118,11 @@ def create_checkout_session(request):
                 first_name = request.POST.get(f'{p_type}_first_name_{i}', '').strip()
                 last_name = request.POST.get(f'{p_type}_last_name_{i}', '').strip()
                 document = request.FILES.get(f'{p_type}_id_document_{i}') if p_type in ['adult', 'child'] else None
+
+                # SEC-5: validate the uploaded ID document server-side (the client
+                # validate_file endpoint is advisory only).
+                if document is not None:
+                    _validate_id_document(document)
 
                 if not first_name or not last_name:
                     raise ValueError(f"{p_type.capitalize()} {i + 1} missing name")
@@ -1149,11 +1188,11 @@ def create_checkout_session(request):
                 price=calculate_addon_price(addon['type'], addon['quantity'])
             )
 
-        # --- Reserve seats ---
-        schedule.available_seats -= total_passengers
-        schedule.save()
+        # CON-1: seats were already reserved atomically above (no second decrement here).
 
         # --- Create Stripe session ---
+        # LOG-3: idempotency_key prevents duplicate Stripe sessions/charges if this
+        # request is retried (e.g. network blip) for the same booking.
         session = stripe.checkout.Session.create(
             payment_method_types=['card'],
             line_items=[{
@@ -1169,6 +1208,7 @@ def create_checkout_session(request):
             cancel_url=request.build_absolute_uri('/bookings/cancel/'),
             metadata={'booking_id': str(booking.id), 'guest_email': guest_email or ''},
             customer_email=customer_email,
+            idempotency_key=f"ferry-checkout-{booking.id}",
         )
 
         booking.stripe_session_id = session.id
@@ -1181,12 +1221,15 @@ def create_checkout_session(request):
 
     except Exception as e:
         logger.exception(f"Checkout error: {e}")
-        # Cleanup on error
+        # Cleanup on error: delete the booking and atomically release the seats
+        # that were reserved above (CON-1). Restore is keyed off seats_reserved so
+        # it is correct even if booking creation itself failed after reservation.
         if 'booking' in locals():
             booking.delete()
-            if 'schedule' in locals():
-                schedule.available_seats += total_passengers
-                schedule.save()
+        if locals().get('seats_reserved') and 'schedule' in locals():
+            Schedule.objects.filter(pk=schedule.pk).update(
+                available_seats=F('available_seats') + total_passengers
+            )
         return JsonResponse({'success': False, 'errors': [{'field': 'general', 'message': str(e)}]}, status=400)
 
 
@@ -1715,10 +1758,11 @@ def check_schedule_availability(request):
 
 def availability_api(request):
     route_id = request.GET.get('route_id')
-    year = int(request.GET.get('year', 0))
-    month = int(request.GET.get('month', 0))
+    # Guard against non-integer input (previously raised an uncaught 500).
+    year = safe_int(request.GET.get('year', 0))
+    month = safe_int(request.GET.get('month', 0))
 
-    if not (route_id and year and month):
+    if not (route_id and 1 <= month <= 12 and year):
         return JsonResponse({'available_dates': []})
 
     # ✅ Use datetime.datetime instead of datetime(...)
@@ -1894,10 +1938,17 @@ def api_paged_bookings(request):
     return api_bookings(request)
 
 
-def login_required_allow_anonymous(view_func):
-    def wrapper(request, *args, **kwargs):
-        return view_func(request, *args, **kwargs)
-    return wrapper
+def _user_can_view_booking(request, booking):
+    """SEC-1: correct object-level authorization for a booking.
+
+    - Registered-user bookings: only the owner (or staff) may view.
+    - Guest bookings: the session must hold the matching verified guest_email.
+    Anonymous requests can never view a registered user's booking (closes the
+    `None != None` bypass).
+    """
+    if getattr(request.user, 'is_authenticated', False):
+        return request.user.is_staff or booking.user_id == request.user.id
+    return bool(booking.guest_email) and request.session.get('guest_email') == booking.guest_email
 
 
 
@@ -1910,11 +1961,8 @@ def ticket_detail(request, ticket_id):
 def view_tickets(request, booking_id):
     booking = get_object_or_404(Booking, id=booking_id)
 
-    if request.user.is_authenticated and booking.user != request.user:
-        logger.error(f"Authorization failed: User {request.user} not authorized for booking {booking_id}")
-        return HttpResponseForbidden("You are not authorized to view this booking.")
-    if not request.user.is_authenticated and booking.guest_email != request.session.get('guest_email'):
-        logger.error(f"Authorization failed: Guest email mismatch for booking {booking_id}")
+    if not _user_can_view_booking(request, booking):
+        logger.error(f"Authorization failed: not authorized for booking {booking_id} by {request.user}")
         return HttpResponseForbidden("You are not authorized to view this booking.")
 
     tickets = Ticket.objects.filter(booking=booking).select_related('passenger')
@@ -1957,8 +2005,15 @@ def _load_image(path):
     return None
 
 
+@login_required_allow_anonymous
 def booking_pdf(request, booking_id):
     booking = get_object_or_404(Booking, id=booking_id)
+
+    # SEC-1: correct object-level authorization.
+    if not _user_can_view_booking(request, booking):
+        logger.error(f"Authorization failed for booking_pdf {booking_id} by {request.user}")
+        return HttpResponseForbidden("You are not authorized to view this booking.")
+
     tickets = list(booking.tickets.all().order_by('passenger__first_name'))
 
     # ---------- Brand ----------
@@ -2486,24 +2541,8 @@ def payment_success(request):
         return f"FJD {d:,.2f}"
 
     try:
-        # === 4. DEV MODE SHORTCUT ===
-        if session_id == 'debug-mode' and settings.DEBUG:
-            payment, _ = Payment.objects.get_or_create(
-                booking=booking,
-                session_id='debug-session',
-                defaults={
-                    'payment_method': 'stripe',
-                    'amount': booking.total_price,
-                    'payment_status': 'completed',
-                    'transaction_id': 'debug-transaction',
-                    'payment_intent_id': 'debug-transaction'
-                }
-            )
-            booking.status = 'confirmed'
-            booking.payment_intent_id = 'debug-transaction'
-            booking.save()
-            logger.info(f"Debug mode payment processed for booking {booking.id}")
-        else:
+        # SEC-2: dev-mode payment bypass removed — payment is always verified via Stripe.
+        if True:
             if not session_id:
                 logger.error(f"No valid session_id found for booking {booking_id}")
                 messages.error(request, "Invalid payment session. Please try again or contact support.")
@@ -3230,10 +3269,6 @@ def modify_booking(request, booking_id):
             messages.error(request, "At least one passenger is required.")
             return render(request, 'bookings/modify_booking.html', {'form': form, 'booking': booking})
 
-        if new_schedule.available_seats < total_passengers:
-            messages.error(request, "Not enough seats available in the selected schedule.")
-            return render(request, 'bookings/modify_booking.html', {'form': form, 'booking': booking})
-
         old_total_price = booking.total_price
         new_total_price = calculate_total_price(
             new_adults, new_children, new_infants, new_schedule,
@@ -3242,19 +3277,32 @@ def modify_booking(request, booking_id):
             [{'type': addon.add_on_type, 'quantity': addon.quantity} for addon in booking.addons.all()]
         )
 
-        booking.schedule.available_seats += (
-                    booking.passenger_adults + booking.passenger_children + booking.passenger_infants)
-        booking.schedule.save()
+        # CON-1/LOG-4: move seats atomically under a row lock to prevent
+        # overbooking on the new schedule and lost updates on the old one.
+        old_schedule_id = booking.schedule_id
+        old_seats = (booking.passenger_adults + booking.passenger_children + booking.passenger_infants)
+        with transaction.atomic():
+            locked_new = Schedule.objects.select_for_update().get(pk=new_schedule.pk)
+            # If staying on the same schedule, the seats we are about to release count as available.
+            effective_available = locked_new.available_seats + (old_seats if old_schedule_id == new_schedule.pk else 0)
+            if effective_available < total_passengers:
+                messages.error(request, "Not enough seats available in the selected schedule.")
+                return render(request, 'bookings/modify_booking.html', {'form': form, 'booking': booking})
 
-        booking.schedule = new_schedule
-        booking.passenger_adults = new_adults
-        booking.passenger_children = new_children
-        booking.passenger_infants = new_infants
-        booking.total_price = new_total_price
-        booking.save()
+            if old_schedule_id:
+                Schedule.objects.filter(pk=old_schedule_id).update(
+                    available_seats=F('available_seats') + old_seats
+                )
+            Schedule.objects.filter(pk=new_schedule.pk).update(
+                available_seats=F('available_seats') - total_passengers
+            )
 
-        new_schedule.available_seats -= total_passengers
-        new_schedule.save()
+            booking.schedule = new_schedule
+            booking.passenger_adults = new_adults
+            booking.passenger_children = new_children
+            booking.passenger_infants = new_infants
+            booking.total_price = new_total_price
+            booking.save()
 
         price_difference = new_total_price - old_total_price
         if price_difference > 0:
@@ -3331,32 +3379,43 @@ def cancel_booking(request, booking_id):
 
     if request.method == 'POST':
         try:
-            # Process refund if we have a Stripe PaymentIntent
-            if booking.payment_intent_id:
-                refund = stripe.Refund.create(
-                    payment_intent=booking.payment_intent_id,
-                    amount=int(booking.total_price * 100)  # amount in cents
-                )
-                Payment.objects.create(
-                    booking=booking,
-                    payment_method='stripe',
-                    amount=-booking.total_price,
-                    payment_status='refunded',
-                    transaction_id=refund.id
-                )
+            with transaction.atomic():
+                # CON-2: lock the booking row and re-check status inside the
+                # transaction so two concurrent cancels cannot both refund.
+                booking = Booking.objects.select_for_update().get(pk=booking.pk)
+                if booking.status != 'confirmed':
+                    messages.error(request, "Only confirmed bookings can be cancelled.")
+                    return redirect('bookings:booking_history')
 
-            # Update booking and related objects
-            booking.status = 'cancelled'
-            booking.schedule.available_seats += (
-                booking.passenger_adults + booking.passenger_children + booking.passenger_infants
-            )
-            booking.schedule.save()
-            booking.save()
+                # Process refund if we have a Stripe PaymentIntent.
+                # idempotency_key guarantees Stripe will not double-refund on retry.
+                if booking.payment_intent_id:
+                    refund = stripe.Refund.create(
+                        payment_intent=booking.payment_intent_id,
+                        amount=int(booking.total_price * 100),  # amount in cents
+                        idempotency_key=f"ferry-refund-{booking.id}",
+                    )
+                    Payment.objects.create(
+                        booking=booking,
+                        payment_method='stripe',
+                        amount=-booking.total_price,
+                        payment_status='refunded',
+                        transaction_id=refund.id
+                    )
 
-            # Mark tickets cancelled
-            for ticket in booking.tickets.all():
-                ticket.ticket_status = 'cancelled'
-                ticket.save()
+                # Update booking and atomically release the seats (avoids lost update).
+                booking.status = 'cancelled'
+                Schedule.objects.filter(pk=booking.schedule_id).update(
+                    available_seats=F('available_seats') + (
+                        booking.passenger_adults + booking.passenger_children + booking.passenger_infants
+                    )
+                )
+                booking.save()
+
+                # Mark tickets cancelled
+                for ticket in booking.tickets.all():
+                    ticket.ticket_status = 'cancelled'
+                    ticket.save()
 
             messages.success(request, f"Booking #{booking.id} has been cancelled and refunded.")
             return redirect('bookings:booking_history')
@@ -3488,6 +3547,21 @@ def api_send_otp(request):
             {"success": False, "errors": [{"field": "guest_email", "message": "Enter a valid email"}]},
             status=400,
         )
+
+    # SEC-4: rate-limit OTP sends per-email and per-IP to prevent mail-bombing
+    # and quota abuse. Uses the Redis cache backend.
+    client_ip = request.META.get('REMOTE_ADDR', 'unknown')
+    for scope, limit, window in (("email:%s" % email, 3, 900), ("ip:%s" % client_ip, 10, 900)):
+        rl_key = "otp_rl:%s" % scope
+        count = cache.get(rl_key, 0)
+        if count >= limit:
+            return JsonResponse(
+                {"success": False,
+                 "errors": [{"field": "guest_email",
+                             "message": "Too many verification requests. Please wait a few minutes and try again."}]},
+                status=429,
+            )
+        cache.set(rl_key, count + 1, window)
 
     # If a previously verified email exists and differs, clear canonical markers
     prev_verified = (request.session.get("guest_otp_verified_email") or "").lower()
