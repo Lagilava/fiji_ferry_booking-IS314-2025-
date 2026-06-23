@@ -11,7 +11,7 @@ from django.apps import apps
 from django.contrib import admin
 from django.db import transaction
 from django.http import HttpRequest
-from .admin import AdminEnhancements
+from .admin import AdminEnhancements, admin_site
 from .models import Booking, Schedule, Ticket, Payment, WeatherCondition
 from channels.layers import get_channel_layer
 from django.db.models.signals import post_save, post_delete
@@ -83,7 +83,7 @@ class AdminDashboardConsumer(AsyncWebsocketConsumer):
         """Sync wrapper for initial data"""
         return {
             'bookings': AdminEnhancements.get_realtime_bookings(),
-            'bookings': AdminEnhancements.get_realtime_schedules(),
+            'schedules': AdminEnhancements.get_realtime_schedules(),
             'alerts': AdminEnhancements.get_critical_alerts(),
             'payments': AdminEnhancements.get_realtime_payments(),
             'timestamp': timezone.now().isoformat()
@@ -121,10 +121,16 @@ class AdminDashboardConsumer(AsyncWebsocketConsumer):
 
             data = json.loads(text_data)
             action = data.get('action')
+            msg_type = data.get('type')
 
             # Handle ping-pong for heartbeats
-            if data.get('type') == 'ping':
+            if msg_type == 'ping':
                 await self.send(text_data=json.dumps({'type': 'pong'}))
+                return
+
+            # Change-list integration messages travel over this socket too.
+            if msg_type in ('join_changelist', 'request_changelist_sync', 'selection_change'):
+                await self.handleMessage(data)
                 return
 
             if action == 'refresh_weather':
@@ -182,9 +188,11 @@ class AdminDashboardConsumer(AsyncWebsocketConsumer):
         """Handle generic model updates"""
         await self.send(text_data=json.dumps({
             'type': f'{event["model"]}_update',
-            'action': event['action'],
+            'model': event.get('model'),
+            'app_label': event.get('app_label', 'bookings'),
+            'action': event.get('action'),
             'instance_id': event.get('instance_id'),
-            'timestamp': event['timestamp']
+            'timestamp': event.get('timestamp')
         }))
 
     async def ticket_update(self, event):
@@ -195,6 +203,8 @@ class AdminDashboardConsumer(AsyncWebsocketConsumer):
             return
         await self.send(text_data=json.dumps({
             'type': 'ticket_update',
+            'model': event.get('model', 'ticket'),
+            'app_label': 'bookings',
             'ticket_id': ticket_id,
             'old_status': event.get('old_status'),
             'new_status': new_status,
@@ -207,25 +217,32 @@ class AdminDashboardConsumer(AsyncWebsocketConsumer):
         """Handle booking updates"""
         await self.send(text_data=json.dumps({
             'type': 'booking_update',
-            'booking_id': event.get('booking_id'),
+            'model': event.get('model', 'booking'),
+            'app_label': 'bookings',
+            'booking_id': event.get('booking_id') or event.get('instance_id'),
             'count': event.get('count'),
-            'action': event['action'],
+            'action': event.get('action'),
             'status': event.get('status'),
-            'timestamp': event['timestamp']
+            'recent_bookings': event.get('recent_bookings', []),
+            'recent_activities': event.get('recent_activities', []),
+            'timestamp': event.get('timestamp')
         }))
 
     async def schedule_update(self, event):
         """Handle schedule updates"""
-        schedule_id = event.get('schedule_id')
+        schedule_id = event.get('schedule_id') or event.get('instance_id')
         if schedule_id is None:
             logger.error(f"Missing 'schedule_id' in schedule_update event: {event}")
             return
         await self.send(text_data=json.dumps({
             'type': 'schedule_update',
+            'model': event.get('model', 'schedule'),
+            'app_label': 'bookings',
             'schedule_id': schedule_id,
+            'action': event.get('action'),
             'status': event.get('status'),
             'available_seats': event.get('available_seats'),
-            'timestamp': event['timestamp']
+            'timestamp': event.get('timestamp')
         }))
 
     async def weather_alerts_update(self, event):
@@ -256,12 +273,23 @@ class AdminDashboardConsumer(AsyncWebsocketConsumer):
     async def payment_update(self, event):
         await self.send(text_data=json.dumps({
             'type': 'payment_update',
-            'booking_id': event.get('booking_id'),
+            'model': event.get('model', 'payment'),
+            'app_label': 'bookings',
+            'booking_id': event.get('booking_id') or event.get('instance_id'),
             'status': event.get('status'),
             'amount': event.get('amount'),
-            'timestamp': event['timestamp']
+            'timestamp': event.get('timestamp')
         }))
         logger.info(f"Payment update broadcast: booking {event.get('booking_id')} -> {event.get('status')}")
+
+    async def maintenancelog_update(self, event):
+        """Handle maintenance log updates (forwarded as a generic model update)."""
+        await self.model_update({
+            'model': event.get('model', 'maintenancelog'),
+            'action': event.get('action'),
+            'instance_id': event.get('instance_id'),
+            'timestamp': event.get('timestamp'),
+        })
 
     async def handleMessage(self, data):
         """Enhanced message handling for change list integration"""
@@ -289,22 +317,67 @@ class AdminDashboardConsumer(AsyncWebsocketConsumer):
                 'app_label': app_label
             }))
 
+    @database_sync_to_async
+    def _query_changelist(self, app_label, model_name, filters):
+        """Query rows + display fields for an admin changelist (shared helper)."""
+        try:
+            model = apps.get_model(app_label, model_name)
+        except Exception:
+            return [], []
+        model_admin = admin_site._registry.get(model)
+        if not model_admin:
+            return [], []
+        request = HttpRequest()
+        request.user = self.user
+        request.GET = {}
+        queryset = model_admin.get_queryset(request)
+        if filters and filters.get('q'):
+            try:
+                qs2, _ = model_admin.get_search_results(request, queryset, filters['q'])
+                queryset = qs2
+            except Exception:
+                pass
+        fields = []
+        for field in model_admin.list_display:
+            if callable(field):
+                name = field.__name__
+                verbose = name
+            else:
+                name = field
+                try:
+                    verbose = str(model._meta.get_field(field).verbose_name)
+                except Exception:
+                    verbose = name
+            fields.append({'name': name, 'verbose_name': verbose})
+        objects = []
+        for obj in queryset[:100]:
+            row = {'id': obj.pk, 'fields': {}}
+            for f in fields:
+                try:
+                    val = getattr(obj, f['name'])
+                    if callable(val):
+                        val = val()
+                    row['fields'][f['name']] = str(val)
+                except Exception:
+                    row['fields'][f['name']] = 'N/A'
+            objects.append(row)
+        return objects, fields
+
     async def handleChangeListSync(self, data):
-        """Handle change list sync request"""
+        """Handle change list sync request — returns real rows to the requester."""
         model = data.get('model')
         app_label = data.get('app_label')
         filters = data.get('filters', {})
-        group_name = f"admin_changelist_{app_label}_{model}"
-        await self.channel_layer.group_send(
-            group_name,
-            {
-                'type': 'full_sync',
-                'objects': [],
-                'fields': [],
-                'total_count': 0,
-                'timestamp': timezone.now().isoformat()
-            }
-        )
+        objects, fields = await self._query_changelist(app_label, model, filters)
+        await self.send(text_data=json.dumps({
+            'type': 'full_sync',
+            'model': model,
+            'app_label': app_label,
+            'objects': objects,
+            'fields': fields,
+            'total_count': len(objects),
+            'timestamp': timezone.now().isoformat()
+        }))
 
     async def broadcastSelectionChange(self, data):
         """Broadcast selection changes to model group"""
@@ -351,12 +424,11 @@ class AdminChangeListConsumer(AsyncWebsocketConsumer):
             return
 
         try:
-            self.app_label = (self.scope['url_route']['kwargs'].get('app_label') or
-                              self.scope['query_string'].decode().split('app_label=')[1].split('&')[0]
-                              if 'app_label=' in self.scope['query_string'].decode() else None)
-            self.model_name = (self.scope['url_route']['kwargs'].get('model') or
-                               self.scope['query_string'].decode().split('model=')[1].split('&')[0]
-                               if 'model=' in self.scope['query_string'].decode() else None)
+            from urllib.parse import parse_qs
+            kwargs = self.scope.get('url_route', {}).get('kwargs', {})
+            qs = parse_qs(self.scope.get('query_string', b'').decode())
+            self.app_label = kwargs.get('app_label') or (qs.get('app_label') or [None])[0]
+            self.model_name = kwargs.get('model') or (qs.get('model') or [None])[0]
         except Exception:
             self.app_label = None
             self.model_name = None
@@ -465,7 +537,7 @@ class AdminChangeListConsumer(AsyncWebsocketConsumer):
     def get_model_admin(self):
         """Get the model admin instance"""
         try:
-            model_admin = admin.site._registry[self.model]
+            model_admin = admin_site._registry[self.model]
             return model_admin
         except (KeyError, AttributeError):
             return None
@@ -474,7 +546,7 @@ class AdminChangeListConsumer(AsyncWebsocketConsumer):
     def get_filtered_queryset(self, filters=None):
         """Get filtered queryset for the current user and filters"""
         try:
-            model_admin = admin.site._registry.get(self.model)
+            model_admin = admin_site._registry.get(self.model)
             if not model_admin:
                 return [], []
             request = HttpRequest()
@@ -532,7 +604,7 @@ class AdminChangeListConsumer(AsyncWebsocketConsumer):
         """Handle full sync request"""
         try:
             filters = data.get('filters', {})
-            objects, fields = await database_sync_to_async(self.get_filtered_queryset)(filters)
+            objects, fields = await self.get_filtered_queryset(filters)
             await self.send(text_data=json.dumps({
                 'type': 'full_sync',
                 'objects': objects,

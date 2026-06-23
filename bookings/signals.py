@@ -88,9 +88,26 @@ def trigger_realtime_updates(sender, instance, **kwargs):
         message['type'] = 'weather_alerts'
         message['weather_alerts'] = AdminEnhancements.get_critical_alerts()
 
+    elif sender == Schedule:
+        # Enrich so the schedule_update handler can forward real values
+        message['type'] = 'schedule_update'
+        message['schedule_id'] = getattr(instance, 'id', None)
+        message['available_seats'] = getattr(instance, 'available_seats', None)
+        message['status'] = getattr(instance, 'status', None)
+
     # Include notifications and alerts in every message to ensure update
     message['notifications'] = AdminEnhancements.check_for_notifications(None)
     message['alerts'] = AdminEnhancements.get_critical_alerts()
+
+    # Guard: only dispatch types that have a matching consumer handler,
+    # otherwise channels raises and tears down the admin socket.
+    _handled = {
+        'booking_update', 'payment_update', 'ticket_update', 'schedule_update',
+        'weather_alerts', 'weather_alerts_update', 'model_update',
+        'system_notifications', 'critical_alerts', 'cache_cleared',
+    }
+    if message.get('type') not in _handled:
+        message['type'] = 'model_update'
 
     async_to_sync(channel_layer.group_send)('admin_dashboard', message)
 

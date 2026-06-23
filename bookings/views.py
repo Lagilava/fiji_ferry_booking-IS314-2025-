@@ -498,21 +498,29 @@ def homepage(request):
     ).select_related('ferry', 'route__departure_port', 'route__destination_port').order_by('departure_time')
 
     route_input = request.GET.get('route', '').strip().lower()
+    route_id = request.GET.get('route_id', '').strip()
     travel_date = request.GET.get('date', '').strip()
     passengers = request.GET.get('passengers', '1')
 
-    logger.debug(f"Search parameters: route={route_input}, travel_date={travel_date}, passengers={passengers}")
+    logger.debug(f"Search parameters: route={route_input}, route_id={route_id}, travel_date={travel_date}, passengers={passengers}")
 
     # --- Route filtering ---
-    if route_input:
-        try:
-            origin, destination = route_input.split('-to-')
+    if route_id and route_id.isdigit():
+        schedules = schedules.filter(route_id=int(route_id))
+    elif route_input:
+        # support both "Nadi to Suva" and "Nadi-to-Suva" formats.
+        # Split only on a standalone "to" token (word boundaries) so port names
+        # that contain the letters "to" (e.g. Natovi, Lautoka) are not corrupted.
+        normalized = route_input.replace('\u2013', '-').lower()
+        parts = [p.strip(' -') for p in re.split(r'\bto\b', normalized) if p.strip(' -')]
+        if len(parts) == 2:
+            origin, destination = parts
             schedules = schedules.filter(
-                route__departure_port__name__iexact=origin.strip(),
-                route__destination_port__name__iexact=destination.strip()
+                route__departure_port__name__iexact=origin,
+                route__destination_port__name__iexact=destination
             )
-        except ValueError:
-            messages.error(request, "Invalid route format. Use 'origin-to-destination' (e.g., nadi-to-suva).")
+        else:
+            messages.error(request, "Invalid route format. Use 'origin-to-destination' or 'Origin to Destination'.")
 
     # --- Date filtering ---
     if travel_date:
@@ -576,10 +584,10 @@ def homepage(request):
 
         if current_conditions:
             weather_data['current'] = {
-                'temp': float(current_conditions.temperature) if current_conditions.temperature else 28,
-                'condition': current_conditions.condition or 'Sunny',
-                'humidity': int(current_conditions.humidity) if current_conditions.humidity else 65,
-                'wind': float(current_conditions.wind_speed) if current_conditions.wind_speed else 12
+                'temp': float(getattr(current_conditions, 'temperature', 28) or 28),
+                'condition': getattr(current_conditions, 'condition', 'Sunny') or 'Sunny',
+                'humidity': int(getattr(current_conditions, 'humidity', 65) or 65),
+                'wind': float(getattr(current_conditions, 'wind_speed', 12) or 12)
             }
 
         port_weather = WeatherCondition.objects.filter(
@@ -719,6 +727,7 @@ def homepage(request):
         'routes': routes_data,
         'form_data': {
             'route': route_input,
+            'route_id': route_id,
             'date': travel_date or now.date().strftime('%Y-%m-%d'),
             'passengers': passengers
         },
@@ -810,11 +819,25 @@ def view_ticket(request, qr_token):
 
 
 def get_schedule_updates(request):
+    now = timezone.now()
     schedules = Schedule.objects.filter(
-        departure_time__gte=timezone.now(),
+        departure_time__gte=now,
         status='scheduled',
         available_seats__gt=0
     ).select_related('route__departure_port', 'route__destination_port', 'ferry').order_by('departure_time')
+
+    # Pagination for infinite scroll
+    try:
+        offset = max(0, int(request.GET.get('offset', 0)))
+    except (TypeError, ValueError):
+        offset = 0
+    try:
+        limit = max(1, min(50, int(request.GET.get('limit', 12))))
+    except (TypeError, ValueError):
+        limit = 12
+
+    total = schedules.count()
+    paged = schedules[offset:offset + limit]
 
     data = [
         {
@@ -822,11 +845,20 @@ def get_schedule_updates(request):
             'route': f"{s.route.departure_port.name} to {s.route.destination_port.name}",
             'departure_time': s.departure_time.isoformat(),
             'available_seats': s.available_seats,
-            'ferry_name': s.ferry.name
-        } for s in schedules
+            'ferry_name': s.ferry.name,
+            'status': s.status,
+            'base_fare': float(s.route.base_fare) if s.route.base_fare else None,
+            'duration': int(s.route.estimated_duration.total_seconds() / 60) if s.route.estimated_duration else None
+        } for s in paged
     ]
 
-    return JsonResponse({'schedules': data})
+    return JsonResponse({
+        'schedules': data,
+        'total': total,
+        'offset': offset,
+        'limit': limit,
+        'remaining': max(0, total - (offset + len(data)))
+    })
 
 
 @require_POST
@@ -1287,13 +1319,17 @@ def book_ticket(request):
         if route_id:
             available_schedules = available_schedules.filter(route_id=route_id)
         elif route_input:
-            try:
-                origin, destination = [part.strip() for part in route_input.split(' to ')]
+            # Split only on a standalone "to" token so port names containing
+            # the letters "to" (Natovi, Lautoka) survive; supports both
+            # "Origin to Destination" and "Origin-to-Destination".
+            parts = [p.strip(' -') for p in re.split(r'\bto\b', route_input.replace('–', '-'), flags=re.IGNORECASE) if p.strip(' -')]
+            if len(parts) == 2:
+                origin, destination = parts
                 available_schedules = available_schedules.filter(
                     route__departure_port__name__iexact=origin,
                     route__destination_port__name__iexact=destination
                 )
-            except ValueError:
+            else:
                 messages.error(request, "Invalid route format. Use 'Origin to Destination'.")
 
     # === DEFINE ADD-ONS (unchanged) ===
@@ -1711,9 +1747,20 @@ def api_bookings(request):
     Returns filtered schedules with full route name.
     """
     route_param = request.GET.get('route', '').strip()
+    route_id = request.GET.get('route_id', '').strip()
     date_str = request.GET.get('date')
 
-    logger.debug(f"[api_bookings] route_param={route_param}, date_str={date_str}")
+    logger.debug(f"[api_bookings] route_param={route_param}, route_id={route_id}, date_str={date_str}")
+
+    # Pagination parameters
+    try:
+        offset = max(0, int(request.GET.get('offset', 0)))
+    except (TypeError, ValueError):
+        offset = 0
+    try:
+        limit = max(1, min(50, int(request.GET.get('limit', 12))))
+    except (TypeError, ValueError):
+        limit = 12
 
     # Base queryset
     qs = Schedule.objects.select_related(
@@ -1724,41 +1771,96 @@ def api_bookings(request):
     if date_str:
         try:
             target_date = timezone.datetime.strptime(date_str, '%Y-%m-%d').date()
-            qs = qs.filter(departure_time__date=target_date)
+            # Use operational_day to avoid timezone-UTC conversion side effects.
+            if hasattr(Schedule, 'operational_day'):
+                qs = qs.filter(operational_day=target_date)
+            else:
+                qs = qs.filter(departure_time__date=target_date)
         except ValueError:
             logger.warning(f"Invalid date format: {date_str}")
-            return JsonResponse({"schedules": []})
+            return JsonResponse({"schedules": [], "total": 0, "offset": offset, "limit": limit, "remaining": 0})
     else:
-        # Default: today
-        qs = qs.filter(departure_time__date=timezone.now().date())
+        # Default: today + next 2 days (3-day window)
+        today = timezone.now().date()
+        end_date = today + datetime.timedelta(days=2)
+        qs = qs.filter(departure_time__date__gte=today, departure_time__date__lte=end_date)
 
-    # Filter by route
+    # Filter by route ID (highest priority)
+    if route_id and route_id.isdigit():
+        qs = qs.filter(route_id=int(route_id))
+
+    # Filter by route text only if no route_id or still zero results
     if route_param:
-        # Normalize: handle URL encoding
-        route_clean = route_param.replace('+', ' ').strip()
+        route_clean = route_param.replace('+', ' ').strip().lower()
 
-        # Try exact match first
-        qs = qs.filter(
-            Q(route__departure_port__name__iexact=route_clean.split(' to ')[0].strip()) |
-            Q(route__name__iexact=route_clean) |
-            Q(route__slug__iexact=route_clean.replace(' ', '-').lower())
-        )
-
-        # Fallback: partial match
-        if not qs.exists():
-            departure = route_clean.split(' to ')[0].strip()
-            qs = Schedule.objects.select_related(
-                'ferry', 'route', 'route__departure_port', 'route__destination_port'
-            ).filter(
-                route__departure_port__name__icontains=departure,
-                departure_time__date=target_date if date_str else timezone.now().date()
+        # Treat 'all' or 'any' as no route filter
+        if route_clean not in ('', 'all', 'any'):
+            route_qs = qs.filter(
+                Q(route__departure_port__name__iexact=route_clean.split(' to ')[0].strip()) |
+                Q(route__destination_port__name__iexact=route_clean.split(' to ')[1].strip() if ' to ' in route_clean else '') |
+                Q(route__name__iexact=route_clean) |
+                Q(route__slug__iexact=route_clean.replace(' ', '-').lower())
             )
 
-    # Final filter: only scheduled + has seats
-    qs = qs.filter(status='scheduled', available_seats__gt=0).order_by('departure_time')
+            if route_qs.exists():
+                qs = route_qs
+            else:
+                departure = route_clean.split(' to ')[0].strip()
+                qs = qs.filter(
+                    route__departure_port__name__icontains=departure
+                )
+
+    # Status filter
+    status_param = request.GET.get('status', '').strip()
+    if status_param:
+        statuses = [s.strip().lower() for s in status_param.split(',') if s.strip()]
+        allowed_statuses = {'scheduled', 'delayed', 'cancelled'}
+        statuses = [s for s in statuses if s in allowed_statuses]
+        if statuses:
+            # keep scheduled seats rule but include delayed/cancelled too
+            if 'scheduled' in statuses and len(statuses) > 1:
+                qs = qs.filter(
+                    Q(status='scheduled', available_seats__gt=0) |
+                    Q(status__in=[s for s in statuses if s != 'scheduled'])
+                )
+            elif 'scheduled' in statuses:
+                qs = qs.filter(status='scheduled', available_seats__gt=0)
+            else:
+                qs = qs.filter(status__in=statuses)
+        else:
+            qs = qs.filter(status='scheduled', available_seats__gt=0)
+    else:
+        qs = qs.filter(status='scheduled', available_seats__gt=0)
+
+    # Price range filter
+    try:
+        price_min = float(request.GET.get('price_min', 0) or 0)
+    except (TypeError, ValueError):
+        price_min = 0
+    try:
+        price_max = float(request.GET.get('price_max', 0) or 0)
+    except (TypeError, ValueError):
+        price_max = 0
+
+    if price_min > 0:
+        qs = qs.filter(route__base_fare__gte=price_min)
+    if price_max > 0:
+        qs = qs.filter(route__base_fare__lte=price_max)
+
+    # Duration filter (hours)
+    duration_max = request.GET.get('duration_max')
+    if duration_max and duration_max.isdigit():
+        duration_max_hours = int(duration_max)
+        if duration_max_hours > 0:
+            qs = qs.filter(route__estimated_duration__lte=datetime.timedelta(hours=duration_max_hours))
+
+    qs = qs.order_by('departure_time')
+
+    total = qs.count()
+    paged_qs = qs[offset:offset + limit]
 
     schedules = []
-    for s in qs:
+    for s in paged_qs:
         route_name = f"{s.route.departure_port.name} to {s.route.destination_port.name}"
         schedules.append({
             "id": s.id,
@@ -1766,11 +1868,30 @@ def api_bookings(request):
             "departure_time": s.departure_time.isoformat(),
             "available_seats": s.available_seats,
             "status": s.status,
-            "route": route_name
+            "route": route_name,
+            "price": float(s.route.base_fare) if s.route.base_fare else None,
+            "duration": int(s.route.estimated_duration.total_seconds() / 60) if s.route.estimated_duration else None,
+            "route_id": s.route_id
         })
 
-    logger.debug(f"[api_bookings] Found {len(schedules)} schedules")
-    return JsonResponse({"schedules": schedules})
+    remaining = max(0, total - (offset + len(schedules)))
+
+    # Debug log for client-side troubleshooting
+    logger.debug(f"[api_bookings] route_param={route_param!r} route_id={route_id!r} date={date_str!r} status={status_param!r} price=({price_min},{price_max}) duration_max={duration_max} total_before_paging={total} schedules_returned={len(schedules)}")
+
+    return JsonResponse({
+        "schedules": schedules,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "remaining": remaining
+    })
+
+
+@require_GET
+def api_paged_bookings(request):
+    # API path for resilient load-more paging with live filter context.
+    return api_bookings(request)
 
 
 def login_required_allow_anonymous(view_func):
@@ -3107,11 +3228,11 @@ def modify_booking(request, booking_id):
         total_passengers = new_adults + new_children + new_infants
         if total_passengers == 0:
             messages.error(request, "At least one passenger is required.")
-            return render(request, 'bookings/modify.html', {'form': form, 'booking': booking})
+            return render(request, 'bookings/modify_booking.html', {'form': form, 'booking': booking})
 
         if new_schedule.available_seats < total_passengers:
             messages.error(request, "Not enough seats available in the selected schedule.")
-            return render(request, 'bookings/modify.html', {'form': form, 'booking': booking})
+            return render(request, 'bookings/modify_booking.html', {'form': form, 'booking': booking})
 
         old_total_price = booking.total_price
         new_total_price = calculate_total_price(
@@ -3163,7 +3284,7 @@ def modify_booking(request, booking_id):
         messages.success(request, "Booking modified successfully.")
         return redirect('bookings:view_tickets', booking_id=booking.id)
 
-    return render(request, 'bookings/modify.html', {
+    return render(request, 'bookings/modify_booking.html', {
         'form': form,
         'booking': booking,
         'cutoff_time': now + datetime.timedelta(hours=6)
@@ -3412,7 +3533,19 @@ If you did not request this code, you can ignore this email.
         to=[email],
     )
     msg.attach_alternative(html_body, "text/html")
-    msg.send()
+    try:
+        msg.send()
+    except Exception as e:
+        logger.error(f"OTP email send failed for {email}: {e}")
+        # Roll back the stored code so the user isn't left in a half-sent state.
+        request.session.pop(key, None)
+        request.session.modified = True
+        return JsonResponse(
+            {"success": False,
+             "errors": [{"field": "guest_email",
+                         "message": "We couldn't send the verification email right now. Please try again later."}]},
+            status=502,
+        )
 
     return JsonResponse({"success": True})
 

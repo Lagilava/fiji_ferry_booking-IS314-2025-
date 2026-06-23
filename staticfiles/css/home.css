@@ -1,0 +1,338 @@
+/**
+ * Fiji Ferry Booking - Complete Homepage JavaScript
+ * Unified implementation for home.html
+ * Version: 2.3.3
+ * Fixed: Dark mode compatibility, map initialization, hero slideshow, conflicts, form validation, added robust error handling, actual database data integration
+ */
+
+(function() {
+    'use strict';
+
+    // 🌟 GLOBAL CONFIGURATION
+    const FijiFerry = window.FijiFerry || {};
+    FijiFerry.config = {
+        animationDuration: 600,
+        slideshowInterval: 5000,
+        testimonialInterval: 7000,
+        pollingInterval: 120000, // 2 minutes
+        weatherUpdateInterval: 300000, // 5 minutes
+        debug: window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    };
+
+    // 🛠️ LOGGER
+    const logger = {
+        log: (...args) => FijiFerry.config.debug && console.log('[FijiFerry]', ...args),
+        warn: (...args) => FijiFerry.config.debug && console.warn('[FijiFerry]', ...args),
+        error: (...args) => console.error('[FijiFerry]', ...args)
+    };
+
+    // 🔧 UTILITY FUNCTIONS
+    const Utils = {
+        safeParseJSON(elementId, defaultValue = {}) {
+            try {
+                const script = document.getElementById(elementId);
+                if (!script) return defaultValue;
+
+                let jsonStr = script.textContent.trim();
+                jsonStr = jsonStr.replace(/^\s*<\!\[CDATA\[/, '').replace(/\]\]>\s*$/, '');
+
+                const parsed = JSON.parse(jsonStr);
+                return parsed || defaultValue;
+            } catch (error) {
+                logger.warn(`Failed to parse ${elementId}:`, error);
+                return defaultValue;
+            }
+        },
+
+        sanitizeHTML(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        },
+
+        formatDuration(minutes) {
+            if (!minutes || isNaN(minutes)) return 'N/A';
+            const hours = Math.floor(minutes / 60);
+            const mins = minutes % 60;
+            return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+        },
+
+        formatPrice(price) {
+            return price ? `FJD ${parseFloat(price).toFixed(0)}` : 'Price TBD';
+        },
+
+        parseDuration(text) {
+            if (!text) return Infinity;
+            const match = text.match(/(\d+)h?\s*(\d+)?m?/i);
+            return match ? parseInt(match[1]) * 60 + (parseInt(match[2]) || 0) : Infinity;
+        },
+
+        debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        },
+
+        throttle(func, limit) {
+            let inThrottle;
+            return function() {
+                const args = arguments;
+                const context = this;
+                if (!inThrottle) {
+                    func.apply(context, args);
+                    inThrottle = true;
+                    setTimeout(() => inThrottle = false, limit);
+                }
+            };
+        },
+
+        getWeatherIcon(condition) {
+            const icons = {
+                'sunny': '☀️', 'clear': '☀️', 'partly cloudy': '⛅', 'partly_cloudy': '⛅',
+                'cloudy': '☁️', 'overcast': '☁️', 'cloud': '☁️',
+                'rain': '🌧️', 'light rain': '🌦️', 'heavy rain': '🌧️', 'shower': '🌧️',
+                'thunderstorm': '⛈️', 'thunder': '⛈️', 'drizzle': '🌦️',
+                'fog': '🌫️', 'mist': '🌫️', 'haze': '🌫️',
+                'windy': '💨'
+            };
+            const key = condition?.toLowerCase().replace(/\s+/g, '_');
+            return icons[key] || '🌤️';
+        },
+
+        getRouteColor(routeId) {
+            const colors = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#84cc16'];
+            return colors[routeId % colors.length];
+        },
+
+        preloadImages(sources) {
+            sources.forEach(src => {
+                if (src) {
+                    const img = new Image();
+                    img.src = src;
+                }
+            });
+        },
+
+        getCSRFToken() {
+            return document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+                   document.cookie.match(/csrftoken=([^;]+)/)?.[1];
+        },
+
+        // Animation easing functions
+        easeOutCubic(t) {
+            return 1 - Math.pow(1 - t, 3);
+        },
+
+        easeOutQuart(t) {
+            return 1 - (--t) * t * t * t;
+        },
+
+        // Theme-aware color getter
+        getThemeColor(color, opacity = 1) {
+            const root = document.documentElement;
+            const theme = root.getAttribute('data-theme') || 'light';
+            const colors = {
+                primary: theme === 'dark' ? '#34D399' : '#10B981',
+                secondary: theme === 'dark' ? '#60A5FA' : '#3B82F6',
+                background: theme === 'dark' ? '#0F172A' : '#FFFFFF',
+                surface: theme === 'dark' ? '#1E293B' : '#F8FAFC',
+                text: theme === 'dark' ? '#F1F5F9' : '#1E293B',
+                border: theme === 'dark' ? '#334155' : '#E2E8F0',
+                gray800: theme === 'dark' ? '#F1F5F9' : '#1E293B',
+                gray600: theme === 'dark' ? '#CBD5E1' : '#4B5563',
+                gray500: theme === 'dark' ? '#94A3B8' : '#6B7280',
+                gray400: theme === 'dark' ? '#64748B' : '#9CA3AF',
+                gray300: theme === 'dark' ? '#475569' : '#D1D5DB',
+                gray200: theme === 'dark' ? '#334155' : '#E5E7EB',
+                gray100: theme === 'dark' ? '#1E293B' : '#F3F4F6',
+                white: theme === 'dark' ? '#0F172A' : '#FFFFFF'
+            };
+            return colors[color] || (theme === 'dark' ? '#94A3B8' : '#6B7280');
+        },
+
+        // Override Tailwind colors for dark mode
+        applyTailwindOverrides() {
+            const theme = document.documentElement.getAttribute('data-theme') || 'light';
+            if (theme === 'dark') {
+                // Force Tailwind classes to use dark mode colors
+                const style = document.createElement('style');
+                style.textContent = `
+                    [data-theme="dark"] .text-gray-800 { color: #F1F5F9 !important; }
+                    [data-theme="dark"] .text-gray-700 { color: #E2E8F0 !important; }
+                    [data-theme="dark"] .text-gray-600 { color: #CBD5E1 !important; }
+                    [data-theme="dark"] .text-gray-500 { color: #94A3B8 !important; }
+                    [data-theme="dark"] .text-gray-400 { color: #64748B !important; }
+                    [data-theme="dark"] .text-gray-300 { color: #475569 !important; }
+                    [data-theme="dark"] .text-gray-200 { color: #334155 !important; }
+                    [data-theme="dark"] .text-gray-100 { color: #1E293B !important; }
+                    [data-theme="dark"] .bg-white { background-color: #0F172A !important; }
+                    [data-theme="dark"] .bg-gray-50 { background-color: #1E293B !important; }
+                    [data-theme="dark"] .bg-gray-100 { background-color: #334155 !important; }
+                    [data-theme="dark"] .bg-gray-200 { background-color: #475569 !important; }
+                    [data-theme="dark"] .bg-gray-50 { background-color: #1E293B !important; }
+                    [data-theme="dark"] .bg-gray-800 { background-color: #1E293B !important; }
+                    [data-theme="dark"] .border-gray-200 { border-color: #475569 !important; }
+                    [data-theme="dark"] .border-gray-100 { border-color: #334155 !important; }
+                    [data-theme="dark"] .border-gray-300 { border-color: #475569 !important; }
+                    [data-theme="dark"] .bg-gray-50 { background-color: #1E293B !important; }
+                    [data-theme="dark"] .bg-gray-100 { background-color: #334155 !important; }
+                `;
+                document.head.appendChild(style);
+            }
+        }
+    };
+
+    // 🔔 NOTIFICATION SYSTEM (Enhanced for dark mode)
+    class NotificationManager {
+        constructor() {
+            this.container = null;
+            this.notifications = new Map();
+            this.init();
+        }
+
+        init() {
+            this.createContainer();
+            this.setupThemeListener();
+        }
+
+        setupThemeListener() {
+            const observer = new MutationObserver(() => {
+                this.updateNotificationsTheme();
+            });
+            observer.observe(document.documentElement, {
+                attributes: true,
+                attributeFilter: ['data-theme']
+            });
+        }
+
+        createContainer() {
+            // Remove existing container if present
+            if (this.container) {
+                this.container.remove();
+            }
+
+            this.container = document.createElement('div');
+            this.container.className = 'notification-container fixed top-4 right-4 z-50 space-y-2 max-w-sm w-full sm:w-80';
+            document.body.appendChild(this.container);
+            this.updateContainerTheme();
+        }
+
+        updateContainerTheme() {
+            if (!this.container) return;
+            const theme = document.documentElement.getAttribute('data-theme') || 'light';
+            this.container.style.background = theme === 'dark' ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.95)';
+            this.container.style.backdropFilter = 'blur(20px)';
+        }
+
+        updateNotificationsTheme() {
+            this.notifications.forEach(({ element }) => {
+                if (element && element.parentNode) {
+                    this.updateNotificationTheme(element);
+                }
+            });
+        }
+
+        updateNotificationTheme(notification) {
+            const theme = document.documentElement.getAttribute('data-theme') || 'light';
+            const classes = notification.className.split(' ');
+            const bgClass = classes.find(cls => cls.includes('bg-'));
+
+            if (bgClass) {
+                const color = bgClass.replace('bg-', '');
+                const opacity = theme === 'dark' ? 0.15 : 1;
+                const rgbaColor = this.hexToRgb(Utils.getThemeColor(color), opacity);
+                notification.style.background = `rgba(${rgbaColor})`;
+
+                // Update text colors for dark mode
+                if (theme === 'dark') {
+                    notification.style.color = '#F1F5F9';
+                    const closeBtn = notification.querySelector('.notification-close');
+                    if (closeBtn) {
+                        closeBtn.style.color = '#F1F5F9';
+                    }
+                }
+            }
+        }
+
+        hexToRgb(hex, alpha = 1) {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : '0, 0, 0';
+        }
+
+        show(message, type = 'info', duration = 4000, options = {}) {
+            const id = `notification-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            const config = this.getNotificationConfig(type);
+
+            const notification = document.createElement('div');
+            notification.id = id;
+            notification.className = `
+                notification transform translate-x-full transition-transform duration-300 p-4 rounded-xl shadow-2xl max-w-sm
+                ${config.bg} ${config.text} border-l-4 ${config.border}
+            `;
+            notification.setAttribute('role', 'alert');
+            notification.setAttribute('aria-live', options.live || 'polite');
+            notification.setAttribute('aria-atomic', 'true');
+
+            notification.innerHTML = `
+                <div class="notification-content flex items-start gap-3">
+                    <span class="notification-icon flex-shrink-0 mt-0.5 text-lg">${config.icon}</span>
+                    <div class="notification-message flex-1 min-w-0">
+                        <div class="notification-title font-semibold text-sm leading-tight capitalize">${type}</div>
+                        <div class="notification-text text-sm leading-relaxed break-words" title="${Utils.sanitizeHTML(message)}">${Utils.sanitizeHTML(message)}</div>
+                    </div>
+                    <button class="notification-close ml-2 text-current opacity-70 hover:opacity-100 p-1 rounded-full hover:bg-white/20 transition-colors flex-shrink-0"
+                            onclick="FijiFerry.notificationManager?.removeNotification('${id}')"
+                            aria-label="Dismiss ${type} notification">
+                        <i class="fas fa-times text-sm"></i>
+                    </button>
+                </div>
+            `;
+
+            this.container.appendChild(notification);
+            this.notifications.set(id, { element: notification, duration, options });
+
+            // Animate in
+            requestAnimationFrame(() => {
+                notification.classList.remove('translate-x-full');
+            });
+
+            // Auto-remove
+            if (duration > 0) {
+                setTimeout(() => this.removeNotification(id), duration);
+            }
+
+            // Update theme immediately
+            this.updateNotificationTheme(notification);
+            return notification;
+        }
+
+        getNotificationConfig(type) {
+            const configs = {
+                success: {
+                    icon: '✅',
+                    bg: 'bg-emerald-500',
+                    border: 'border-emerald-400',
+                    text: 'text-white'
+                },
+                error: {
+                    icon: '❌',
+                    bg: 'bg-red-500',
+                    border: 'border-red-400',
+                    text: 'text-white'
+                },
+                warning: {
+                    icon: '⚠️',
+                    bg: 'bg-amber-500',
+                    border: 'border-amber-400',
+                    text: 'text-white'
+                },
+                info: {
+                    icon: 'ℹ️',
+                    bg: 'bg-blue-500',
+                    border: 'border-blue-400',

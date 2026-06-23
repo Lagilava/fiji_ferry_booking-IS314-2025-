@@ -1,6 +1,3 @@
-/* booking_summary.css */
-
-/* Base Summary Card Styling */
 .summary-card {
     background: white;
     border-radius: 12px;
@@ -10,52 +7,53 @@
     transition: all 0.3s ease;
     position: relative;
     overflow: hidden;
+    container-type: inline-size; /* Enable container queries for responsive internal layouts */
+
+    &::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0) 0%, rgba(240, 248, 255, 0.5) 100%);
+        opacity: 0.6;
+        pointer-events: none;
+    }
+
+    &:hover {
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+        transform: translateY(-4px);
+    }
+
+    /* Use :has() for conditional styling, e.g., if card has add-ons */
+    &:has(.addon-group) {
+        border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+    }
 }
 
-/* Gradient Background */
-.summary-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0) 0%, rgba(240, 248, 255, 0.5) 100%);
-    opacity: 0.6;
-    pointer-events: none;
-}
-
-/* Hover Effect */
-.summary-card:hover {
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
-    transform: translateY(-4px);
-}
-
-/* Summary Section */
 .summary-section {
     margin-bottom: 1.5rem;
     padding: 1rem;
     border-radius: 8px;
     background: rgba(248, 250, 252, 0.8);
     transition: background 0.3s ease;
+
+    & h4 {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 1.25rem;
+        color: #2d3748;
+    }
 }
 
-.summary-section h4 {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 1.25rem;
-    color: #2d3748;
-}
-
-/* Add-ons Section */
 .addon-group {
     background: rgba(237, 242, 247, 0.9);
     border: 1px solid #e2e8f0;
     padding: 1.25rem;
 }
 
-/* Summary Row */
 .summary-row {
     display: grid;
     grid-template-columns: 1fr auto;
@@ -63,15 +61,14 @@
     padding: 0.75rem 0.5rem;
     border-bottom: 1px solid rgba(0, 0, 0, 0.05);
     transition: background 0.2s ease, transform 0.2s ease;
+
+    &:hover {
+        background: rgba(237, 242, 247, 0.9);
+        border-radius: 6px;
+        transform: translateX(2px);
+    }
 }
 
-.summary-row:hover {
-    background: rgba(237, 242, 247, 0.9);
-    border-radius: 6px;
-    transform: translateX(2px);
-}
-
-/* Labels and Values */
 .summary-label {
     font-weight: 600;
     color: #4a5568;
@@ -84,27 +81,34 @@
     text-align: right;
     color: #2d3748;
     font-weight: 500;
+
+    &::before {
+        content: '+';
+        color: #48bb78;
+        margin-right: 0.25rem;
+        display: inline-block;
+        opacity: 0.9;
+    }
 }
 
-.summary-value::before {
-    content: '+';
-    color: #48bb78;
-    margin-right: 0.25rem;
-    display: inline-block;
-    opacity: 0.9;
-}
-
-/* Total Section */
+/* Total Section with color-mix for dynamic gradients */
 .summary-card .border-t {
     border-top: 2px solid #e2e8f0;
     margin-top: 2rem;
     padding-top: 2rem;
-    background: linear-gradient(to right, #ebf8ff, #e6fffa);
+    background: linear-gradient(to right, color-mix(in srgb, #ebf8ff 80%, #e6fffa), #e6fffa);
     border-radius: 10px;
     box-shadow: inset 0 2px 12px rgba(0, 0, 0, 0.03);
 }
 
-/* Animation for Total Amount */
+/* Animation with @starting-style for smoother initial render (CSS Animations Level 2) */
+@starting-style {
+    .text-3xl {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+}
+
 .text-3xl {
     animation: fadeInUp 0.5s ease-out;
 }
@@ -120,14 +124,18 @@
     }
 }
 
-/* Responsive Design */
-@media (max-width: 640px) {
+/* Container Queries for Responsive Design (replaces some media queries) */
+@container (max-width: 640px) {
     .summary-card {
         padding: 1.5rem;
     }
 
     .summary-section {
         padding: 0.75rem;
+
+        & h4 {
+            font-size: 1.1rem;
+        }
     }
 
     .summary-row {
@@ -141,49 +149,50 @@
         font-size: 1rem;
     }
 
-    .summary-section h4 {
-        font-size: 1.1rem;
-    }
-
     .addon-group {
         padding: 1rem;
     }
 }
 
-/* Dark Mode Support */
+/* Dark Mode with light-dark() for adaptive colors (CSS Color Level 5) */
 @media (prefers-color-scheme: dark) {
     .summary-card {
-        background: #1a202c;
-        color: #e2e8f0;
+        background: light-dark(#ffffff, #1a202c);
+        color: light-dark(#2d3748, #e2e8f0);
     }
 
     .summary-section {
-        background: #2d3748;
+        background: light-dark(rgba(248, 250, 252, 0.8), #2d3748);
     }
 
     .addon-group {
-        background: #2a4365;
-        border-color: #4a5568;
+        background: light-dark(rgba(237, 242, 247, 0.9), #2a4365);
+        border-color: light-dark(#e2e8f0, #4a5568);
     }
 
     .summary-label {
-        color: #a0aec0;
+        color: light-dark(#4a5568, #a0aec0);
     }
 
     .summary-value {
-        color: #e2e8f0;
+        color: light-dark(#2d3748, #e2e8f0);
+
+        &::before {
+            color: light-dark(#48bb78, #68d391);
+        }
     }
 
     .summary-card .border-t {
-        border-top-color: #4a5568;
-        background: linear-gradient(to right, #2a4365, #234e52);
-    }
-
-    .summary-value::before {
-        color: #68d391;
+        border-top-color: light-dark(#e2e8f0, #4a5568);
+        background: linear-gradient(to right, light-dark(#ebf8ff, #2a4365), light-dark(#e6fffa, #234e52));
     }
 
     .summary-section h4 {
-        color: #e2e8f0;
+        color: light-dark(#2d3748, #e2e8f0);
     }
+}
+
+/* Additional advanced technique: Trigonometric functions in calc() for dynamic padding */
+.summary-card {
+    padding: calc(2.5rem + sin(45deg) * 1rem); /* Example usage; adjust as needed for subtle effects */
 }

@@ -57,8 +57,13 @@
                                    value="{{ form_data.route|default:''|escapejs }}"
                                    placeholder="Select route (e.g., Nadi to Suva)"
                                    class="w-full pl-10 pr-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 backdrop-blur-sm transition-all"
+                                   role="combobox"
+                                   aria-autocomplete="list"
+                                   aria-controls="route-suggestions"
+                                   aria-expanded="false"
                                    aria-required="true"
                                    autocomplete="off">
+                            <input type="hidden" id="route-id" name="route_id" value="{{ form_data.route_id|default:''|escapejs }}">
                             <datalist id="routes">
                                 {% for route in routes %}
                                     <option value="{{ route.departure_port__name }} to {{ route.destination_port__name }}">
@@ -71,7 +76,7 @@
                                 {% endfor %}
                             </datalist>
                         </div>
-                        <div class="route-suggestions absolute w-full mt-1 bg-white/90 backdrop-blur-sm rounded-xl border border-white/20 max-h-48 overflow-y-auto z-10 hidden" id="route-suggestions"></div>
+                        <div class="route-suggestions absolute w-full mt-1 bg-white/90 backdrop-blur-sm rounded-xl border border-white/20 max-h-48 overflow-y-auto z-10 hidden" id="route-suggestions" role="listbox" aria-label="Route suggestions"></div>
                     </div>
                     <!-- Date Selection -->
                     <div class="form-group flex-1 min-w-[180px]">
@@ -124,6 +129,20 @@
                 <!-- Form validation feedback -->
                 <div class="form-feedback mt-2 text-sm text-white/70 hidden" id="form-feedback" role="status" aria-live="polite"></div>
             </form>
+            <!-- Quick pick routes for fast booking -->
+            <div class="quick-picks mt-4 p-4 bg-white/15 border border-white/20 rounded-xl text-white">
+                <div class="text-sm font-semibold mb-2">Quick pick popular routes:</div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                    {% for route in routes|slice:":3" %}
+                        <a href="{% url 'bookings:book_ticket' %}?route={{ route.id }}" class="block bg-white/10 hover:bg-white/20 text-white text-center py-2 rounded-lg transition-all">
+                            {{ route.departure_port__name }} → {{ route.destination_port__name }}
+                        </a>
+                    {% endfor %}
+                    {% if not routes %}
+                        <span class="text-xs text-white/80">No popular routes available right now</span>
+                    {% endif %}
+                </div>
+            </div>
         </div>
     </div>
     <!-- Navigation Dots -->
@@ -235,13 +254,48 @@
         </div>
         {% endif %}
 
-        <!-- Schedule Filters -->
-        <div class="schedule-filters flex flex-wrap items-center justify-between gap-4 mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200" data-aos="fade-up" role="search">
-            <h2 id="schedules-heading" class="text-2xl font-bold text-gray-800 font-playfair col-span-full sm:col-span-1">Upcoming Departures</h2>
-            <div class="filters-container flex flex-wrap gap-3 items-center justify-end flex-1">
-                <div class="filter-group relative">
-                    <label for="sort-by" class="sr-only">Sort schedules by</label>
-                    <div class="relative">
+        <div class="schedule-content flex flex-col lg:flex-row gap-6" data-aos="fade-up">
+            <aside class="schedule-sidebar w-full lg:w-80 p-4 rounded-xl border border-gray-200 bg-white shadow-sm">
+                <h3 class="text-lg font-semibold mb-3">Refine Schedules</h3>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1" for="price-min">Min Price (FJD)</label>
+                    <input id="price-min" type="number" min="0" step="1" class="w-full border border-gray-300 rounded-lg p-2" placeholder="0">
+                </div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1" for="price-max">Max Price (FJD)</label>
+                    <input id="price-max" type="number" min="0" step="1" class="w-full border border-gray-300 rounded-lg p-2" placeholder="999">
+                </div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1" for="duration-max">Max Duration (hours)</label>
+                    <select id="duration-max" class="w-full border border-gray-300 rounded-lg p-2">
+                        <option value="0">Any</option>
+                        <option value="1">1 hr</option>
+                        <option value="2">2 hrs</option>
+                        <option value="4">4 hrs</option>
+                        <option value="8">8 hrs</option>
+                    </select>
+                </div>
+                <fieldset class="mb-4">
+                    <legend class="text-sm font-medium text-gray-700 mb-2">Status</legend>
+                    <label class="inline-flex items-center mr-3 text-sm"><input type="checkbox" name="status-filter" value="scheduled" checked class="mr-2"> Scheduled</label>
+                    <label class="inline-flex items-center mr-3 text-sm"><input type="checkbox" name="status-filter" value="delayed" checked class="mr-2"> Delayed</label>
+                    <label class="inline-flex items-center text-sm"><input type="checkbox" name="status-filter" value="cancelled" checked class="mr-2"> Cancelled</label>
+                </fieldset>
+                <div class="flex gap-2">
+                    <button id="apply-filters" type="button" class="w-full bg-emerald-500 text-white py-2 rounded-lg font-semibold hover:bg-emerald-600">Apply</button>
+                    <button id="reset-filters" type="button" class="w-full bg-gray-100 text-gray-700 py-2 rounded-lg font-semibold hover:bg-gray-200">Reset</button>
+                </div>
+                <p id="filter-status" class="mt-3 text-xs text-gray-500">Showing all schedules</p>
+                <p id="filter-applied-badge" class="mt-1 text-xs font-medium text-emerald-700 bg-emerald-100 border border-emerald-200 rounded-lg px-2 py-1 dark:text-emerald-100 dark:bg-emerald-900 dark:border-emerald-700" aria-live="polite">Applied: route=all date=all status=all</p>
+            </aside>
+            <div class="flex-1">
+                <!-- Schedule Filters -->
+                <div class="schedule-filters flex flex-wrap items-center justify-between gap-4 mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200" role="search">
+                    <h2 id="schedules-heading" class="text-2xl font-bold text-gray-800 font-playfair col-span-full sm:col-span-1">Upcoming Departures</h2>
+                    <div class="filters-container flex flex-wrap gap-3 items-center justify-end flex-1">
+                        <div class="filter-group relative">
+                            <label for="sort-by" class="sr-only">Sort schedules by</label>
+                            <div class="relative">
                         <select id="sort-by"
                                 class="filter-select bg-white border border-gray-200 rounded-lg px-4 py-2 pr-10 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-sm font-medium transition-all appearance-none cursor-pointer"
                                 aria-describedby="sort-help">
@@ -264,15 +318,21 @@
             </div>
         </div>
 
+        <div id="schedule-progress-container" class="mb-4 h-2 bg-gray-200 rounded-full overflow-hidden hidden" aria-hidden="true">
+            <div id="schedule-progress" class="h-full bg-cyan-500 w-0 transition-all duration-500"></div>
+        </div>
+
         <!-- Schedules Grid -->
         {% if bookings %}
-            <div class="schedule-list grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="schedule-list" role="list" aria-label="Available ferry schedules">
+            <div class="schedule-list grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="schedule-list" role="list" data-total="{{ total_schedules }}" aria-label="Available ferry schedules">
                 {% for schedule in bookings %}
                     <article class="schedule-card transition-all duration-300 hover:shadow-lg hover:-translate-y-1 border border-gray-200 rounded-xl overflow-hidden flex flex-col h-full"
                              data-schedule-id="{{ schedule.id }}"
                              data-route-id="{{ schedule.route.id }}"
                              data-time-slot="{{ schedule.departure_time|time:'H' }}"
                              data-price="{{ schedule.route.base_fare|default:0 }}"
+                             data-duration="{% if schedule.route.estimated_duration %}{{ schedule.route.estimated_duration.total_seconds|floatformat:0 }}{% else %}0{% endif %}"
+                             data-status="{{ schedule.status|default:'scheduled' }}"
                              role="article"
                              aria-labelledby="schedule-{{ schedule.id }}-title">
                         <div class="route-info p-6 flex-grow">
@@ -430,10 +490,11 @@
             {% if remaining_schedules > 0 %}
             <div class="load-more text-center mt-12" data-aos="fade-up" role="region" aria-label="Load more schedules">
                 <button id="load-more-schedules"
+                        data-remaining="{{ remaining_schedules }}"
                         class="load-more-btn bg-gradient-to-r from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 text-gray-700 px-8 py-3 rounded-xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 mx-auto focus:outline-none focus:ring-2 focus:ring-gray-500/50"
                         aria-label="Load {{ remaining_schedules }} more schedules">
                     <i class="fas fa-plus" aria-hidden="true"></i>
-                    <span style="color: black;">Load More Schedules ({{ remaining_schedules }} remaining)</span>
+                    <span id="load-more-text" style="color: black;">Load More Schedules ({{ remaining_schedules }} remaining)</span>
                 </button>
                 <div class="loading-indicator hidden mt-4 flex items-center gap-2 justify-center text-sm text-gray-500" role="status" aria-live="polite">
                     <div class="loading-spinner w-5 h-5 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin" aria-hidden="true"></div>
@@ -442,6 +503,8 @@
             </div>
             {% endif %}
         {% endif %}
+            </div>
+        </div>
     </div>
 </section>
 
@@ -1060,16 +1123,42 @@
     overflow-y: auto;
     background: var(--bg-primary);
     border: 1px solid var(--border);
+    color: var(--text-primary);
+    z-index: 20;
 }
 [data-theme="dark"] .route-suggestions {
-    background: var(--bg-primary);
-    border-color: var(--border);
+    background: #1e293b;
+    border-color: #334155;
+    color: #f8fafc;
 }
-.route-suggestions option {
+.route-suggestions option,
+.route-suggestions .route-suggestion {
     display: block;
     padding: 0.75rem 1rem;
     cursor: pointer;
     border-bottom: 1px solid var(--border);
+    color: inherit;
+    background: inherit;
+    font-size: 0.95rem;
+}
+
+.weather-icon {
+    font-size: 1.1rem;
+    min-width: 1.4rem;
+    min-height: 1.4rem;
+    text-align: center;
+    line-height: 1.4rem;
+    color: var(--primary);
+}
+
+.weather-condition {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    text-transform: capitalize;
+}
+
+.weather-meta {
+    font-size: 0.8rem;
 }
 [data-theme="dark"] .route-suggestions option {
     border-bottom-color: var(--border);
@@ -1266,6 +1355,65 @@
 [data-theme="dark"] .filter-select {
     background: var(--bg-primary);
     border-color: var(--border);
+}
+
+/* Refine schedule sidebar color clarity */
+.schedule-sidebar {
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid #e5e7eb;
+    color: #0f172a;
+}
+[data-theme="dark"] .schedule-sidebar {
+    background: rgba(15, 23, 42, 0.95);
+    border: 1px solid #334155;
+    color: #e2e8f0;
+}
+.schedule-sidebar label,
+.schedule-sidebar input,
+.schedule-sidebar select,
+.schedule-sidebar button,
+.schedule-sidebar legend,
+.schedule-sidebar span,
+.schedule-sidebar .filter-group,
+.load-more,
+.load-more-btn,
+.load-more-btn span {
+    color: inherit;
+}
+.schedule-sidebar input,
+.schedule-sidebar select {
+    background: rgba(255, 255, 255, 0.9);
+    color: #0f172a;
+    border: 1px solid #d1d5db;
+}
+[data-theme="dark"] .schedule-sidebar input,
+[data-theme="dark"] .schedule-sidebar select {
+    background: rgba(30, 41, 59, 0.95);
+    color: #e2e8f0;
+    border: 1px solid #475569;
+}
+.schedule-sidebar input::placeholder,
+.schedule-sidebar select::placeholder {
+    color: rgba(107, 114, 128, 0.8);
+}
+[data-theme="dark"] .schedule-sidebar input::placeholder,
+[data-theme="dark"] .schedule-sidebar select::placeholder {
+    color: rgba(148, 163, 184, 0.85);
+}
+
+.schedule-list .schedule-card,
+.schedule-list h3,
+.schedule-list p,
+.schedule-list .status-badge,
+.schedule-list .price {
+    color: var(--text-primary) !important;
+}
+[data-theme="dark"] .schedule-list .schedule-card,
+[data-theme="dark"] .schedule-list h3,
+[data-theme="dark"] .schedule-list p,
+[data-theme="dark"] .schedule-list .status-badge,
+[data-theme="dark"] .schedule-list .price {
+    color: #e2e8f0 !important;
 }
 .schedule-card {
     background: var(--bg-primary);

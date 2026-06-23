@@ -1,1 +1,28 @@
-".env" 
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Virtual env
+venv/
+.venv/
+
+# Django
+*.log
+logs/
+media/
+db.sqlite3
+
+# Redis dumps
+Redis/dump.rdb
+dump.rdb
+
+# IDE
+.idea/
+.vscode/

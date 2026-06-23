@@ -12,6 +12,34 @@ document.addEventListener('DOMContentLoaded', function() {
         info: '#0288d1'
     };
 
+    // --- helpers ---
+    function hexToRgb(hex) {
+        if (!hex || typeof hex !== 'string') return null;
+        let h = hex.replace('#', '').trim();
+        if (h.length === 3) h = h.split('').map(c => c + c).join('');
+        if (!/^[0-9a-fA-F]{6}$/.test(h)) return null;
+        const num = parseInt(h, 16);
+        return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+    }
+
+    function normalizeQrToken(token) {
+        if (!token) return '';
+        try {
+            // If it's a URL, take the last non-empty path segment as the token
+            if (/^https?:\/\//i.test(token)) {
+                const u = new URL(token);
+                const parts = u.pathname.split('/').filter(Boolean);
+                return parts[parts.length - 1] || token;
+            }
+            // Otherwise return as-is (trim spaces)
+            return String(token).trim();
+        } catch {
+            // Fallback to last slash segment if URL constructor fails
+            const parts = String(token).split('/').filter(Boolean);
+            return parts[parts.length - 1] || String(token).trim();
+        }
+    }
+
     // Get CSRF token
     function getCookie(name) {
         let cookieValue = null;
@@ -133,10 +161,14 @@ document.addEventListener('DOMContentLoaded', function() {
             scanProgress.style.display = 'block';
             scanFeedback.style.display = 'block';
             scanFeedback.textContent = 'Scanning...';
-            const infoColor = theme.info || '#007bff';  // fallback to a default blue
-            scanFeedback.style.background = `rgba(${infoColor.replace('#', '')}, 0.1)`;
+            const infoColor = theme?.info || '#007bff';
+            const infoRgb = hexToRgb(infoColor);
+            if (infoRgb) {
+                scanFeedback.style.background = `rgba(${infoRgb.r}, ${infoRgb.g}, ${infoRgb.b}, 0.1)`;
+            } else {
+                scanFeedback.style.background = 'rgba(0, 123, 255, 0.1)';
+            }
             scanFeedback.style.color = infoColor;
-            scanFeedback.style.color = theme.info;
             isScanning = true;
             scanHistory = [];
             scanHistoryList.innerHTML = '';
@@ -303,11 +335,14 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
+        // normalize token (support full URL or raw token)
+        const normalizedToken = normalizeQrToken(qrToken);
+
         if (hiddenTokenField) {
-            hiddenTokenField.value = qrToken;
+            hiddenTokenField.value = normalizedToken;
         }
-        currentQrToken = qrToken;
-        console.log('Stored QR token:', qrToken);
+        currentQrToken = normalizedToken;
+        console.log('Stored QR token:', normalizedToken);
 
         qrError.style.display = 'none';
         qrResult.style.display = 'none';
@@ -319,7 +354,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 'X-CSRFToken': getCookie('csrftoken'),
                 'X-Requested-With': 'XMLHttpRequest'
             },
-            body: JSON.stringify({ qr_token: qrToken })
+            body: JSON.stringify({ qr_token: normalizedToken })
         })
         .then(response => {
             if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
@@ -344,11 +379,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 qrBookingDate.textContent = data.booking_date ? new Date(data.booking_date).toLocaleString() : 'N/A';
                 qrTicketStatus.textContent = data.status || 'N/A';
 
-                // Visual feedback
-                qrResult.style.border = `2px solid ${theme.success}`;
+                // Visual feedback using safe RGBA from theme
+                const ok = hexToRgb(theme?.success || '#16a34a'); // fallback emerald-600
+                if (ok) {
+                    qrResult.style.border = `2px solid rgb(${ok.r}, ${ok.g}, ${ok.b})`;
+                    qrResult.style.background = `rgba(${ok.r}, ${ok.g}, ${ok.b}, 0.08)`;
+                } else {
+                    qrResult.style.border = '2px solid #16a34a';
+                    qrResult.style.background = 'rgba(22, 163, 74, 0.08)';
+                }
                 qrResult.style.borderRadius = '8px';
                 qrResult.style.padding = '10px';
-                qrResult.style.background = `rgba(${theme.success.replace('#', '')}, 0.1)`;
                 qrResult.style.transition = 'all 0.3s ease';
                 setTimeout(() => {
                     qrResult.style.border = '';
@@ -384,7 +425,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 // Add to scan history
                 const scanTime = new Date().toLocaleString();
-                scanHistory.push({ ticket_id: data.ticket_id, status: data.status, time: scanTime, qr_token: qrToken });
+                scanHistory.push({ ticket_id: data.ticket_id, status: data.status, time: scanTime, qr_token: normalizedToken });
                 const historyItem = document.createElement('li');
                 historyItem.className = 'list-group-item';
                 historyItem.style.cssText = `color: ${theme.text}; font-size: 0.9rem; border-left: 4px solid ${theme.success}; padding-left: 10px; background: ${theme.background};`;

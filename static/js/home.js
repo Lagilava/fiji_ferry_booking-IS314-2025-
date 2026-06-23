@@ -80,6 +80,20 @@
                 }
             };
         },
+        async useFetch(url, options = {}) {
+            try {
+                const response = await fetch(url, options);
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Fetch error ${response.status}: ${errorText}`);
+                }
+                const data = await response.json();
+                return { data, error: null };
+            } catch (error) {
+                logger.error('useFetch error', error, url);
+                return { data: null, error };
+            }
+        },
         getWeatherIcon(condition) {
             const icons = {
                 'sunny': '☀︎',
@@ -393,12 +407,18 @@
         }
         setupRouteSuggestions() {
             const routeInput = document.getElementById('route');
+            const routeIdInput = document.getElementById('route-id');
             const suggestions = document.getElementById('route-suggestions');
             if (!routeInput || !suggestions) return;
+            let activeSuggestionIndex = -1;
+
             routeInput.addEventListener('input', Utils.debounce(async (e) => {
+                if (routeIdInput) routeIdInput.value = '';
                 const query = e.target.value.toLowerCase().trim();
                 if (query.length < 2) {
                     suggestions.classList.add('hidden');
+                    routeInput.setAttribute('aria-expanded', 'false');
+                    routeInput.removeAttribute('aria-activedescendant');
                     return;
                 }
                 try {
@@ -406,36 +426,83 @@
                     if (!response.ok) throw new Error('Failed to fetch routes');
                     const { routes } = await response.json();
                     if (routes.length > 0) {
-                        suggestions.innerHTML = routes.slice(0, 5).map(route => `
-                            <div class="route-suggestion p-3 border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors dark:border-gray-700 dark:hover:bg-gray-800"
-                                 onclick="document.getElementById('route').value='${route.departure_port.name} to ${route.destination_port.name}'; document.getElementById('route-suggestions').classList.add('hidden');"
-                                 role="option" tabindex="0">
+                        activeSuggestionIndex = -1;
+                        suggestions.innerHTML = routes.slice(0, 5).map((route, index) => `
+                            <div id="route-option-${index}" class="route-suggestion p-3 border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors dark:border-gray-700 dark:hover:bg-gray-800"
+                                 role="option" tabindex="-1"
+                                 data-value="${route.departure_port.name} to ${route.destination_port.name}"
+                                 data-route-id="${route.id}">
                                 ${route.departure_port.name} to ${route.destination_port.name}
                             </div>
                         `).join('');
                         suggestions.classList.remove('hidden');
-                        suggestions.querySelector('.route-suggestion')?.focus();
+                        routeInput.setAttribute('aria-expanded', 'true');
+                        routeInput.removeAttribute('aria-activedescendant');
+
+                        suggestions.querySelectorAll('.route-suggestion').forEach((option, idx) => {
+                            option.addEventListener('click', () => {
+                                routeInput.value = option.getAttribute('data-value');
+                                if (routeIdInput) {
+                                    routeIdInput.value = option.getAttribute('data-route-id');
+                                }
+                                suggestions.classList.add('hidden');
+                                routeInput.setAttribute('aria-expanded', 'false');
+                                routeInput.removeAttribute('aria-activedescendant');
+                                routeInput.focus();
+                            });
+                            option.addEventListener('keydown', (ev) => {
+                                if (ev.key === 'Enter') {
+                                    ev.preventDefault();
+                                    option.click();
+                                }
+                            });
+                        });
                     } else {
                         suggestions.classList.add('hidden');
+                        routeInput.setAttribute('aria-expanded', 'false');
+                        routeInput.removeAttribute('aria-activedescendant');
                     }
                 } catch (error) {
                     console.warn('Route suggestions failed:', error);
                     suggestions.classList.add('hidden');
+                    routeInput.setAttribute('aria-expanded', 'false');
+                    routeInput.removeAttribute('aria-activedescendant');
                 }
             }, 300));
             document.addEventListener('click', (e) => {
                 if (!e.target.closest('#route') && !e.target.closest('#route-suggestions')) {
                     suggestions.classList.add('hidden');
+                    routeInput.setAttribute('aria-expanded', 'false');
+                    routeInput.removeAttribute('aria-activedescendant');
                 }
             });
             routeInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Escape') {
                     suggestions.classList.add('hidden');
+                    routeInput.setAttribute('aria-expanded', 'false');
+                    routeInput.removeAttribute('aria-activedescendant');
                     routeInput.focus();
                 }
-                if (e.key === 'ArrowDown' && !suggestions.classList.contains('hidden')) {
+                const suggestionsList = suggestions.querySelectorAll('.route-suggestion');
+                const activeId = routeInput.getAttribute('aria-activedescendant');
+                const activeOption = activeId ? document.getElementById(activeId) : null;
+                let nextIndex;
+
+                if (e.key === 'ArrowDown' && suggestionsList.length > 0) {
                     e.preventDefault();
-                    suggestions.querySelector('.route-suggestion')?.focus();
+                    const currentIndex = activeOption ? Array.from(suggestionsList).indexOf(activeOption) : -1;
+                    nextIndex = Math.min(suggestionsList.length - 1, currentIndex + 1);
+                    suggestionsList[nextIndex]?.focus();
+                    routeInput.setAttribute('aria-activedescendant', suggestionsList[nextIndex]?.id || '');
+                } else if (e.key === 'ArrowUp' && suggestionsList.length > 0) {
+                    e.preventDefault();
+                    const currentIndex = activeOption ? Array.from(suggestionsList).indexOf(activeOption) : suggestionsList.length;
+                    nextIndex = Math.max(0, currentIndex - 1);
+                    suggestionsList[nextIndex]?.focus();
+                    routeInput.setAttribute('aria-activedescendant', suggestionsList[nextIndex]?.id || '');
+                } else if (e.key === 'Enter' && activeOption) {
+                    e.preventDefault();
+                    activeOption.click();
                 }
             });
             suggestions.addEventListener('keydown', (e) => {
@@ -446,15 +513,19 @@
                     e.preventDefault();
                     const nextIndex = (currentIndex + 1) % suggestionsList.length;
                     suggestionsList[nextIndex].focus();
+                    routeInput.setAttribute('aria-activedescendant', suggestionsList[nextIndex].id);
                 } else if (e.key === 'ArrowUp') {
                     e.preventDefault();
                     const prevIndex = (currentIndex - 1 + suggestionsList.length) % suggestionsList.length;
                     suggestionsList[prevIndex].focus();
+                    routeInput.setAttribute('aria-activedescendant', suggestionsList[prevIndex].id);
                 } else if (e.key === 'Enter' && current && current.classList.contains('route-suggestion')) {
                     e.preventDefault();
                     current.click();
                 } else if (e.key === 'Escape') {
                     suggestions.classList.add('hidden');
+                    routeInput.setAttribute('aria-expanded', 'false');
+                    routeInput.removeAttribute('aria-activedescendant');
                     routeInput.focus();
                 }
             });
@@ -530,6 +601,8 @@
             const form = document.getElementById('search-form');
             if (!routeInput || !form) return false;
             routeInput.value = `${portName}-to-destination`;
+            const routeIdInput = document.getElementById('route-id');
+            if (routeIdInput) routeIdInput.value = '';
             routeInput.dispatchEvent(new Event('input', { bubbles: true }));
             form.scrollIntoView({ behavior: 'smooth', block: 'center' });
             setTimeout(() => { routeInput.focus(); routeInput.select(); }, 300);
@@ -555,6 +628,7 @@
             this.isInitialized = true;
             this.setupControls();
             this.setupThemeListener();
+            this.setupFilterSidebar();
         }
         setupThemeListener() {
             const observer = new MutationObserver(() => this.updateTheme());
@@ -599,6 +673,10 @@
                         dateInput.value = today;
                         dateInput.min = today;
                     }
+                    const routeIdInput = document.getElementById('route-id');
+                    if (routeIdInput) {
+                        routeIdInput.value = '';
+                    }
                     const url = new URL(window.location);
                     ['route', 'date', 'passengers', 'sort'].forEach(param => url.searchParams.delete(param));
                     window.history.replaceState({}, '', url);
@@ -613,7 +691,312 @@
                     window.resetSearch();
                 }
             });
+
+            // Infinite scroll + load more button
+            const loadMoreBtn = document.getElementById('load-more-schedules');
+            if (loadMoreBtn) {
+                loadMoreBtn.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    this.loadMoreSchedules();
+                });
+            }
+
+            window.addEventListener('scroll', Utils.throttle(() => {
+                if (this.isNearBottom() && loadMoreBtn && !this.isLoadingMore && !loadMoreBtn.disabled) {
+                    this.loadMoreSchedules();
+                }
+            }, 250));
         }
+
+        setupFilterSidebar() {
+            const priceMin = document.getElementById('price-min');
+            const priceMax = document.getElementById('price-max');
+            const durationMax = document.getElementById('duration-max');
+            const statusInputs = Array.from(document.querySelectorAll('input[name="status-filter"]'));
+            const applyBtn = document.getElementById('apply-filters');
+            const resetBtn = document.getElementById('reset-filters');
+            const filterStatus = document.getElementById('filter-status');
+
+            const runFilters = () => {
+                this.applyScheduleFilters();
+            };
+
+            if (priceMin) priceMin.addEventListener('input', runFilters);
+            if (priceMax) priceMax.addEventListener('input', runFilters);
+            if (durationMax) durationMax.addEventListener('change', runFilters);
+            statusInputs.forEach(input => input.addEventListener('change', runFilters));
+
+            if (applyBtn) applyBtn.addEventListener('click', runFilters);
+            if (resetBtn) resetBtn.addEventListener('click', () => {
+                if (priceMin) priceMin.value = '';
+                if (priceMax) priceMax.value = '';
+                if (durationMax) durationMax.value = '0';
+                statusInputs.forEach(input => input.checked = true);
+                this.resetAndLoadSchedules();
+            });
+
+            this.resetAndLoadSchedules();
+
+            if (filterStatus) {
+                filterStatus.textContent = 'Showing all schedules';
+            }
+            this.updateAppliedBadge();
+        }
+
+        applyScheduleFilters() {
+            // Use backend rules by reloading schedule pages; keep client message updated.
+            this.resetAndLoadSchedules();
+            this.updateAppliedBadge();
+            const filterStatus = document.getElementById('filter-status');
+            const cards = document.querySelectorAll('.schedule-card');
+            if (filterStatus) {
+                filterStatus.textContent = `${cards.length} schedules loading with current filters...`;
+            }
+        }
+
+        getCurrentFilterContext() {
+            const routeInput = document.getElementById('route')?.value.trim();
+            const routeIdInput = document.getElementById('route-id')?.value.trim();
+            const dateInput = document.getElementById('departure-date')?.value;
+            const priceMin = document.getElementById('price-min')?.value;
+            const priceMax = document.getElementById('price-max')?.value;
+            const durationMax = document.getElementById('duration-max')?.value;
+            const statusInputs = Array.from(document.querySelectorAll('input[name="status-filter"]:checked')).map(el => el.value);
+
+            return JSON.stringify({route: routeInput, route_id: routeIdInput, date: dateInput, priceMin, priceMax, durationMax, status: statusInputs.sort()});
+        }
+
+        updateAppliedBadge() {
+            const badge = document.getElementById('filter-applied-badge');
+            if (!badge) return;
+
+            const route = document.getElementById('route')?.value.trim() || 'all';
+            const date = document.getElementById('departure-date')?.value || 'all';
+            const statuses = Array.from(document.querySelectorAll('input[name="status-filter"]:checked')).map(el => el.value).sort();
+            const statusText = statuses.length > 0 ? statuses.join(',') : 'all';
+
+            badge.textContent = `Applied: route=${route || 'all'} date=${date} status=${statusText}`;
+        }
+
+        updateFilterStatus(message) {
+            const filterStatus = document.getElementById('filter-status');
+            if (!filterStatus) return;
+            filterStatus.textContent = message;
+        }
+
+        resetAndLoadSchedules() {
+            const list = document.getElementById('schedule-list');
+            const button = document.getElementById('load-more-schedules');
+            if (list) list.innerHTML = '';
+            if (button) {
+                button.style.display = '';
+                button.disabled = false;
+                // Reset to a positive value so first paged request always runs
+                button.setAttribute('data-remaining', '1');
+                const loadMoreText = document.getElementById('load-more-text');
+                if (loadMoreText) {
+                    loadMoreText.textContent = 'Load More Schedules (loading... )';
+                }
+            }
+            this.currentFilterKey = this.getCurrentFilterContext();
+            this.isLoadingMore = false;
+            this.currentOffset = 0;
+            this.updateAppliedBadge();
+            this.updateFilterStatus('Reloading schedules with applied filters...');
+            this.loadMoreSchedules();
+        }
+
+
+
+
+        isNearBottom() {
+            const threshold = 150;
+            return (window.innerHeight + window.scrollY) >= (document.body.offsetHeight - threshold);
+        }
+
+        updateProgress(total = null) {
+            const progressContainer = document.getElementById('schedule-progress-container');
+            const progressBar = document.getElementById('schedule-progress');
+            const scheduleList = document.getElementById('schedule-list');
+            if (!progressContainer || !progressBar || !scheduleList) return;
+
+            const current = document.querySelectorAll('.schedule-card').length;
+            const totalCount = total ?? parseInt(scheduleList.getAttribute('data-total') || '0', 10);
+
+            if (!totalCount) {
+                progressContainer.classList.add('hidden');
+                return;
+            }
+
+            const percent = Math.min(100, Math.round((current / totalCount) * 100));
+            progressBar.style.width = `${percent}%`;
+            progressContainer.classList.remove('hidden');
+
+            if (percent >= 100) {
+                setTimeout(() => progressContainer.classList.add('hidden'), 400);
+            }
+        }
+
+        async loadMoreSchedules() {
+            if (this.isLoadingMore) return;
+            const list = document.getElementById('schedule-list');
+            const button = document.getElementById('load-more-schedules');
+            if (!list || !button) return;
+
+            const remaining = parseInt(button.getAttribute('data-remaining') || '0', 10);
+            const offset = document.querySelectorAll('.schedule-card').length;
+
+            // Always allow initial fetch (offset 0), because filter state may change from initial totals.
+            if (offset > 0 && remaining <= 0) {
+                button.classList.add('hidden');
+                return;
+            }
+
+            this.isLoadingMore = true;
+            button.disabled = true;
+            button.innerHTML = '<span class="loading-spinner w-4 h-4 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin" aria-hidden="true"></span><span class="ml-2">Loading more schedules...</span>';
+            const progressContainer = document.getElementById('schedule-progress-container');
+            const progressBar = document.getElementById('schedule-progress');
+            if (progressContainer && progressBar) {
+                progressContainer.classList.remove('hidden');
+                progressBar.style.width = '0%';
+            }
+
+            const currentFilterKey = this.getCurrentFilterContext();
+            const limit = 6;
+            const params = new URLSearchParams();
+            params.set('offset', offset);
+            params.set('limit', limit);
+
+            const routeVal = document.getElementById('route')?.value.trim();
+            const routeIdVal = document.getElementById('route-id')?.value.trim();
+            const dateVal = document.getElementById('departure-date')?.value;
+            const durationVal = document.getElementById('duration-max')?.value;
+            const priceMinVal = document.getElementById('price-min')?.value;
+            const priceMaxVal = document.getElementById('price-max')?.value;
+            const statuses = Array.from(document.querySelectorAll('input[name="status-filter"]:checked')).map(i => i.value);
+
+            if (routeVal) params.set('route', routeVal);
+            if (routeIdVal) params.set('route_id', routeIdVal);
+            if (dateVal) params.set('date', dateVal);
+            if (durationVal && durationVal !== '0') params.set('duration_max', durationVal);
+            if (priceMinVal) params.set('price_min', priceMinVal);
+            if (priceMaxVal) params.set('price_max', priceMaxVal);
+            if (statuses.length > 0) params.set('status', statuses.join(','));
+
+            const url = `/bookings/api/paged_bookings/?${params.toString()}`;
+            console.log('[FijiFerry] loadMoreSchedules URL', url);
+
+            try {
+                const { data, error } = await Utils.useFetch(url);
+                console.log('[FijiFerry] loadMoreSchedules response', { data, error });
+                if (error) throw error;
+                const schedules = data?.schedules || [];
+                const total = data?.total ?? null;
+
+                const currentKey = this.getCurrentFilterContext();
+                if (!this.currentFilterKey) {
+                    this.currentFilterKey = currentKey;
+                }
+
+                if (this.currentFilterKey !== currentKey) {
+                    // Filter changed while load was in-flight, discard stale results and reload.
+                    this.currentFilterKey = currentKey;
+                    this.currentOffset = 0;
+                    this.resetAndLoadSchedules();
+                    return;
+                }
+
+                if (schedules.length === 0 && offset === 0) {
+                    FijiFerry.notificationManager?.show('No matching schedules found', 'warning', 3500);
+                }
+
+                schedules.forEach((schedule) => {
+                    const cardHTML = this.renderScheduleCard(schedule);
+                    list.insertAdjacentHTML('beforeend', cardHTML);
+                });
+
+                const newRemaining = data.remaining ?? Math.max(0, remaining - schedules.length);
+                button.setAttribute('data-remaining', newRemaining);
+                const text = document.getElementById('load-more-text');
+                if (text) {
+                    text.textContent = newRemaining > 0 ? `Load More Schedules (${newRemaining} remaining)` : 'All schedules loaded';
+                }
+
+                if (newRemaining <= 0 || schedules.length === 0) {
+                    button.style.display = 'none';
+                }
+
+                this.updateProgress(data.total);
+
+                // Save offset for continued paging behavior
+                this.currentOffset = offset + schedules.length;
+
+                logger.log(`Appended ${schedules.length} schedules (remaining ${newRemaining})`);
+            } catch (error) {
+                logger.error('Load more schedules failed:', error);
+                FijiFerry.notificationManager?.show('Could not load more schedules. Please try again.', 'error', 3000);
+            } finally {
+                this.isLoadingMore = false;
+                const progressContainer = document.getElementById('schedule-progress-container');
+                if (progressContainer && button && button.style.display === 'none') {
+                    progressContainer.classList.add('hidden');
+                }
+                if (button && button.style.display !== 'none') {
+                    button.disabled = false;
+                    if (document.getElementById('load-more-text')) {
+                        document.getElementById('load-more-text').textContent = `Load More Schedules (${button.getAttribute('data-remaining') || remaining} remaining)`;
+                    } else {
+                        button.innerHTML = '<i class="fas fa-plus" aria-hidden="true"></i><span style="color: black;">Load More Schedules</span>';
+                    }
+                }
+            }
+        }
+
+        renderScheduleCard(schedule) {
+            const status = schedule.status || 'scheduled';
+            const statusClass = status === 'scheduled' ? 'bg-emerald-100 text-emerald-800' : status === 'delayed' ? 'bg-yellow-100 text-yellow-800' : status === 'cancelled' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-700';
+            const statusIcon = status === 'scheduled' ? 'fa-check-circle' : status === 'delayed' ? 'fa-exclamation-triangle' : status === 'cancelled' ? 'fa-times-circle' : 'fa-clock';
+            const price = schedule.base_fare ? `FJD ${Math.round(schedule.base_fare)}` : 'Unavailable';
+            const departureTime = new Date(schedule.departure_time).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+            const seats = schedule.available_seats ?? 0;
+            const [origin, dest] = (schedule.route || '').split(' to ');
+
+            return `
+                <article class="schedule-card transition-all duration-300 hover:shadow-lg hover:-translate-y-1 border border-gray-200 rounded-xl overflow-hidden flex flex-col h-full" data-schedule-id="${schedule.id}" data-route-id="${schedule.route_id || ''}" data-price="${schedule.price ?? 0}" data-duration="${Math.round((schedule.duration ?? 0) * 60)}" data-status="${schedule.status || 'scheduled'}" role="article" aria-label="${schedule.route} departing ${departureTime}">
+                    <div class="route-info p-6 flex-grow">
+                        <header class="mb-4">
+                            <h3 class="text-xl font-bold text-gray-800 font-poppins mb-2">${origin || 'Unknown'} <span class="text-sm text-gray-400" aria-hidden="true">→</span> ${dest || 'Unknown'}</h3>
+                            <time class="departure-time text-sm text-gray-600 mb-1" datetime="${schedule.departure_time}">${departureTime}</time>
+                            <p class="ferry-name text-sm text-gray-500">${schedule.ferry_name || 'Ferry'}</p>
+                        </header>
+                        <div class="weather-info flex items-center gap-3 p-3 bg-gray-50 rounded-lg mb-4 border border-gray-100" aria-label="Weather forecast for departure">
+                            <div class="weather-icon text-2xl flex-shrink-0" aria-hidden="true">☁︎</div>
+                            <div class="weather-details flex-1 min-w-0">
+                                <div class="weather-condition font-semibold text-sm text-gray-800">Loading weather...</div>
+                                <div class="weather-meta flex gap-4 text-xs text-gray-500 mt-1 flex-wrap">
+                                    <span class="weather-temp inline-flex items-center gap-1"><i class="fas fa-thermometer-half text-emerald-500" aria-hidden="true"></i><span>--°C</span></span>
+                                    <span class="weather-wind inline-flex items-center gap-1"><i class="fas fa-wind text-blue-500" aria-hidden="true"></i><span>-- kph</span></span>
+                                    <span class="weather-precip inline-flex items-center gap-1"><i class="fas fa-cloud-rain text-gray-500" aria-hidden="true"></i><span>--%</span></span>
+                                </div>
+                            </div>
+                        </div>
+                        <dl class="schedule-meta grid grid-cols-2 gap-3 mb-4 text-sm text-gray-600">
+                            <div class="seats flex items-center gap-2 dt"><dt class="flex-shrink-0"><i class="fas fa-chair text-gray-400" aria-hidden="true"></i></dt><dd class="seats-count font-semibold text-gray-800">${seats}</dd><span class="sr-only">seats available</span></div>
+                            <div class="duration flex items-center gap-2 justify-end dt"><dt class="flex-shrink-0"><i class="fas fa-clock text-gray-400" aria-hidden="true"></i></dt><dd>${Math.round(schedule.duration || 0)}m</dd><span class="sr-only">duration</span></div>
+                        </dl>
+                    </div>
+                    <footer class="schedule-footer pt-4 border-t border-gray-200 px-6 pb-6 bg-gray-50 mt-auto">
+                        <div class="status-price flex items-center justify-between mb-4">
+                            <span class="status-badge inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold ${statusClass}"><i class="fas ${statusIcon}" aria-hidden="true"></i><span>${status.replace(/\b\w/g, l=> l.toUpperCase())}</span></span>
+                            <span class="price text-lg font-bold text-emerald-600">${price}</span>
+                        </div>
+                        <a href="/bookings/book/?schedule_id=${schedule.id}" class="book-btn w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white py-3 px-6 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1 flex items-center justify-center gap-2 text-center focus:outline-none focus:ring-2 focus:ring-emerald-500/50" aria-label="Book ferry from ${origin} to ${dest} departing ${departureTime}"><i class="fas fa-ticket-alt" aria-hidden="true"></i><span>Book Now (${seats} seats)</span></a>
+                    </footer>
+                </article>
+            `;
+        }
+
         destroy() {
             this.isInitialized = false;
         }
@@ -704,8 +1087,8 @@ class ScheduleManager {
     }
 
     init() {
+        logger.log('ScheduleManager initialized');
         this.updateWeatherDisplay();
-        setInterval(() => this.updateWeatherDisplay(), FijiFerry.config.weatherUpdateInterval);
     }
 
     async updateWeatherDisplay() {
