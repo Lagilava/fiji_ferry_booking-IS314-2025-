@@ -14,6 +14,15 @@ class BookingsConfig(AppConfig):
         """Initialize admin enhancements when app is ready - FIXED."""
         from django.conf import settings
 
+        # Server status monitor: a daemon thread bound to the server lifecycle.
+        # It self-guards so it only starts for real server processes (runserver /
+        # daphne / asgi) and never for migrate/test/shell/etc.
+        try:
+            from .monitor import start_monitor
+            start_monitor()
+        except Exception as e:
+            logger.warning(f"Server monitor failed to start: {e}")
+
         # Only initialize if explicitly enabled
         if getattr(settings, 'ADMIN_ENHANCEMENTS_ENABLED', False):
             try:

@@ -555,6 +555,10 @@ STRIPE_WEBHOOK_SECRET = config('STRIPE_WEBHOOK_SECRET', default='')
 WEATHER_API_KEY = config('WEATHER_API_KEY', default='083b420b5fbc4b248a810906252508')
 OPENWEATHERMAP_API_KEY = config('OPENWEATHERMAP_API_KEY', default='2ed7bcece5c9d7a7498be98276d933a9')
 
+# Server status monitor (in-process daemon bound to the server lifecycle)
+SERVER_MONITOR_ENABLED = config('SERVER_MONITOR_ENABLED', default=True, cast=bool)
+SERVER_MONITOR_INTERVAL = config('SERVER_MONITOR_INTERVAL', default=15, cast=int)
+
 # WebSocket specific environment variables
 WS_REDIS_HOST = config('WS_REDIS_HOST', default='localhost')
 WS_REDIS_PORT = config('WS_REDIS_PORT', default=6379, cast=int)
