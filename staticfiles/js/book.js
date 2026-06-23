@@ -1224,6 +1224,18 @@
   // =======
   // Stripe
   // =======
+  // LOG-3: stable idempotency token so rapid double-clicks / retries of the same
+  // checkout dedupe server-side instead of creating duplicate bookings/charges.
+  let _checkoutIdemKey = null;
+  function getCheckoutIdemKey() {
+    if (!_checkoutIdemKey) {
+      _checkoutIdemKey = (window.crypto && window.crypto.randomUUID)
+        ? window.crypto.randomUUID()
+        : ('idem-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+    }
+    return _checkoutIdemKey;
+  }
+
   async function createCheckout() {
     try {
       // Validate current step first
@@ -1232,6 +1244,7 @@
 
       // Build form data and create session FIRST
       const fd = collectClientForm();
+      fd.append('idempotency_key', getCheckoutIdemKey());
       const csrf = getCsrfToken();
       console.log('[Checkout] POST', urls.createCheckoutSession, 'csrftoken=', csrf ? '(present)' : '(missing)');
       const res = await fetch(urls.createCheckoutSession, {
@@ -1284,6 +1297,8 @@
         return;
       }
 
+      // Booking + session committed; a later checkout starts a fresh idempotency token.
+      _checkoutIdemKey = null;
       await stripe.redirectToCheckout({ sessionId });
     } catch (e) {
       console.error('Checkout error:', e);

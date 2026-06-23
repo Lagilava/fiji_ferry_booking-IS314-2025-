@@ -1042,6 +1042,18 @@ def create_checkout_session(request):
     errors = []
 
     try:
+        # LOG-3: idempotent checkout. A client-supplied token dedups double-submits
+        # and network retries so we never create duplicate bookings/charges.
+        idem_raw = (request.POST.get('idempotency_key') or '').strip()
+        idem_key = re.sub(r'[^A-Za-z0-9\-]', '', idem_raw)[:64] if idem_raw else ''
+        if idem_key:
+            cached_session = cache.get(f"checkout_idem:{idem_key}")
+            if cached_session:
+                return JsonResponse({'sessionId': cached_session})
+            # Serialize concurrent duplicate submits for the same token.
+            if not cache.add(f"checkout_idem_lock:{idem_key}", 1, 120):
+                return JsonResponse({'success': False, 'errors': [{'field': 'general', 'message': 'A checkout for this request is already being processed. Please wait.'}]}, status=409)
+
         # --- Extract booking data ---
         schedule_id = request.POST.get('schedule_id')
         adults = safe_int(request.POST.get('adults', 0))
@@ -1208,7 +1220,7 @@ def create_checkout_session(request):
             cancel_url=request.build_absolute_uri('/bookings/cancel/'),
             metadata={'booking_id': str(booking.id), 'guest_email': guest_email or ''},
             customer_email=customer_email,
-            idempotency_key=f"ferry-checkout-{booking.id}",
+            idempotency_key=(idem_key or f"ferry-checkout-{booking.id}"),
         )
 
         booking.stripe_session_id = session.id
@@ -1216,6 +1228,10 @@ def create_checkout_session(request):
 
         request.session['booking_id'] = booking.id
         request.session['stripe_session_id'] = session.id
+
+        # LOG-3: remember the result so an immediate re-submit returns this same session.
+        if idem_key:
+            cache.set(f"checkout_idem:{idem_key}", session.id, 3600)
 
         return JsonResponse({'sessionId': session.id})
 
@@ -2466,6 +2482,9 @@ def _display_name(user):
 def payment_success(request):
     booking_id = request.session.get('booking_id')
     session_id = request.GET.get('session_id') or request.session.get('stripe_session_id')
+    # Capability actually presented by the requester (URL or their own session),
+    # captured before any recovery from the booking record overwrites session_id.
+    presented_session_id = session_id
 
     logger.debug(f"Payment success: booking_id={booking_id}, session_id={session_id}")
 
@@ -2513,17 +2532,25 @@ def payment_success(request):
         messages.error(request, "Booking not found. Please contact support.")
         return redirect('bookings:booking_history')
 
-    # === 3. AUTHORIZATION – GUEST EMAIL MUST BE IN SESSION ===
+    # === 3. AUTHORIZATION ===
     if request.user.is_authenticated:
-        if booking.user != request.user:
+        if not (request.user.is_staff or booking.user_id == request.user.id):
             logger.error(f"Authorization failed: User {request.user} not authorized for booking {booking_id}")
             return HttpResponseForbidden("You are not authorized to view this booking.")
     else:
-        # CRITICAL: Ensure guest_email is in session BEFORE checking
-        if booking.guest_email:
-            request.session['guest_email'] = booking.guest_email
-        if booking.guest_email != request.session.get('guest_email'):
-            logger.error(f"Authorization failed: Guest email mismatch for booking {booking_id}")
+        # SEC: a guest is authorized either by a matching verified guest_email
+        # already in their session, OR by presenting a valid Stripe session_id —
+        # an unguessable capability that is verified against this booking's
+        # metadata in step 5 below. We must NOT self-assign the session email
+        # (that previously made the check always pass).
+        guest_session_ok = (
+            bool(booking.guest_email)
+            and request.session.get('guest_email') == booking.guest_email
+        )
+        # Only a session_id the requester actually presented counts as a capability —
+        # not one recovered from the target booking's own record.
+        if not (guest_session_ok or presented_session_id):
+            logger.error(f"Authorization failed: guest not authorized for booking {booking_id}")
             return HttpResponseForbidden("You are not authorized to view this booking.")
 
     if booking.evaluated_status == 'cancelled':
