@@ -1,786 +1,213 @@
 {% extends 'base.html' %}
 {% load static %}
 
+{% block title %}Create Account · Fiji Ferry{% endblock %}
+
 {% block content %}
-<div class="register-wrapper">
-    <div class="register-card">
-        <div class="register-header">
-            <div class="brand-icon">
-                <i class="fas fa-rocket"></i>
-            </div>
-            <h1>Create Account</h1>
-            <p>Start your journey with us today</p>
-        </div>
-
-        {# Global flash messages #}
-        {% if messages %}
-        <div class="messages" id="messages" aria-live="polite">
-            {% for message in messages %}
-            {% if "Registration failed" not in message %}
-            <div class="alert animate__animated animate__fadeInUp">{{ message }}</div>
-            {% endif %}
-            {% endfor %}
-        </div>
-        {% endif %}
-
-        <form method="post" novalidate id="register-form">
-            {% csrf_token %}
-
-            {# Non-field errors #}
-            {% if form.non_field_errors %}
-            <div class="form-alert error animate__animated animate__fadeIn" id="non-field-errors" aria-live="assertive">
-                {% for err in form.non_field_errors %}
-                <div><i class="fas fa-exclamation-circle"></i> {{ err }}</div>
-                {% endfor %}
-            </div>
-            {% endif %}
-
-            <!-- Username -->
-            <div class="input-group">
-                {{ form.username }}
-                <label for="id_username">
-                    <i class="fas fa-user"></i> Username
-                </label>
-                <span class="error-message" id="username-error" aria-live="polite">
-                    {% if form.username.errors %}
-                    {{ form.username.errors|striptags }}
-                    {% endif %}
-                </span>
-            </div>
-
-            <!-- Email -->
-            <div class="input-group">
-                {{ form.email }}
-                <label for="id_email">
-                    <i class="fas fa-envelope"></i> Email
-                </label>
-                <span class="error-message" id="email-error" aria-live="polite">
-                    {% if form.email.errors %}
-                    {{ form.email.errors|striptags }}
-                    {% endif %}
-                </span>
-            </div>
-
-            <!-- Password -->
-            <div class="input-group password-group">
-                {{ form.password1 }}
-                <label for="id_password1">
-                    <i class="fas fa-lock"></i> Password
-                </label>
-                <button type="button" class="toggle-password" aria-label="Toggle password visibility">
-                    <i class="fas fa-eye"></i>
-                </button>
-
-                <div class="password-strength" id="password-strength">
-                    <div class="strength-track">
-                        <div class="strength-bar" id="strength-bar"></div>
-                    </div>
-                    <span class="strength-text" id="strength-text">Enter a strong password</span>
-                </div>
-
-                <span class="error-message" id="password1-error" aria-live="polite">
-                    {% if form.password1.errors %}
-                    {{ form.password1.errors|striptags }}
-                    {% endif %}
-                </span>
-            </div>
-
-            <!-- Confirm Password -->
-            <div class="input-group">
-                {{ form.password2 }}
-                <label for="id_password2">
-                    <i class="fas fa-check-circle"></i> Confirm Password
-                </label>
-                <span class="error-message" id="password2-error" aria-live="polite">
-                    {% if form.password2.errors %}
-                    {{ form.password2.errors|striptags }}
-                    {% endif %}
-                </span>
-            </div>
-
-            <button type="submit" class="auth-button">
-                <span>Get Started</span>
-                <i class="fas fa-arrow-right"></i>
-            </button>
-        </form>
-
-        <div class="login-link">
-            <span>Already have an account?</span>
-            <a href="{% url 'accounts:login' %}" class="link-hover">Sign in</a>
-        </div>
+<div class="auth-wrapper">
+  <div class="auth-card">
+    <div class="auth-header">
+      <div class="brand-icon"><i class="fas fa-ship"></i></div>
+      <h1>Create Account</h1>
+      <p>Start your island adventure with us today 🌊</p>
     </div>
+
+    <form method="post" action="{% url 'accounts:register' %}" novalidate id="register-form">
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+      <div class="form-alert error" id="non-field-errors" aria-live="assertive">
+        {% for err in form.non_field_errors %}
+          <div><i class="fas fa-exclamation-circle"></i>{{ err }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <!-- First / Last name -->
+      <div class="input-row">
+        <div class="input-group">
+          {{ form.first_name }}
+          <label for="id_first_name"><i class="fas fa-id-card"></i> First name</label>
+          <span class="error-message" id="first_name-error">{% if form.first_name.errors %}{{ form.first_name.errors|striptags }}{% endif %}</span>
+        </div>
+        <div class="input-group">
+          {{ form.last_name }}
+          <label for="id_last_name"><i class="fas fa-id-card"></i> Last name</label>
+          <span class="error-message" id="last_name-error">{% if form.last_name.errors %}{{ form.last_name.errors|striptags }}{% endif %}</span>
+        </div>
+      </div>
+
+      <!-- Username -->
+      <div class="input-group">
+        {{ form.username }}
+        <label for="id_username"><i class="fas fa-user"></i> Username</label>
+        <span class="error-message" id="username-error">{% if form.username.errors %}{{ form.username.errors|striptags }}{% endif %}</span>
+      </div>
+
+      <!-- Email -->
+      <div class="input-group">
+        {{ form.email }}
+        <label for="id_email"><i class="fas fa-envelope"></i> Email</label>
+        <span class="error-message" id="email-error">{% if form.email.errors %}{{ form.email.errors|striptags }}{% endif %}</span>
+      </div>
+
+      <!-- Password -->
+      <div class="input-group password-group">
+        {{ form.password1 }}
+        <label for="id_password1"><i class="fas fa-lock"></i> Password</label>
+        <button type="button" class="toggle-password" aria-label="Toggle password visibility">
+          <i class="fas fa-eye"></i>
+        </button>
+        <div class="password-strength" id="password-strength">
+          <div class="strength-track"><div class="strength-bar" id="strength-bar"></div></div>
+          <span class="strength-text" id="strength-text">Enter a password</span>
+        </div>
+        <span class="error-message" id="password1-error">{% if form.password1.errors %}{{ form.password1.errors|striptags }}{% endif %}</span>
+      </div>
+
+      <!-- Confirm Password -->
+      <div class="input-group">
+        {{ form.password2 }}
+        <label for="id_password2"><i class="fas fa-check-circle"></i> Confirm Password</label>
+        <span class="error-message" id="password2-error">{% if form.password2.errors %}{{ form.password2.errors|striptags }}{% endif %}</span>
+      </div>
+
+      <button type="submit" class="auth-button">
+        <span>Get Started</span> <i class="fas fa-arrow-right"></i>
+      </button>
+    </form>
+
+    <p class="auth-links">
+      Already have an account? <a href="{% url 'accounts:login' %}" class="link-hover">Sign in</a>
+    </p>
+    <p class="auth-links">
+      <a href="{% url 'home' %}" class="link-hover">← Back to Home</a>
+    </p>
+  </div>
 </div>
 {% endblock %}
 
 {% block extra_css %}
-<style>
-    /* ─── CSS Variables ─── */
-    :root {
-        --primary: #6C63FF;
-        --primary-light: #8B83FF;
-        --primary-dark: #5A52D5;
-        --primary-gradient: linear-gradient(135deg, #63a4ff49 0%, #613d9e32 100%);
-        --success: #00D4AA;
-        --warning: #FFB800;
-        --danger: #FF6B6B;
-        --bg-start: #1c87c56d;
-        --bg-end: #2e779c6d;
-        --card-bg: rgba(255, 255, 255, 0.06);
-        --card-border: rgba(255, 255, 255, 0.10);
-        --text-primary: #FFFFFF;
-        --text-secondary: rgba(255, 255, 255, 0.849);
-        --text-muted: rgba(255, 255, 255, 0.831);
-        --input-bg: rgba(121, 125, 249, 0.148);
-        --input-border: rgba(255, 255, 255, 0.12);
-        --input-focus-border: #6C63FF;
-        --shadow-glow: 0 25px 60px rgba(255, 221, 99, 0.25);
-        --radius: 16px;
-        --transition: 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-
-    /* ─── Wrapper ─── */
-    .register-wrapper {
-        min-height: 100vh;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        padding: 40px 20px;
-        background: radial-gradient(ellipse at 20% 50%, #2A1F5E 0%, #0F0A1E 70%);
-        position: relative;
-        overflow: hidden;
-    }
-
-    /* Animated background orbs */
-    .register-wrapper::before,
-    .register-wrapper::after {
-        content: '';
-        position: absolute;
-        border-radius: 50%;
-        filter: blur(80px);
-        opacity: 0.50;
-        pointer-events: none;
-    }
-    .register-wrapper::before {
-        width: 500px;
-        height: 500px;
-        top: -150px;
-        right: -150px;
-        background: #6b63ff4e;
-    }
-    .register-wrapper::after {
-        width: 400px;
-        height: 400px;
-        bottom: -100px;
-        left: -100px;
-        background: #00d4aa49;
-        opacity: 0.15;
-    }
-
-    /* ─── Card ─── */
-    .register-card {
-        position: relative;
-        width: 100%;
-        max-width: 440px;
-        background: transparent !important;  
-        backdrop-filter: blur(24px);
-        -webkit-backdrop-filter: blur(24px);
-        border: 1px solid var(--card-border);
-        border-radius: var(--radius);
-        padding: 44px 36px 36px;
-        box-shadow: var(--shadow-glow), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-        animation: cardEnter 0.7s ease-out forwards;
-        z-index: 1;
-    }
-
-    @keyframes cardEnter {
-        0% {
-            opacity: 0;
-            transform: translateY(40px) scale(0.96);
-        }
-        100% {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-        }
-    }
-
-    /* Subtle glass edge glow */
-    .register-card::after {
-        content: '';
-        position: absolute;
-        inset: -1px;
-        border-radius: var(--radius);
-        padding: 1px;
-        background: linear-gradient(135deg, rgba(108, 99, 255, 0.30), rgba(0, 212, 170, 0.15), rgba(108, 99, 255, 0.05));
-        mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-        -webkit-mask-composite: destination-out;
-        mask-composite: exclude;
-        pointer-events: none;
-    }
-
-    /* ─── Header ─── */
-    .register-header {
-        text-align: center;
-        margin-bottom: 32px;
-    }
-
-    .brand-icon {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 64px;
-        height: 64px;
-        border-radius: 50%;
-        background: var(--primary-gradient);
-        color: #fff;
-        font-size: 28px;
-        margin-bottom: 16px;
-        box-shadow: 0 12px 32px rgba(108, 99, 255, 0.35);
-        transition: transform 0.4s ease;
-    }
-    .register-card:hover .brand-icon {
-        transform: scale(1.04) rotate(-2deg);
-    }
-
-    .register-header h1 {
-        font-size: 1.75rem;
-        font-weight: 700;
-        color: var(--text-primary);
-        letter-spacing: -0.02em;
-        margin: 0 0 6px;
-    }
-    .register-header p {
-        color: var(--text-secondary);
-        font-size: 0.95rem;
-        margin: 0;
-        font-weight: 400;
-    }
-
-    /* ─── Alerts ─── */
-    .messages .alert {
-        background: rgba(108, 99, 255, 0.15);
-        border: 1px solid rgba(108, 99, 255, 0.20);
-        color: #C8C4FF;
-        padding: 10px 14px;
-        border-radius: 10px;
-        font-size: 0.90rem;
-        margin-bottom: 16px;
-        backdrop-filter: blur(4px);
-    }
-
-    .form-alert.error {
-        background: rgba(255, 107, 107, 0.12);
-        border: 1px solid rgba(255, 107, 107, 0.25);
-        color: #FFB3B3;
-        padding: 10px 14px;
-        border-radius: 10px;
-        margin-bottom: 18px;
-        font-size: 0.90rem;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-    .form-alert.error i {
-        color: var(--danger);
-    }
-
-    /* ─── Input Groups ─── */
-    .input-group {
-        position: relative;
-        margin-bottom: 24px;
-    }
-
-    .input-group input {
-        width: 100%;
-        padding: 14px 16px 14px 44px;
-        background: var(--input-bg);
-        border: 1.5px solid var(--input-border);
-        border-radius: 12px;
-        color: var(--text-primary);
-        font-size: 0.95rem;
-        outline: none;
-        transition: all var(--transition);
-        box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.10);
-    }
-    .input-group input::placeholder {
-        color: transparent;
-    }
-    .input-group input:focus {
-        border-color: var(--input-focus-border);
-        box-shadow: 0 0 0 4px rgba(108, 99, 255, 0.15), inset 0 2px 4px rgba(0, 0, 0, 0.05);
-        background: rgba(255, 255, 255, 0.08);
-    }
-    .input-group input:focus+label,
-    .input-group input:not(:placeholder-shown)+label {
-        top: -10px;
-        left: 12px;
-        font-size: 0.72rem;
-        color: var(--primary-light);
-        background: rgba(15, 10, 30, 0.90);
-        padding: 0 8px;
-        border-radius: 6px;
-        letter-spacing: 0.02em;
-        backdrop-filter: blur(4px);
-    }
-
-    .input-group label {
-        position: absolute;
-        top: 50%;
-        left: 16px;
-        transform: translateY(-50%);
-        color: var(--text-muted);
-        font-size: 0.92rem;
-        font-weight: 450;
-        transition: all var(--transition);
-        pointer-events: none;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        white-space: nowrap;
-    }
-    .input-group label i {
-        font-size: 0.85rem;
-        opacity: 0.7;
-    }
-
-    /* Error state for inputs */
-    .input-group.error input {
-        border-color: var(--danger);
-        box-shadow: 0 0 0 4px rgba(255, 107, 107, 0.12);
-    }
-    .input-group.error label {
-        color: var(--danger);
-    }
-
-    /* ─── Error Message ─── */
-    .error-message {
-        display: block;
-        font-size: 0.80rem;
-        color: var(--danger);
-        margin-top: 6px;
-        padding-left: 4px;
-        min-height: 20px;
-        opacity: 0;
-        transition: opacity 0.3s ease;
-    }
-    .error-message.show {
-        opacity: 1;
-    }
-
-    /* ─── Password Group ─── */
-    .password-group input {
-        padding-right: 48px;
-    }
-
-    .toggle-password {
-        position: absolute;
-        top: 50%;
-        right: 14px;
-        transform: translateY(-50%);
-        background: none;
-        border: none;
-        color: var(--text-muted);
-        cursor: pointer;
-        font-size: 1rem;
-        padding: 4px;
-        transition: color var(--transition);
-        z-index: 2;
-        line-height: 1;
-    }
-    .toggle-password:hover {
-        color: var(--text-primary);
-    }
-    .toggle-password:focus-visible {
-        outline: 2px solid var(--primary);
-        border-radius: 6px;
-    }
-
-    /* ─── Password Strength ─── */
-    .password-strength {
-        display: flex;
-        align-items: center;
-        gap: 14px;
-        margin-top: 10px;
-    }
-    .strength-track {
-        flex: 1;
-        height: 4px;
-        background: rgba(255, 255, 255, 0.10);
-        border-radius: 4px;
-        overflow: hidden;
-        position: relative;
-    }
-    .strength-bar {
-        height: 100%;
-        width: 0%;
-        border-radius: 4px;
-        transition: width 0.5s ease, background 0.5s ease;
-        background: var(--text-muted);
-    }
-    .strength-bar.weak {
-        width: 30%;
-        background: var(--danger);
-    }
-    .strength-bar.medium {
-        width: 60%;
-        background: var(--warning);
-    }
-    .strength-bar.strong {
-        width: 100%;
-        background: var(--success);
-    }
-
-    .strength-text {
-        font-size: 0.75rem;
-        color: var(--text-muted);
-        font-weight: 450;
-        min-width: 100px;
-        text-align: right;
-        letter-spacing: 0.01em;
-    }
-    .strength-text.weak {
-        color: var(--danger);
-    }
-    .strength-text.medium {
-        color: var(--warning);
-    }
-    .strength-text.strong {
-        color: var(--success);
-    }
-
-    /* ─── Submit Button ─── */
-    .auth-button {
-        width: 100%;
-        padding: 15px 20px;
-        border: none;
-        border-radius: 12px;
-        background: var(--primary-gradient);
-        color: #fff;
-        font-size: 1rem;
-        font-weight: 600;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 12px;
-        transition: all var(--transition);
-        position: relative;
-        overflow: hidden;
-        box-shadow: 0 8px 24px rgba(108, 99, 255, 0.30);
-        margin-top: 4px;
-    }
-    .auth-button::before {
-        content: '';
-        position: absolute;
-        inset: 0;
-        background: linear-gradient(135deg, rgba(255, 255, 255, 0.10), transparent 60%);
-        pointer-events: none;
-    }
-    .auth-button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 12px 36px rgba(108, 99, 255, 0.45);
-    }
-    .auth-button:active {
-        transform: scale(0.97);
-    }
-    .auth-button i {
-        transition: transform var(--transition);
-    }
-    .auth-button:hover i {
-        transform: translateX(4px);
-    }
-    .auth-button:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
-        transform: none !important;
-    }
-
-    /* ─── Login Link ─── */
-    .login-link {
-        text-align: center;
-        margin-top: 28px;
-        color: var(--text-secondary);
-        font-size: 0.90rem;
-        display: flex;
-        justify-content: center;
-        gap: 6px;
-        flex-wrap: wrap;
-    }
-    .login-link .link-hover {
-        color: var(--primary-light);
-        font-weight: 600;
-        text-decoration: none;
-        transition: color var(--transition);
-        position: relative;
-    }
-    .login-link .link-hover::after {
-        content: '';
-        position: absolute;
-        bottom: -2px;
-        left: 0;
-        width: 0;
-        height: 1.5px;
-        background: var(--primary-light);
-        transition: width var(--transition);
-    }
-    .login-link .link-hover:hover {
-        color: #A89FFF;
-    }
-    .login-link .link-hover:hover::after {
-        width: 100%;
-    }
-
-    /* ─── Responsive ─── */
-    @media (max-width: 480px) {
-        .register-card {
-            padding: 32px 20px 28px;
-        }
-        .register-header h1 {
-            font-size: 1.50rem;
-        }
-        .input-group input {
-            padding: 12px 14px 12px 40px;
-            font-size: 0.90rem;
-        }
-        .input-group label {
-            font-size: 0.85rem;
-            left: 14px;
-        }
-        .brand-icon {
-            width: 54px;
-            height: 54px;
-            font-size: 22px;
-        }
-        .auth-button {
-            padding: 13px 16px;
-            font-size: 0.95rem;
-        }
-    }
-
-    @media (max-width: 380px) {
-        .register-card {
-            padding: 24px 16px 20px;
-        }
-        .password-strength {
-            flex-wrap: wrap;
-            gap: 6px;
-        }
-        .strength-text {
-            min-width: auto;
-            text-align: left;
-            font-size: 0.70rem;
-        }
-    }
-
-    /* ─── Autofill styles ─── */
-    .input-group input:-webkit-autofill {
-        -webkit-box-shadow: 0 0 0 1000px rgba(30, 20, 60, 0.95) inset !important;
-        -webkit-text-fill-color: #fff !important;
-        border-color: rgba(108, 99, 255, 0.30);
-    }
-    .input-group input:-webkit-autofill:focus {
-        -webkit-box-shadow: 0 0 0 1000px rgba(30, 20, 60, 0.95) inset, 0 0 0 4px rgba(108, 99, 255, 0.15) !important;
-    }
-
-    /* ─── Focus visible for a11y ─── */
-    .input-group input:focus-visible {
-        outline: 2px solid var(--primary);
-        outline-offset: 2px;
-    }
-    .auth-button:focus-visible {
-        outline: 2px solid #fff;
-        outline-offset: 3px;
-    }
-</style>
+  {% include 'accounts/_auth_card_styles.html' %}
 {% endblock %}
 
 {% block extra_js %}
 <script>
-    document.addEventListener('DOMContentLoaded', () => {
-        const form = document.getElementById('register-form');
+document.addEventListener('DOMContentLoaded', () => {
+  const form = document.getElementById('register-form');
 
-        // ── DOM refs ──
-        const username = document.getElementById('id_username');
-        const email = document.getElementById('id_email');
-        const pass1 = document.getElementById('id_password1');
-        const pass2 = document.getElementById('id_password2');
+  const username = document.getElementById('id_username');
+  const email = document.getElementById('id_email');
+  const pass1 = document.getElementById('id_password1');
+  const pass2 = document.getElementById('id_password2');
 
-        const usernameError = document.getElementById('username-error');
-        const emailError = document.getElementById('email-error');
-        const pass1Error = document.getElementById('password1-error');
-        const pass2Error = document.getElementById('password2-error');
+  const usernameError = document.getElementById('username-error');
+  const emailError = document.getElementById('email-error');
+  const pass1Error = document.getElementById('password1-error');
+  const pass2Error = document.getElementById('password2-error');
 
-        const strengthBar = document.getElementById('strength-bar');
-        const strengthText = document.getElementById('strength-text');
+  const strengthBar = document.getElementById('strength-bar');
+  const strengthText = document.getElementById('strength-text');
 
-        const toggleBtn = document.querySelector('.toggle-password');
-        const toggleIcon = toggleBtn?.querySelector('i');
+  const toggleBtn = document.querySelector('.toggle-password');
+  const toggleIcon = toggleBtn?.querySelector('i');
 
-        // ── Helpers ──
-        const showError = (el, msg) => {
-            if (!el) return;
-            el.textContent = msg;
-            el.classList.add('show');
-            const group = el.closest?.('.input-group');
-            if (group) group.classList.add('error');
-        };
-        const clearError = (el) => {
-            if (!el) return;
-            el.textContent = '';
-            el.classList.remove('show');
-            const group = el.closest?.('.input-group');
-            if (group) group.classList.remove('error');
-        };
+  const showError = (el, msg) => {
+    if (!el) return;
+    el.textContent = msg; el.classList.add('show');
+    el.closest('.input-group')?.classList.add('error');
+  };
+  const clearError = (el) => {
+    if (!el) return;
+    el.textContent = ''; el.classList.remove('show');
+    el.closest('.input-group')?.classList.remove('error');
+  };
 
-        // Show server errors that are already present
-        [usernameError, emailError, pass1Error, pass2Error].forEach(el => {
-            if (el && el.textContent.trim().length) {
-                el.classList.add('show');
-                const group = el.closest?.('.input-group');
-                if (group) group.classList.add('error');
-            }
-        });
+  // Surface any server-rendered errors
+  [usernameError, emailError, pass1Error, pass2Error].forEach(el => {
+    if (el && el.textContent.trim().length) {
+      el.classList.add('show');
+      el.closest('.input-group')?.classList.add('error');
+    }
+  });
 
-        // ── Password Toggle ──
-        if (toggleBtn && pass1) {
-            toggleBtn.addEventListener('click', () => {
-                const isPassword = pass1.getAttribute('type') === 'password';
-                pass1.setAttribute('type', isPassword ? 'text' : 'password');
-                if (toggleIcon) {
-                    toggleIcon.classList.toggle('fa-eye', !isPassword);
-                    toggleIcon.classList.toggle('fa-eye-slash', isPassword);
-                }
-                toggleBtn.setAttribute('aria-label', isPassword ? 'Hide password' : 'Show password');
-                // Keep cursor position
-                const len = pass1.value.length;
-                pass1.focus({ preventScroll: true });
-                if (len) pass1.setSelectionRange(len, len);
-            });
-        }
-
-        // ── Live: Username ──
-        username?.addEventListener('input', () => {
-            const val = username.value.trim();
-            if (val.length === 0) {
-                clearError(usernameError);
-            } else if (val.length < 3) {
-                showError(usernameError, 'Minimum 3 characters');
-            } else if (!/^[a-zA-Z0-9_]+$/.test(val)) {
-                showError(usernameError, 'Letters, numbers, underscores only');
-            } else {
-                clearError(usernameError);
-            }
-        });
-
-        // ── Live: Email ──
-        email?.addEventListener('input', () => {
-            const val = email.value.trim();
-            if (val.length === 0) {
-                clearError(emailError);
-            } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) {
-                showError(emailError, 'Enter a valid email address');
-            } else {
-                clearError(emailError);
-            }
-        });
-
-        // ── Live: Password strength & errors ──
-        pass1?.addEventListener('input', () => {
-            const val = pass1.value;
-            const len = val.length;
-
-            // Strength
-            let level = 'weak';
-            let label = 'Weak';
-            if (len >= 8 && /[A-Z]/.test(val) && /[0-9]/.test(val) && /[^a-zA-Z0-9]/.test(val)) {
-                level = 'strong';
-                label = 'Strong';
-            } else if (len >= 6 && /[A-Z]/.test(val) && /[0-9]/.test(val)) {
-                level = 'medium';
-                label = 'Medium';
-            } else if (len >= 4) {
-                level = 'weak';
-                label = 'Weak';
-            } else {
-                level = '';
-                label = 'Enter a strong password';
-            }
-
-            strengthBar.className = 'strength-bar' + (level ? ' ' + level : '');
-            strengthText.textContent = label;
-            strengthText.className = 'strength-text' + (level ? ' ' + level : '');
-
-            // Clear password error if user types
-            if (len >= 6) clearError(pass1Error);
-        });
-
-        // ── Live: Confirm password ──
-        pass2?.addEventListener('input', () => {
-            const p1 = pass1?.value || '';
-            const p2 = pass2.value;
-            if (p2.length === 0) {
-                clearError(pass2Error);
-            } else if (p2 !== p1) {
-                showError(pass2Error, 'Passwords do not match');
-            } else {
-                clearError(pass2Error);
-            }
-        });
-
-        // ── Submit: final client check ──
-        form.addEventListener('submit', (e) => {
-            let invalid = false;
-
-            // Username
-            const uname = username?.value.trim() || '';
-            if (uname.length < 3) {
-                showError(usernameError, 'Username must be at least 3 characters');
-                invalid = true;
-            } else if (!/^[a-zA-Z0-9_]+$/.test(uname)) {
-                showError(usernameError, 'Letters, numbers, underscores only');
-                invalid = true;
-            }
-
-            // Email
-            const em = email?.value.trim() || '';
-            if (em.length && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) {
-                showError(emailError, 'Enter a valid email address');
-                invalid = true;
-            } else if (!em.length) {
-                showError(emailError, 'Email is required');
-                invalid = true;
-            }
-
-            // Password
-            const p1 = pass1?.value || '';
-            if (p1.length < 6) {
-                showError(pass1Error, 'Password must be at least 6 characters');
-                invalid = true;
-            }
-
-            // Confirm
-            const p2 = pass2?.value || '';
-            if (p2 !== p1) {
-                showError(pass2Error, 'Passwords do not match');
-                invalid = true;
-            }
-
-            if (invalid) {
-                e.preventDefault();
-                // Scroll to first error
-                const firstErr = document.querySelector('.error-message.show');
-                if (firstErr) {
-                    firstErr.closest('.input-group')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }
-            }
-        });
-
-        // ── Clear field errors on focus ──
-        document.querySelectorAll('.input-group input').forEach(inp => {
-            inp.addEventListener('focus', () => {
-                const group = inp.closest('.input-group');
-                if (group) group.classList.remove('error');
-            });
-        });
+  // Password toggle
+  if (toggleBtn && pass1) {
+    toggleBtn.addEventListener('click', () => {
+      const isPassword = pass1.getAttribute('type') === 'password';
+      pass1.setAttribute('type', isPassword ? 'text' : 'password');
+      toggleIcon?.classList.toggle('fa-eye', !isPassword);
+      toggleIcon?.classList.toggle('fa-eye-slash', isPassword);
+      const len = pass1.value.length;
+      pass1.focus({ preventScroll: true });
+      if (len) pass1.setSelectionRange(len, len);
     });
+  }
+
+  // Live: username
+  username?.addEventListener('input', () => {
+    const val = username.value.trim();
+    if (!val.length) clearError(usernameError);
+    else if (val.length < 3) showError(usernameError, 'Minimum 3 characters');
+    else if (!/^[a-zA-Z0-9_]+$/.test(val)) showError(usernameError, 'Letters, numbers, underscores only');
+    else clearError(usernameError);
+  });
+
+  // Live: email
+  email?.addEventListener('input', () => {
+    const val = email.value.trim();
+    if (!val.length) clearError(emailError);
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) showError(emailError, 'Enter a valid email address');
+    else clearError(emailError);
+  });
+
+  // Live: password strength
+  pass1?.addEventListener('input', () => {
+    const val = pass1.value, len = val.length;
+    let level = '', label = 'Enter a password';
+    if (len >= 8 && /[A-Z]/.test(val) && /[0-9]/.test(val) && /[^a-zA-Z0-9]/.test(val)) { level = 'strong'; label = 'Strong'; }
+    else if (len >= 6 && /[A-Z]/.test(val) && /[0-9]/.test(val)) { level = 'medium'; label = 'Medium'; }
+    else if (len >= 4) { level = 'weak'; label = 'Weak'; }
+    strengthBar.className = 'strength-bar' + (level ? ' ' + level : '');
+    strengthText.textContent = label;
+    strengthText.className = 'strength-text' + (level ? ' ' + level : '');
+    if (len >= 6) clearError(pass1Error);
+  });
+
+  // Live: confirm password
+  pass2?.addEventListener('input', () => {
+    const p1 = pass1?.value || '', p2 = pass2.value;
+    if (!p2.length) clearError(pass2Error);
+    else if (p2 !== p1) showError(pass2Error, 'Passwords do not match');
+    else clearError(pass2Error);
+  });
+
+  // Submit: final client check
+  form.addEventListener('submit', (e) => {
+    let invalid = false;
+    const uname = username?.value.trim() || '';
+    if (uname.length < 3) { showError(usernameError, 'Username must be at least 3 characters'); invalid = true; }
+    else if (!/^[a-zA-Z0-9_]+$/.test(uname)) { showError(usernameError, 'Letters, numbers, underscores only'); invalid = true; }
+
+    const em = email?.value.trim() || '';
+    if (!em.length) { showError(emailError, 'Email is required'); invalid = true; }
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) { showError(emailError, 'Enter a valid email address'); invalid = true; }
+
+    const p1 = pass1?.value || '';
+    if (p1.length < 6) { showError(pass1Error, 'Password must be at least 6 characters'); invalid = true; }
+    if ((pass2?.value || '') !== p1) { showError(pass2Error, 'Passwords do not match'); invalid = true; }
+
+    if (invalid) {
+      e.preventDefault();
+      document.querySelector('.error-message.show')?.closest('.input-group')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  });
+
+  // Clear field error on focus
+  document.querySelectorAll('.input-group input').forEach(inp => {
+    inp.addEventListener('focus', () => inp.closest('.input-group')?.classList.remove('error'));
+  });
+});
 </script>
 {% endblock %}

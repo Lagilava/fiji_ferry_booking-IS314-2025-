@@ -1,21 +1,16 @@
 {% extends 'base.html' %}
 {% load static %}
 
+{% block title %}Login · Fiji Ferry{% endblock %}
+
 {% block content %}
-<div class="login-wrapper">
-  <div class="login-card">
-    <div class="login-header">
+<div class="auth-wrapper">
+  <div class="auth-card">
+    <div class="auth-header">
+      <div class="brand-icon"><i class="fas fa-anchor"></i></div>
       <h1>Welcome Back</h1>
       <p>Log in to continue your tropical journey 🌴</p>
     </div>
-
-    {% if messages %}
-      <div class="messages" id="messages">
-        {% for message in messages %}
-          <div class="alert animate__animated animate__fadeInUp">{{ message }}</div>
-        {% endfor %}
-      </div>
-    {% endif %}
 
     <form method="post" action="{% url 'accounts:login' %}" novalidate id="login-form">
       {% csrf_token %}
@@ -23,14 +18,14 @@
       <!-- Username or Email -->
       <div class="input-group">
         <input type="text" name="identifier" id="identifier" placeholder=" " required autocomplete="username">
-        <label for="identifier">Username or Email</label>
+        <label for="identifier"><i class="fas fa-user"></i> Username or Email</label>
         <span class="error-message" id="identifier-error"></span>
       </div>
 
       <!-- Password -->
       <div class="input-group password-group">
         <input type="password" name="password" id="password" placeholder=" " required autocomplete="current-password">
-        <label for="password">Password</label>
+        <label for="password"><i class="fas fa-lock"></i> Password</label>
         <button type="button" class="toggle-password" aria-label="Toggle password visibility">
           <i class="fas fa-eye"></i>
         </button>
@@ -46,10 +41,10 @@
       </button>
     </form>
 
-    <p class="register-link">
+    <p class="auth-links">
       Don’t have an account? <a href="{% url 'accounts:register' %}" class="link-hover">Register</a>
     </p>
-    <p class="home-link">
+    <p class="auth-links">
       <a href="{% url 'home' %}" class="link-hover">← Back to Home</a>
     </p>
   </div>
@@ -57,198 +52,7 @@
 {% endblock %}
 
 {% block extra_css %}
-<style>
-:root {
-  --primary: #2563eb;
-  --primary-hover: #1d4ed8;
-  --success: #10b981;
-  --warning: #fbbf24;
-  --danger: #ef4444;
-}
-
-/* === Layout === */
-.login-wrapper {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 60px 20px;
-  background: radial-gradient(circle at top left, #e0f2fe00, #f9fafb00 50%);
-}
-
-/* === Glass Card === */
-.login-card {
-  background: rgba(255, 255, 255, 0%);
-  backdrop-filter: blur(55px);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 18px;
-  padding: 48px;
-  max-width: 480px;
-  width: 100%;
-  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
-  position: relative;
-  animation: fadeIn 1s ease-out;
-}
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(30px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* === Gradient Glow Border === */
-.login-card::before {
-  content: "";
-  position: absolute;
-  inset: -2px;
-  border-radius: inherit;
-  padding: 2px;
-  background: linear-gradient(135deg, #2563eb, #10b981, #facc15);
-  mask: linear-gradient(white, white) content-box, linear-gradient(white, white);
-  -webkit-mask-composite: destination-out;
-          mask-composite: exclude;
-  z-index: -1;
-}
-
-/* === Header === */
-.login-header h1 {
-  font-size: 2rem;
-  font-weight: 700;
-  color: #2049bf;
-}
-.login-header p {
-  color: #748fdb;
-  margin-top: 4px;
-  margin-bottom: 24px;
-}
-
-/* === Inputs === */
-.input-group {
-  position: relative;
-  margin-bottom: 28px;
-}
-input {
-  width: 100%;
-  padding: 14px 12px;
-  border: 2px solid #d1d5db;
-  border-radius: 8px;
-  background: #f9fafb00;
-  color: #6285e9;
-  font-size: 1rem;
-  outline: none;
-  transition: all 0.3s ease;
-}
-input:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
-}
-label {
-  position: absolute;
-  top: 50%;
-  left: 12px;
-  transform: translateY(-50%);
-  background: #f9fafb00;
-  color: #6b7280;
-  font-size: 0.95rem;
-  transition: all 0.3s ease;
-  pointer-events: none;
-}
-input:focus + label,
-input:not(:placeholder-shown) + label {
-  top: -8px;
-  left: 10px;
-  padding: 0 6px;
-  background: #fff;
-  font-size: 0.8rem;
-  color: var(--primary);
-}
-
-/* === Password Toggle === */
-.password-group {
-  position: relative;
-}
-.toggle-password {
-  position: absolute;
-  top: 50%;
-  right: 10px;
-  transform: translateY(-50%);
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: #6b7280;
-  font-size: 1rem;
-  transition: color 0.3s ease;
-}
-.toggle-password:hover { color: var(--primary); }
-
-/* === Button === */
-.auth-button {
-  width: 100%;
-  background: linear-gradient(135deg, var(--primary), #1e40af);
-  color: white;
-  border: none;
-  border-radius: 10px;
-  padding: 14px;
-  font-weight: 600;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-.auth-button:hover {
-  background: linear-gradient(135deg, var(--primary-hover), #1e3a8a);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.4);
-}
-
-/* === Error & Message Styling === */
-.error-message {
-  font-size: 0.85rem;
-  color: var(--danger);
-  margin-top: 4px;
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-.error-message.show { opacity: 1; }
-
-.messages {
-  background: rgba(59, 130, 246, 0.1);
-  border: 1px solid var(--primary);
-  border-radius: 8px;
-  color: var(--primary);
-  padding: 10px;
-  margin-bottom: 20px;
-  opacity: 0;
-  transition: opacity 0.4s ease;
-}
-.messages.show { opacity: 1; }
-
-/* === Forgot password === */
-.forgot-link {
-  text-align: right;
-  margin: -14px 0 22px;
-  font-size: 0.85rem;
-}
-
-/* === Links === */
-.register-link, .home-link {
-  text-align: center;
-  margin-top: 16px;
-  color: #748fdb;
-  font-size: 0.9rem;
-}
-.link-hover {
-  color: var(--primary);
-  font-weight: 600;
-  transition: color 0.3s ease;
-}
-.link-hover:hover { color: var(--primary-hover); text-decoration: underline; }
-
-@media (max-width: 480px) {
-  .login-card { padding: 32px 20px; }
-  .login-header h1 { font-size: 1.6rem; }
-}
-</style>
+  {% include 'accounts/_auth_card_styles.html' %}
 {% endblock %}
 
 {% block extra_js %}
@@ -259,42 +63,40 @@ document.addEventListener('DOMContentLoaded', () => {
   const password = document.getElementById('password');
   const idError = document.getElementById('identifier-error');
   const passError = document.getElementById('password-error');
-  const toggleIcon = document.querySelector('.toggle-password i');
-  const messages = document.getElementById('messages');
+  const toggleBtn = document.querySelector('.toggle-password');
+  const toggleIcon = toggleBtn.querySelector('i');
 
   // Toggle password visibility
-  document.querySelector('.toggle-password').addEventListener('click', () => {
-    const type = password.getAttribute('type') === 'password' ? 'text' : 'password';
-    password.setAttribute('type', type);
-    toggleIcon.classList.toggle('fa-eye');
-    toggleIcon.classList.toggle('fa-eye-slash');
+  toggleBtn.addEventListener('click', () => {
+    const isPassword = password.getAttribute('type') === 'password';
+    password.setAttribute('type', isPassword ? 'text' : 'password');
+    toggleIcon.classList.toggle('fa-eye', !isPassword);
+    toggleIcon.classList.toggle('fa-eye-slash', isPassword);
   });
 
-  // Show messages
-  if (messages) {
-    messages.classList.add('show');
-    setTimeout(() => messages.classList.remove('show'), 5000);
-  }
-
-  // Validation
-  const showError = (el, msg) => { el.textContent = msg; el.classList.add('show'); };
-  const clearError = (el) => { el.textContent = ''; el.classList.remove('show'); };
+  // Validation helpers
+  const showError = (el, msg) => {
+    el.textContent = msg; el.classList.add('show');
+    el.closest('.input-group')?.classList.add('error');
+  };
+  const clearError = (el) => {
+    el.textContent = ''; el.classList.remove('show');
+    el.closest('.input-group')?.classList.remove('error');
+  };
 
   identifier.addEventListener('input', () => {
-    identifier.value.length >= 3
+    identifier.value.trim().length >= 3
       ? clearError(idError)
       : showError(idError, 'Enter a valid username or email (min 3 chars).');
   });
 
   password.addEventListener('input', () => {
-    password.value.length >= 4
-      ? clearError(passError)
-      : showError(passError, 'Password too short.');
+    password.value.length >= 4 ? clearError(passError) : showError(passError, 'Password too short.');
   });
 
   form.addEventListener('submit', e => {
     let invalid = false;
-    if (identifier.value.length < 3) { showError(idError, 'Invalid identifier.'); invalid = true; }
+    if (identifier.value.trim().length < 3) { showError(idError, 'Invalid identifier.'); invalid = true; }
     if (password.value.length < 4) { showError(passError, 'Password too short.'); invalid = true; }
     if (invalid) e.preventDefault();
   });
