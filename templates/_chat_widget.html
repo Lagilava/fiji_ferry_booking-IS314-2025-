@@ -1,0 +1,224 @@
+{% comment %}
+Floating help-assistant chat widget (rule-based, offline). Included globally
+from base.html. Talks to bookings:assistant. Self-contained: styles use the
+base.html CSS variables so it adapts to light/dark themes automatically.
+{% endcomment %}
+<style>
+  .ff-chat-fab {
+    position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 11500;
+    width: 60px; height: 60px; border-radius: 50%;
+    background: var(--gradient-primary); color: #fff; border: none; cursor: pointer;
+    box-shadow: var(--shadow-xl); font-size: 1.5rem;
+    display: flex; align-items: center; justify-content: center;
+    transition: transform .2s ease, box-shadow .2s ease;
+  }
+  .ff-chat-fab:hover { transform: scale(1.08); }
+  .ff-chat-fab__badge {
+    position: absolute; top: -2px; right: -2px; width: 16px; height: 16px;
+    background: var(--accent); border-radius: 50%; border: 2px solid #fff;
+  }
+  .ff-chat-panel {
+    position: fixed; bottom: 6.5rem; right: 1.5rem; z-index: 11500;
+    width: 380px; max-width: calc(100vw - 2rem); height: 540px; max-height: calc(100vh - 9rem);
+    background: var(--bg-primary); border: 1px solid var(--border);
+    border-radius: 18px; box-shadow: var(--shadow-xl);
+    display: flex; flex-direction: column; overflow: hidden;
+    opacity: 0; visibility: hidden; transform: translateY(16px) scale(.98);
+    transition: opacity .22s ease, transform .22s ease, visibility .22s;
+  }
+  .ff-chat-panel.open { opacity: 1; visibility: visible; transform: translateY(0) scale(1); }
+  .ff-chat-head {
+    background: var(--gradient-primary); color: #fff;
+    padding: .9rem 1.1rem; display: flex; align-items: center; gap: .65rem;
+  }
+  .ff-chat-head__avatar {
+    width: 36px; height: 36px; border-radius: 50%; background: rgba(255,255,255,.2);
+    display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0;
+  }
+  .ff-chat-head__title { font-weight: 700; font-size: .95rem; line-height: 1.1; }
+  .ff-chat-head__status { font-size: .72rem; opacity: .85; display: flex; align-items: center; gap: .3rem; }
+  .ff-chat-head__status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #34d399; display: inline-block; }
+  .ff-chat-close { margin-left: auto; background: none; border: none; color: #fff; font-size: 1.2rem; cursor: pointer; opacity: .85; }
+  .ff-chat-close:hover { opacity: 1; }
+  .ff-chat-body {
+    flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: .7rem;
+    background: var(--bg-secondary);
+  }
+  .ff-msg { max-width: 85%; padding: .65rem .85rem; border-radius: 14px; font-size: .88rem; line-height: 1.5; word-wrap: break-word; }
+  .ff-msg a { color: var(--secondary); font-weight: 600; text-decoration: underline; }
+  .ff-msg--bot { align-self: flex-start; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+  .ff-msg--user { align-self: flex-end; background: var(--gradient-primary); color: #fff; border-bottom-right-radius: 4px; }
+  .ff-msg--user a { color: #fff; }
+  .ff-suggestions { display: flex; flex-wrap: wrap; gap: .4rem; padding: 0 1rem .6rem; background: var(--bg-secondary); }
+  .ff-chip {
+    background: var(--primary-light); color: var(--primary-dark); border: 1px solid transparent;
+    border-radius: 999px; padding: .35rem .7rem; font-size: .78rem; font-weight: 600;
+    cursor: pointer; transition: all .15s ease;
+  }
+  .ff-chip:hover { background: var(--primary); color: #fff; }
+  .ff-chat-foot { display: flex; gap: .5rem; padding: .75rem; border-top: 1px solid var(--border); background: var(--bg-primary); }
+  .ff-chat-input {
+    flex: 1; border: 1px solid var(--border); border-radius: 999px; padding: .6rem .95rem;
+    font-size: .88rem; background: var(--bg-primary); color: var(--text-primary); outline: none; font-family: inherit;
+  }
+  .ff-chat-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(16,185,129,.12); }
+  .ff-chat-send {
+    width: 42px; height: 42px; flex-shrink: 0; border: none; border-radius: 50%;
+    background: var(--gradient-primary); color: #fff; cursor: pointer; font-size: 1rem;
+  }
+  .ff-chat-send:disabled { opacity: .5; cursor: default; }
+  .ff-typing { align-self: flex-start; display: flex; gap: 4px; padding: .7rem .9rem; }
+  .ff-typing span { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); animation: ffBlink 1.2s infinite both; }
+  .ff-typing span:nth-child(2) { animation-delay: .2s; }
+  .ff-typing span:nth-child(3) { animation-delay: .4s; }
+  @keyframes ffBlink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+  @media print { .ff-chat-fab, .ff-chat-panel { display: none !important; } }
+  @media (max-width: 480px) {
+    .ff-chat-panel { right: .5rem; left: .5rem; width: auto; bottom: 5.75rem; }
+    .ff-chat-fab { bottom: 1rem; right: 1rem; }
+  }
+</style>
+
+<button type="button" class="ff-chat-fab" id="ff-chat-fab" aria-label="Open help assistant" aria-expanded="false">
+  <i class="fas fa-comment-dots"></i>
+  <span class="ff-chat-fab__badge"></span>
+</button>
+
+<section class="ff-chat-panel" id="ff-chat-panel" role="dialog" aria-label="Help assistant" aria-hidden="true">
+  <header class="ff-chat-head">
+    <div class="ff-chat-head__avatar"><i class="fas fa-ship"></i></div>
+    <div>
+      <div class="ff-chat-head__title">Ferry Assistant</div>
+      <div class="ff-chat-head__status">Online · here to help</div>
+    </div>
+    <button type="button" class="ff-chat-close" id="ff-chat-close" aria-label="Close chat">&times;</button>
+  </header>
+  <div class="ff-chat-body" id="ff-chat-body" aria-live="polite"></div>
+  <div class="ff-suggestions" id="ff-suggestions"></div>
+  <form class="ff-chat-foot" id="ff-chat-form">
+    <input type="text" class="ff-chat-input" id="ff-chat-input" placeholder="Ask about booking, fares, refunds…"
+           autocomplete="off" maxlength="500" aria-label="Type your message">
+    <button type="submit" class="ff-chat-send" id="ff-chat-send" aria-label="Send"><i class="fas fa-paper-plane"></i></button>
+  </form>
+</section>
+
+<script>
+(function () {
+  var ENDPOINT = "{% url 'bookings:assistant' %}";
+  var CSRF = "{{ csrf_token }}";
+  var fab = document.getElementById('ff-chat-fab');
+  var panel = document.getElementById('ff-chat-panel');
+  var closeBtn = document.getElementById('ff-chat-close');
+  var body = document.getElementById('ff-chat-body');
+  var sugg = document.getElementById('ff-suggestions');
+  var form = document.getElementById('ff-chat-form');
+  var input = document.getElementById('ff-chat-input');
+  var sendBtn = document.getElementById('ff-chat-send');
+  var greeted = false;
+
+  function scrollDown() { body.scrollTop = body.scrollHeight; }
+
+  function addMessage(html, who) {
+    var el = document.createElement('div');
+    el.className = 'ff-msg ff-msg--' + who;
+    // Bot replies contain trusted, server-authored HTML (links). User text is
+    // inserted as textContent to avoid injection.
+    if (who === 'bot') { el.innerHTML = html; }
+    else { el.textContent = html; }
+    body.appendChild(el);
+    scrollDown();
+  }
+
+  function showTyping() {
+    var t = document.createElement('div');
+    t.className = 'ff-typing'; t.id = 'ff-typing';
+    t.innerHTML = '<span></span><span></span><span></span>';
+    body.appendChild(t); scrollDown();
+  }
+  function hideTyping() { var t = document.getElementById('ff-typing'); if (t) t.remove(); }
+
+  function renderSuggestions(items) {
+    sugg.innerHTML = '';
+    (items || []).forEach(function (q) {
+      var chip = document.createElement('button');
+      chip.type = 'button'; chip.className = 'ff-chip'; chip.textContent = q;
+      chip.addEventListener('click', function () { send(q); });
+      sugg.appendChild(chip);
+    });
+  }
+
+  function send(message) {
+    message = (message || input.value).trim();
+    if (!message) return;
+    addMessage(message, 'user');
+    input.value = '';
+    sugg.innerHTML = '';
+    sendBtn.disabled = true;
+    showTyping();
+    fetch(ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+      body: JSON.stringify({ message: message })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        hideTyping();
+        // tiny delay so the typing indicator reads naturally
+        setTimeout(function () {
+          addMessage(d.reply, 'bot');
+          renderSuggestions(d.suggestions);
+          sendBtn.disabled = false;
+        }, 250);
+      })
+      .catch(function () {
+        hideTyping();
+        addMessage("Sorry, I couldn't reach the assistant just now. Please try again, or email info@fijiferrybooking.com.", 'bot');
+        sendBtn.disabled = false;
+      });
+  }
+
+  function greet() {
+    if (greeted) return;
+    greeted = true;
+    showTyping();
+    setTimeout(function () {
+      hideTyping();
+      send.__greet = true;
+      // empty message → server returns greeting + default suggestions
+      fetch(ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+        body: JSON.stringify({ message: '' })
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (d) { addMessage(d.reply, 'bot'); renderSuggestions(d.suggestions); })
+        .catch(function () {
+          addMessage("Hi! 👋 I'm the Fiji Ferry assistant. How can I help?", 'bot');
+        });
+    }, 400);
+  }
+
+  function openPanel() {
+    panel.classList.add('open');
+    panel.setAttribute('aria-hidden', 'false');
+    fab.setAttribute('aria-expanded', 'true');
+    fab.querySelector('.ff-chat-fab__badge').style.display = 'none';
+    greet();
+    setTimeout(function () { input.focus(); }, 250);
+  }
+  function closePanel() {
+    panel.classList.remove('open');
+    panel.setAttribute('aria-hidden', 'true');
+    fab.setAttribute('aria-expanded', 'false');
+  }
+
+  fab.addEventListener('click', function () {
+    panel.classList.contains('open') ? closePanel() : openPanel();
+  });
+  closeBtn.addEventListener('click', closePanel);
+  form.addEventListener('submit', function (e) { e.preventDefault(); send(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && panel.classList.contains('open')) closePanel();
+  });
+})();
+</script>

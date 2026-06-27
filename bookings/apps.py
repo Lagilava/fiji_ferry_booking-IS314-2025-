@@ -31,6 +31,15 @@ class BookingsConfig(AppConfig):
         except Exception as e:
             logger.warning(f"Automation agent failed to start: {e}")
 
+        # Cybersecurity agent: periodic read-only security-posture audit
+        # (Django deploy checks, settings hardening, cookie/HSTS, account &
+        # repo hygiene). Same lifecycle contract as the other two daemons.
+        try:
+            from .security import start_security
+            start_security()
+        except Exception as e:
+            logger.warning(f"Cybersecurity agent failed to start: {e}")
+
         # Ensure the booking system is "ready when the server is up": active
         # ferries, routes, and a rolling window of upcoming schedules. Runs in a
         # short-delayed daemon thread (server processes only) so it stays off the

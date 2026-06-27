@@ -15,7 +15,6 @@
     .form-step { display: none; }
     .form-step.active { display: block; }
 
-```
 /* === UNIVERSAL DARK MODE SUPPORT FOR HELP PANELS === */
 :root {
     --help-text: #374151; --help-strong: #111827; --help-italic: #4b5563;
@@ -144,12 +143,7 @@ body.dark .passenger-card-header,
     transform: rotate(180deg);
 }
 
-/* === STEP 3: ADD-ON CARDS – FULL DARK MODE SUPPORT === */
-.addon-card {
-    background: #f9fafb;
-    border: 1px solid #e5e7eb;
-    color: #374151;
-}
+/* === STEP 3: ADD-ON CARDS – DARK MODE SUPPORT === */
 html.dark .addon-card,
 body.dark .addon-card,
 .dark .addon-card,
@@ -158,64 +152,95 @@ body.dark .addon-card,
     border-color: #374151 !important;
     color: #f3f4f6 !important;
 }
-
-.addon-card h4,
-.addon-card p,
-.addon-card span {
-    color: #374151;
-}
-html.dark .addon-card h4,
-html.dark .addon-card p,
-html.dark .addon-card span,
-body.dark .addon-card h4,
-body.dark .addon-card p,
-body.dark .addon-card span,
-.dark .addon-card h4,
-.dark .addon-card p,
-.dark .addon-card span,
-[data-theme="dark"] .addon-card h4,
-[data-theme="dark"] .addon-card p,
-[data-theme="dark"] .addon-card span {
+html.dark .addon-card-name,
+html.dark .addon-card-desc,
+body.dark .addon-card-name,
+body.dark .addon-card-desc,
+[data-theme="dark"] .addon-card-name,
+[data-theme="dark"] .addon-card-desc {
     color: #f3f4f6 !important;
 }
 
-.addon-card input {
-    background: white;
-    border: 1px solid #d1d5db;
-    color: #111827;
-}
-html.dark .addon-card input,
-body.dark .addon-card input,
-.dark .addon-card input,
-[data-theme="dark"] .addon-card input {
+/* === ADDON QTY INPUT – DARK MODE === */
+html.dark .addon-qty-input,
+body.dark .addon-qty-input,
+.dark .addon-qty-input,
+[data-theme="dark"] .addon-qty-input {
     background: #111827 !important;
     border-color: #4b5563 !important;
     color: #f9fafb !important;
 }
 
-.addon-card input:focus {
-    outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+/* === MODIFICATION POLICY NOTICE (review step) === */
+.booking-policy-note {
+    display: flex;
+    align-items: flex-start;
+    gap: .75rem;
+    padding: 1rem 1.1rem;
+    margin-bottom: 1.5rem;
+    border-radius: 12px;
+    background: rgba(245, 158, 11, 0.10);
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    border-left: 4px solid #f59e0b;
+}
+.booking-policy-note__icon { font-size: 1.25rem; line-height: 1.4; flex-shrink: 0; }
+.booking-policy-note strong { color: var(--text-primary); }
+.booking-policy-note p { margin: .25rem 0 0; font-size: .9rem; line-height: 1.5; color: var(--text-secondary); }
+[data-theme="dark"] .booking-policy-note {
+    background: rgba(245, 158, 11, 0.12);
+    border-color: rgba(245, 158, 11, 0.4);
 }
 
-.addon-card .text-blue-600 {
-    color: #3b82f6 !important;
+/* === PAYMENT METHOD SELECTOR (review step) === */
+.payment-methods { margin: 1.5rem 0; }
+.payment-methods__title { font-size: 1.05rem; font-weight: 700; color: var(--text-primary); margin: 0 0 .85rem; }
+.payment-methods__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: .75rem;
 }
-html.dark .addon-card .text-blue-600,
-body.dark .addon-card .text-blue-600,
-.dark .addon-card .text-blue-600 {
-    color: #60a5fa !important;
+.pay-method { position: relative; cursor: pointer; display: block; }
+.pay-method input { position: absolute; opacity: 0; pointer-events: none; }
+.pay-method__body {
+    display: flex; align-items: center; gap: .75rem;
+    padding: .9rem 1rem;
+    border: 2px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg-primary, #fff);
+    transition: border-color .2s, box-shadow .2s, transform .15s;
+    height: 100%;
 }
+.pay-method:hover .pay-method__body { border-color: var(--secondary, #3b82f6); transform: translateY(-1px); }
+.pay-method input:checked + .pay-method__body {
+    border-color: var(--secondary, #3b82f6);
+    box-shadow: 0 0 0 3px rgba(59,130,246,.15);
+}
+.pay-method input:focus-visible + .pay-method__body { box-shadow: 0 0 0 3px rgba(59,130,246,.35); }
+.pay-method__icon {
+    width: 56px; height: 38px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 9px; font-size: 1.2rem;
+    background: #fff; overflow: hidden;
+    border: 1px solid var(--border, #e2e8f0);
+}
+.pay-method__icon img {
+    width: 100%; height: 100%; object-fit: contain; padding: 4px;
+}
+.pay-method__icon--card {
+    background: var(--bg-surface, #f1f5f9);
+    border-color: transparent;
+    color: var(--text-primary);
+}
+.pay-method__text { display: flex; flex-direction: column; min-width: 0; }
+.pay-method__name { font-weight: 700; font-size: .95rem; color: var(--text-primary); }
+.pay-method__desc { font-size: .76rem; color: var(--text-secondary); }
 
-.addon-card p {
-    color: #6b7280;
-}
-html.dark .addon-card p,
-body.dark .addon-card p,
-.dark .addon-card p,
-[data-theme="dark"] .addon-card p {
-    color: #9ca3af !important;
+/* === PASSENGER COUNTER HINT === */
+.counter-hint {
+    font-size: 0.85rem;
+    text-align: center;
+    color: var(--text-secondary);
+    margin-bottom: 0.75rem;
 }
 
 /* === COLOR TOKENS USED BY SUMMARY (light/dark aware) === */
@@ -365,7 +390,6 @@ html.dark .text-gray-500{ color: var(--text-secondary) !important; }
 html.dark .border-gray-200{ border-color: var(--border) !important; }
 html.dark .text-blue-600{ color: var(--primary) !important; }
 html.dark .text-red-500{ color: var(--error) !important; }
-```
 
 </style>
 {% endblock %}
@@ -376,14 +400,13 @@ Skip to main content </a>
 <main id="main-content" class="container mx-auto px-4 py-8 md:py-12 max-w-7xl">
     <h1 class="text-3xl md:text-4xl font-bold text-center mb-6 md:mb-8">Book Your Ferry</h1>
 
-```
 <!-- Progress Bar -->
-<div class="progress-bar mb-8" role="progressbar" aria-valuemin="0" aria-valuemax="4" aria-valuenow="{{ form_data.step|default:1 }}">
+<div class="progress-bar mb-8" role="progressbar" title="Booking progress" aria-label="Booking progress" aria-valuemin="0" aria-valuemax="4" aria-valuenow="{{ form_data.step|default:1 }}" id="booking-progressbar">
     <div class="progress-bar-fill" id="progress-bar-fill" aria-hidden="true"></div>
 </div>
 
 <!-- Step Navigation -->
-<nav aria-label="Booking progress" class="steps mb-8">
+<nav aria-label="Booking progress" class="steps mb-8" id="step-nav" data-active="{{ form_data.step|default:1 }}">
     <ol class="flex justify-between">
         <li class="step active" data-step="1">
             <span class="step-number">1</span>
@@ -416,11 +439,33 @@ Skip to main content </a>
                 <p>Choose your ferry schedule. All fields are required.</p>
             </div>
 
+            {% if preselected_schedule %}
+            {# Locked confirmation card — shown when arriving via "Book" on homepage #}
+            <div class="preselected-schedule-card">
+                <div class="psc-check">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+                <div class="psc-body">
+                    <div class="psc-route">{{ preselected_schedule.route.departure_port.name }} <span class="psc-arrow">→</span> {{ preselected_schedule.route.destination_port.name }}</div>
+                    <div class="psc-meta">
+                        <span>{{ preselected_schedule.departure_time|date:"l, M d Y" }}</span>
+                        <span class="psc-dot">·</span>
+                        <span>{{ preselected_schedule.departure_time|date:"H:i" }}</span>
+                        <span class="psc-dot">·</span>
+                        <span>{{ preselected_schedule.ferry.name }}</span>
+                        <span class="psc-dot">·</span>
+                        <span>{{ preselected_schedule.available_seats }} seat{{ preselected_schedule.available_seats|pluralize }} left</span>
+                    </div>
+                </div>
+                <a href="{% url 'bookings:book_ticket' %}" class="psc-change">Change</a>
+            </div>
+            <input type="hidden" id="schedule_id" name="schedule_id" value="{{ preselected_schedule.id }}">
+            {% else %}
             <div class="form-group mb-6">
                 <label for="schedule_id" class="block text-sm font-semibold mb-2">Ferry Schedule *</label>
                 <select id="schedule_id" name="schedule_id" required class="form-select w-full">
                     <option value="">Choose a schedule</option>
-                    {% for schedule in schedules %}
+                    {% for schedule in bookings %}
                         <option value="{{ schedule.id }}"
                                 {% if form_data.schedule_id == schedule.id|stringformat:"s" %}selected{% endif %}>
                             {{ schedule.route.departure_port.name }} to {{ schedule.route.destination_port.name }}
@@ -432,6 +477,7 @@ Skip to main content </a>
                 </select>
                 <p id="error-schedule_id" class="error-message text-red-500 text-sm mt-1" aria-live="polite"></p>
             </div>
+            {% endif %}
 
             {% if not user.is_authenticated %}
             <div class="form-group mb-6">
@@ -520,26 +566,62 @@ Skip to main content </a>
             </div>
 
             <!-- Passenger Counters -->
+            <p class="counter-hint">
+                Use the <strong>green +</strong> button to add a passenger, and the <strong>grey &minus;</strong> button to remove one.
+            </p>
             <div class="passenger-counters grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <div class="counter-group">
-                    <label class="block text-sm font-medium mb-2">Adults (18+)</label>
+                    <div class="counter-label">Adults</div>
+                    <div class="counter-sublabel">18 years or older</div>
+                    <div class="counter-stepper">
+                        <button type="button" class="counter-btn" aria-label="Remove one adult"
+                                data-counter="passenger_adults" data-action="dec">&#8722;</button>
+                        <span class="counter-display" id="adults-display">{{ form_data.passenger_adults|default:1 }}</span>
+                        <button type="button" class="counter-btn" aria-label="Add one adult"
+                                data-counter="passenger_adults" data-action="inc">&#43;</button>
+                    </div>
+                    <div class="counter-action-labels" aria-hidden="true">
+                        <span class="counter-action-label">Remove</span>
+                        <span class="counter-action-label">Add</span>
+                    </div>
                     <input type="number" id="passenger_adults" name="passenger_adults" min="1" max="20"
-                           value="{{ form_data.passenger_adults|default:1 }}" required
-                           class="w-full p-2 border rounded">
+                           value="{{ form_data.passenger_adults|default:1 }}" required class="sr-only">
                     <p id="error-passenger_adults" class="error-message text-red-500 text-sm mt-1"></p>
                 </div>
                 <div class="counter-group">
-                    <label class="block text-sm font-medium mb-2">Children (2-17)</label>
+                    <div class="counter-label">Children</div>
+                    <div class="counter-sublabel">Ages 2 to 17</div>
+                    <div class="counter-stepper">
+                        <button type="button" class="counter-btn" aria-label="Remove one child"
+                                data-counter="passenger_children" data-action="dec">&#8722;</button>
+                        <span class="counter-display" id="children-display">{{ form_data.passenger_children|default:0 }}</span>
+                        <button type="button" class="counter-btn" aria-label="Add one child"
+                                data-counter="passenger_children" data-action="inc">&#43;</button>
+                    </div>
+                    <div class="counter-action-labels" aria-hidden="true">
+                        <span class="counter-action-label">Remove</span>
+                        <span class="counter-action-label">Add</span>
+                    </div>
                     <input type="number" id="passenger_children" name="passenger_children" min="0" max="15"
-                           value="{{ form_data.passenger_children|default:0 }}"
-                           class="w-full p-2 border rounded">
+                           value="{{ form_data.passenger_children|default:0 }}" class="sr-only">
                     <p id="error-passenger_children" class="error-message text-red-500 text-sm mt-1"></p>
                 </div>
                 <div class="counter-group">
-                    <label class="block text-sm font-medium mb-2">Infants (0-2)</label>
+                    <div class="counter-label">Infants</div>
+                    <div class="counter-sublabel">Under 2 years old</div>
+                    <div class="counter-stepper">
+                        <button type="button" class="counter-btn" aria-label="Remove one infant"
+                                data-counter="passenger_infants" data-action="dec">&#8722;</button>
+                        <span class="counter-display" id="infants-display">{{ form_data.passenger_infants|default:0 }}</span>
+                        <button type="button" class="counter-btn" aria-label="Add one infant"
+                                data-counter="passenger_infants" data-action="inc">&#43;</button>
+                    </div>
+                    <div class="counter-action-labels" aria-hidden="true">
+                        <span class="counter-action-label">Remove</span>
+                        <span class="counter-action-label">Add</span>
+                    </div>
                     <input type="number" id="passenger_infants" name="passenger_infants" min="0" max="5"
-                           value="{{ form_data.passenger_infants|default:0 }}"
-                           class="w-full p-2 border rounded">
+                           value="{{ form_data.passenger_infants|default:0 }}" class="sr-only">
                     <p id="error-passenger_infants" class="error-message text-red-500 text-sm mt-1"></p>
                 </div>
             </div>
@@ -580,11 +662,17 @@ Skip to main content </a>
                                        class="form-input w-full p-2 border rounded">
                                 <p class="error-message text-red-500 text-sm mt-1" id="error-{type}_age_{index}"></p>
                             </div>
-                            <div class="form-group">
-                                <label class="block text-sm font-medium mb-1">ID Document *</label>
-                                <input type="file" name="{type}_id_document_{index}" accept=".pdf,.jpg,.jpeg,.png" required
-                                       class="form-input w-full p-2 border rounded">
-                                <div class="file-preview mt-2 p-2 bg-gray-50 rounded"></div>
+                            <div class="form-group md:col-span-2">
+                                <label class="block text-sm font-medium mb-1">ID Document * <span class="text-xs font-normal opacity-60">(Passport or Driver's License)</span></label>
+                                <div class="file-upload-zone" id="zone-{type}_id_document_{index}">
+                                    <input type="file" name="{type}_id_document_{index}" accept=".pdf,.jpg,.jpeg,.png" required>
+                                    <div class="file-upload-icon">
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
+                                    </div>
+                                    <div class="file-upload-text">Click or drag to upload</div>
+                                    <div class="file-upload-hint">PDF &middot; JPG &middot; PNG &middot; max 2.5 MB</div>
+                                    <div class="file-upload-name"></div>
+                                </div>
                                 <p class="error-message text-red-500 text-sm mt-1" id="error-{type}_id_document_{index}"></p>
                             </div>
                             <div class="form-group">
@@ -653,20 +741,39 @@ Skip to main content </a>
                 <p>Add optional services to your booking</p>
             </div>
 
+            <!-- Add-ons notice -->
+            <p class="text-sm text-gray-500 mb-4" id="addon-limit-notice">Quantities are limited to the number of passengers in your booking.</p>
+
             <!-- Add-ons Grid -->
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
                 {% for addon in add_ons %}
-                <div class="addon-card p-4 border rounded-lg hover:shadow-md" data-addon-id="{{ addon.id }}" data-addon-label="{{ addon.label }}" data-addon-price="{{ addon.price }}">
-                    <div class="flex justify-between items-start mb-3">
-                        <div>
-                            <h4 class="font-semibold">{{ addon.label }}</h4>
-                            <p class="text-sm text-gray-600">Per unit</p>
-                        </div>
-                        <span class="text-lg font-bold text-blue-600">FJD {{ addon.price }}</span>
+                <div class="addon-card" data-addon-id="{{ addon.id }}" data-addon-label="{{ addon.label }}" data-addon-price="{{ addon.price }}" data-addon-max="{{ addon.max_quantity|default:10 }}">
+                    <div class="flex justify-between items-start">
+                        <span class="addon-card-name">{{ addon.label }}</span>
+                        <span class="addon-card-price">FJD {{ addon.price }}</span>
                     </div>
-                    <input type="number" name="{{ addon.id }}_quantity" min="0" max="{{ addon.max_quantity|default:10 }}"
-                           value="{{ form_data|lookup:addon.id|default:0 }}"
-                           class="w-full p-2 border rounded" placeholder="0">
+                    {% if addon.description %}
+                    <p class="addon-card-desc">{{ addon.description }}</p>
+                    {% else %}
+                    <p class="addon-card-desc">
+                        {% if addon.label == "Premium Seating" %}Reserved window seating with extra legroom.
+                        {% elif addon.label == "Priority Boarding" %}Board via dedicated early-access queue.
+                        {% elif addon.label == "Cabin" %}Private air-conditioned cabin for your journey.
+                        {% elif addon.label == "Breakfast" %}Hot morning meal served on board.
+                        {% elif addon.label == "Lunch" %}Hot midday meal served on board.
+                        {% elif addon.label == "Dinner" %}Hot evening meal served on board.
+                        {% elif addon.label == "Snack" %}Light snack pack (sandwich · fruit · water).
+                        {% else %}Optional extra to make your journey more comfortable.{% endif %}
+                    </p>
+                    {% endif %}
+                    <span class="addon-limit-note" data-addon-limit-label="{{ addon.id }}">max {{ addon.max_quantity|default:10 }} per booking</span>
+                    <div class="addon-qty-row">
+                        <label class="addon-qty-label" for="addon-qty-{{ addon.id }}">Qty</label>
+                        <input type="number" id="addon-qty-{{ addon.id }}"
+                               name="{{ addon.id }}_quantity" min="0" max="{{ addon.max_quantity|default:10 }}"
+                               value="{{ form_data|lookup:addon.id|default:0 }}"
+                               class="addon-qty-input" placeholder="0">
+                    </div>
                     <p id="error-{{ addon.id }}_quantity" class="error-message text-red-500 text-sm mt-1"></p>
                 </div>
                 {% empty %}
@@ -675,83 +782,104 @@ Skip to main content </a>
             </div>
 
             <!-- Vehicle Section -->
-            <fieldset class="vehicle-section mb-8 p-4 border rounded-lg">
-                <legend class="text-lg font-semibold mb-4">Vehicle Transport</legend>
-                <label class="flex items-center mb-4 cursor-pointer">
-                    <input type="checkbox" id="add_vehicle" name="add_vehicle"
-                           {% if form_data.add_vehicle == 'on' %}checked{% endif %}
-                           class="mr-2">
-                    <span>Add Vehicle to Booking</span>
-                </label>
-                <div id="vehicle-fields" class="{% if not form_data.add_vehicle %}hidden{% endif %} grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div class="form-group">
-                        <label class="block text-sm font-medium mb-2">Vehicle Type *</label>
-                        <select id="vehicle_type" name="vehicle_type" class="form-select w-full">
-                            <option value="">Select type</option>
-                            <option value="car" {% if form_data.vehicle_type == 'car' %}selected{% endif %}>Car / Sedan</option>
-                            <option value="motorcycle" {% if form_data.vehicle_type == 'motorcycle' %}selected{% endif %}>Motorcycle</option>
-                            <option value="bicycle" {% if form_data.vehicle_type == 'bicycle' %}selected{% endif %}>Bicycle</option>
-                        </select>
-                        <p id="error-vehicle_type" class="error-message"></p>
+            <div class="service-card {% if form_data.add_vehicle == 'on' %}is-active{% endif %}" id="vehicle-card">
+                <div class="service-card-header" role="button" aria-controls="vehicle-fields" tabindex="0">
+                    <div class="service-card-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 00-3.213-9.193 2.056 2.056 0 00-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 00-10.026 0 1.106 1.106 0 00-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12"/></svg>
                     </div>
-                    <div class="form-group">
-                        <label class="block text-sm font-medium mb-2">Dimensions (LxWxH cm) *</label>
-                        <input type="text" id="vehicle_dimensions" name="vehicle_dimensions"
-                               value="{{ form_data.vehicle_dimensions|default:'' }}"
-                               placeholder="480x180x150" class="form-input w-full">
-                        <p id="error-vehicle_dimensions" class="error-message"></p>
+                    <div class="service-card-info">
+                        <h4>Vehicle Transport</h4>
+                        <p>Bring your car, SUV, van, motorcycle, or bicycle on board</p>
                     </div>
-                    <div class="form-group">
-                        <label class="block text-sm font-medium mb-2">License Plate</label>
-                        <input type="text" id="vehicle_license_plate" name="vehicle_license_plate"
-                               value="{{ form_data.vehicle_license_plate|default:'' }}"
-                               class="form-input w-full">
+                    <div class="service-toggle-wrap">
+                        <input type="checkbox" id="add_vehicle" name="add_vehicle"
+                               {% if form_data.add_vehicle == 'on' %}checked{% endif %}>
+                        <span class="toggle-track"></span>
                     </div>
                 </div>
-            </fieldset>
+                <div id="vehicle-fields" class="service-card-body {% if not form_data.add_vehicle %}hidden{% endif %}">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="form-group">
+                            <label class="block text-sm font-medium mb-2">Vehicle Type *</label>
+                            <select id="vehicle_type" name="vehicle_type" class="form-select w-full">
+                                <option value="">Select type</option>
+                                <option value="car"        {% if form_data.vehicle_type == 'car' %}selected{% endif %}>Car / Sedan</option>
+                                <option value="van"        {% if form_data.vehicle_type == 'van' %}selected{% endif %}>SUV / Van / 4WD</option>
+                                <option value="truck"      {% if form_data.vehicle_type == 'truck' %}selected{% endif %}>Truck / Ute</option>
+                                <option value="motorcycle" {% if form_data.vehicle_type == 'motorcycle' %}selected{% endif %}>Motorcycle</option>
+                                <option value="bicycle"    {% if form_data.vehicle_type == 'bicycle' %}selected{% endif %}>Bicycle</option>
+                            </select>
+                            <p id="error-vehicle_type" class="error-message"></p>
+                        </div>
+                        <div class="form-group">
+                            <label class="block text-sm font-medium mb-2">License Plate *</label>
+                            <input type="text" id="vehicle_license_plate" name="vehicle_license_plate"
+                                   value="{{ form_data.vehicle_license_plate|default:'' }}"
+                                   placeholder="e.g. FJ 1234" class="form-input w-full">
+                            <p class="text-xs text-gray-400 mt-1">Required — lets crew identify your vehicle on board</p>
+                            <p id="error-vehicle_license_plate" class="error-message"></p>
+                        </div>
+                        <div class="form-group">
+                            <label class="block text-sm font-medium mb-2">Dimensions (L×W×H cm)</label>
+                            <input type="text" id="vehicle_dimensions" name="vehicle_dimensions"
+                                   value="{{ form_data.vehicle_dimensions|default:'' }}"
+                                   placeholder="480x180x150" class="form-input w-full">
+                            <p class="text-xs text-gray-400 mt-1">Optional — only affects oversized-vehicle surcharge</p>
+                            <p id="error-vehicle_dimensions" class="error-message"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
             <!-- Cargo Section -->
-            <fieldset class="cargo-section p-4 border rounded-lg">
-                <legend class="text-lg font-semibold mb-4">Cargo Transport</legend>
-                <label class="flex items-center mb-4 cursor-pointer">
-                    <input type="checkbox" id="add_cargo" name="add_cargo"
-                           {% if form_data.add_cargo == 'on' %}checked{% endif %}
-                           class="mr-2">
-                    <span>Add Cargo to Booking</span>
-                </label>
-                <div id="cargo-fields" class="{% if not form_data.add_cargo %}hidden{% endif %} grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div class="form-group">
-                        <label class="block text-sm font-medium mb-2">Cargo Type *</label>
-                        <select id="cargo_type" name="cargo_type" class="form-select w-full">
-                            <option value="">Select type</option>
-                            <option value="general" {% if form_data.cargo_type == 'general' %}selected{% endif %}>General</option>
-                            <option value="hazardous" {% if form_data.cargo_type == 'hazardous' %}selected{% endif %}>Hazardous</option>
-                            <option value="perishable" {% if form_data.cargo_type == 'perishable' %}selected{% endif %}>Perishable</option>
-                            <option value="vehicle" {% if form_data.cargo_type == 'vehicle' %}selected{% endif %}>Vehicle</option>
-                        </select>
-                        <p id="error-cargo_type" class="error-message"></p>
+            <div class="service-card {% if form_data.add_cargo == 'on' %}is-active{% endif %}" id="cargo-card">
+                <div class="service-card-header" role="button" aria-controls="cargo-fields" tabindex="0">
+                    <div class="service-card-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"/></svg>
                     </div>
-                    <div class="form-group">
-                        <label class="block text-sm font-medium mb-2">Weight (kg) *</label>
-                        <input type="number" id="cargo_weight_kg" name="cargo_weight_kg"
-                               value="{{ form_data.cargo_weight_kg|default:'' }}" min="0.1" step="0.1"
-                               class="form-input w-full">
-                        <p id="error-cargo_weight_kg" class="error-message"></p>
+                    <div class="service-card-info">
+                        <h4>Cargo / Freight</h4>
+                        <p>Ship general goods, perishables, hazardous materials, or oversized items</p>
                     </div>
-                    <div class="form-group">
-                        <label class="block text-sm font-medium mb-2">Dimensions</label>
-                        <input type="text" id="cargo_dimensions_cm" name="cargo_dimensions_cm"
-                               value="{{ form_data.cargo_dimensions_cm|default:'' }}"
-                               placeholder="100x50x50" class="form-input w-full">
-                    </div>
-                    <div class="form-group">
-                        <label class="block text-sm font-medium mb-2">License Plate</label>
-                        <input type="text" id="cargo_license_plate" name="cargo_license_plate"
-                               value="{{ form_data.cargo_license_plate|default:'' }}"
-                               class="form-input w-full">
+                    <div class="service-toggle-wrap">
+                        <input type="checkbox" id="add_cargo" name="add_cargo"
+                               {% if form_data.add_cargo == 'on' %}checked{% endif %}>
+                        <span class="toggle-track"></span>
                     </div>
                 </div>
-            </fieldset>
+                <div id="cargo-fields" class="service-card-body {% if not form_data.add_cargo %}hidden{% endif %}">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="form-group">
+                            <label class="block text-sm font-medium mb-2">Cargo Type *</label>
+                            <select id="cargo_type" name="cargo_type" class="form-select w-full">
+                                <option value="">Select type</option>
+                                <option value="general"   {% if form_data.cargo_type == 'general' %}selected{% endif %}>General goods</option>
+                                <option value="perishable"{% if form_data.cargo_type == 'perishable' %}selected{% endif %}>Perishable / food</option>
+                                <option value="hazardous" {% if form_data.cargo_type == 'hazardous' %}selected{% endif %}>Hazardous materials</option>
+                                <option value="vehicle"   {% if form_data.cargo_type == 'vehicle' %}selected{% endif %}>Vehicle (as freight)</option>
+                            </select>
+                            <p id="error-cargo_type" class="error-message"></p>
+                        </div>
+                        <div class="form-group">
+                            <label class="block text-sm font-medium mb-2">Weight (kg) *</label>
+                            <input type="number" id="cargo_weight_kg" name="cargo_weight_kg"
+                                   value="{{ form_data.cargo_weight_kg|default:'' }}" min="0.1" step="0.1"
+                                   placeholder="e.g. 25" class="form-input w-full">
+                            <p id="error-cargo_weight_kg" class="error-message"></p>
+                        </div>
+                        <div class="form-group">
+                            <label class="block text-sm font-medium mb-2">Dimensions (L×W×H cm)</label>
+                            <input type="text" id="cargo_dimensions_cm" name="cargo_dimensions_cm"
+                                   value="{{ form_data.cargo_dimensions_cm|default:'' }}"
+                                   placeholder="100x50x50" class="form-input w-full">
+                            <p class="text-xs text-gray-400 mt-1">Optional — helps with loading plans</p>
+                        </div>
+                    </div>
+                    <!-- cargo_license_plate kept as hidden so views.py can still read it -->
+                    <input type="hidden" id="cargo_license_plate" name="cargo_license_plate"
+                           value="{{ form_data.cargo_license_plate|default:'' }}">
+                </div>
+            </div>
 
             <!-- STEP 3 HELP -->
             <details class="step-help mt-6">
@@ -848,6 +976,17 @@ Skip to main content </a>
                 </div>
             </div>
 
+            <!-- Modification policy notice -->
+            <div class="booking-policy-note" role="note">
+                <span class="booking-policy-note__icon" aria-hidden="true"><i class="fas fa-triangle-exclamation"></i></span>
+                <div>
+                    <strong>Before you pay — modification policy</strong>
+                    <p>Changing a confirmed booking (date, passengers, or extras) incurs an
+                    <strong>additional modification fee</strong>, and any fare difference is charged or refunded.
+                    Bookings <strong>cannot be modified within 24 hours</strong> of the scheduled departure.</p>
+                </div>
+            </div>
+
             <div class="form-group mb-6">
                 <label class="flex items-start">
                     <input type="checkbox" id="privacy_consent" name="privacy_consent" required
@@ -866,6 +1005,63 @@ Skip to main content </a>
                 <p id="error-privacy_consent" class="error-message text-red-500 text-sm mt-2" aria-live="polite"></p>
             </div>
 
+            <!-- PAYMENT METHOD SELECTION -->
+            <div class="payment-methods" role="radiogroup" aria-label="Choose a payment method">
+                <h3 class="payment-methods__title">Choose how to pay</h3>
+                <div class="payment-methods__grid">
+                    <label class="pay-method">
+                        <input type="radio" name="payment_method" value="card" checked>
+                        <span class="pay-method__body">
+                            <span class="pay-method__icon pay-method__icon--card"><i class="fas fa-credit-card"></i></span>
+                            <span class="pay-method__text">
+                                <span class="pay-method__name">Card</span>
+                                <span class="pay-method__desc">Visa / Mastercard via Stripe</span>
+                            </span>
+                        </span>
+                    </label>
+                    <label class="pay-method">
+                        <input type="radio" name="payment_method" value="anz">
+                        <span class="pay-method__body">
+                            <span class="pay-method__icon"><img src="{% static 'images/anz-logo.svg' %}" alt="ANZ"></span>
+                            <span class="pay-method__text">
+                                <span class="pay-method__name">ANZ Fiji</span>
+                                <span class="pay-method__desc">Internet Banking</span>
+                            </span>
+                        </span>
+                    </label>
+                    <label class="pay-method">
+                        <input type="radio" name="payment_method" value="bsp">
+                        <span class="pay-method__body">
+                            <span class="pay-method__icon"><img src="{% static 'images/bsp-logo.svg' %}" alt="BSP"></span>
+                            <span class="pay-method__text">
+                                <span class="pay-method__name">BSP</span>
+                                <span class="pay-method__desc">Internet Banking</span>
+                            </span>
+                        </span>
+                    </label>
+                    <label class="pay-method">
+                        <input type="radio" name="payment_method" value="mpaisa">
+                        <span class="pay-method__body">
+                            <span class="pay-method__icon"><img src="{% static 'images/vodafone-logo.svg' %}" alt="Vodafone"></span>
+                            <span class="pay-method__text">
+                                <span class="pay-method__name">M-PAiSA</span>
+                                <span class="pay-method__desc">Vodafone mobile money</span>
+                            </span>
+                        </span>
+                    </label>
+                    <label class="pay-method">
+                        <input type="radio" name="payment_method" value="mycash">
+                        <span class="pay-method__body">
+                            <span class="pay-method__icon"><img src="{% static 'images/digicel-logo.svg' %}" alt="Digicel"></span>
+                            <span class="pay-method__text">
+                                <span class="pay-method__name">MyCash</span>
+                                <span class="pay-method__desc">Digicel mobile money</span>
+                            </span>
+                        </span>
+                    </label>
+                </div>
+            </div>
+
             <!-- STEP 4 HELP -->
             <details class="step-help mt-6">
                 <summary>
@@ -878,13 +1074,13 @@ Skip to main content </a>
                     <p class="mb-3"><strong>How to complete Step 4:</strong></p>
                     <ol class="mb-4">
                         <li>Review all passenger details, selected schedule, and total cost.</li>
+                        <li>Choose your payment method (Card, ANZ Fiji, BSP, M-PAiSA, or MyCash).</li>
                         <li>Check the privacy consent box to agree to terms.</li>
-                        <li>Click "Confirm & Pay Securely" to be redirected to Stripe.</li>
-                        <li>Complete payment and receive your ticket via email.</li>
+                        <li>Click "Confirm &amp; Pay Securely" to complete payment on a secure page.</li>
                     </ol>
                     <ul>
                         <li><strong>Double-check:</strong> Ensure passenger names, IDs, and total price are correct.</li>
-                        <li><strong>Payment:</strong> Secure via Stripe. You'll be redirected to complete payment.</li>
+                        <li><strong>Payment:</strong> Card payments use Stripe; bank and mobile-money options open their own secure gateway.</li>
                         <li><strong>After payment:</strong> You'll receive a confirmation email with your ticket.</li>
                     </ul>
                 </div>
@@ -900,12 +1096,12 @@ Skip to main content </a>
         </section>
     </form>
 </div>
-```
 
 </main>
 
 <!-- CRITICAL GLOBAL CONFIGURATION -->
 
+{{ form_data|default:"{}"|json_script:"booking-form-data" }}
 <script type="application/javascript">
 (function() {
     'use strict';
@@ -913,7 +1109,12 @@ Skip to main content </a>
     try {
         const csrfToken = '{{ csrf_token }}';
         const isAuthenticated = {% if user.is_authenticated %}true{% else %}false{% endif %};
-        const formData = {{ form_data|default:"{}"|safe }};
+        // Parse server form data as real JSON (handles Python False/None safely).
+        let formData = {};
+        try {
+            const _fd = document.getElementById('booking-form-data');
+            formData = _fd ? JSON.parse(_fd.textContent || '{}') : {};
+        } catch (e) { console.warn('form data parse failed', e); formData = {}; }
         const addOns = [
             {% for addon in add_ons %}
             {
@@ -935,6 +1136,7 @@ Skip to main content </a>
         window.urls = {
             getPricing: '{% url "bookings:api_pricing" %}'.trim() || '/bookings/api/pricing/',
             createCheckoutSession: '{% url "bookings:api_create_checkout_session" %}'.trim() || '/bookings/api/create_checkout_session/',
+            createMockCheckout: '{% url "bookings:api_create_mock_checkout" %}'.trim() || '/bookings/api/create_mock_checkout/',
             getActiveSchedules: '{% url "bookings:get_schedule_updates" %}'.trim() || '/bookings/api/bookings/'
         };
 
@@ -1108,6 +1310,190 @@ window.isAuthenticated = {% if user.is_authenticated %}true{% else %}false{% end
     } else {
         initializeBookingSystemSafe();
     }
+})();
+</script>
+
+<!-- UI enhancements: counters, file zones, addon limits, service card toggles, step progress line -->
+<script>
+(function () {
+    'use strict';
+
+    /* ---- Counter stepper ---------------------------------------- */
+    function getTotalPassengers() {
+        var a = parseInt(document.getElementById('passenger_adults')?.value || 0);
+        var c = parseInt(document.getElementById('passenger_children')?.value || 0);
+        var i = parseInt(document.getElementById('passenger_infants')?.value || 0);
+        return a + c + i;
+    }
+
+    function updateAddonLimits() {
+        var total = getTotalPassengers();
+        document.querySelectorAll('.addon-card').forEach(function (card) {
+            var hardMax = parseInt(card.dataset.addonMax || 10);
+            var cap = Math.min(hardMax, total);
+            var input = card.querySelector('input[type="number"]');
+            var badge = card.querySelector('[data-addon-limit-label]');
+            if (input) {
+                input.max = cap;
+                if (parseInt(input.value) > cap) input.value = cap;
+                if (parseInt(input.value) > 0) card.classList.add('qty-active');
+                else card.classList.remove('qty-active');
+            }
+            if (badge) {
+                badge.textContent = total > 0
+                    ? 'max ' + cap + ' (= ' + total + ' passenger' + (total !== 1 ? 's' : '') + ')'
+                    : 'select passengers first';
+            }
+        });
+    }
+
+    document.addEventListener('change', function (e) {
+        var id = e.target && e.target.id;
+        if (id === 'passenger_adults' || id === 'passenger_children' || id === 'passenger_infants') {
+            updateAddonLimits();
+        }
+        /* addon qty active state */
+        if (e.target && e.target.closest && e.target.closest('.addon-card')) {
+            var card = e.target.closest('.addon-card');
+            if (parseInt(e.target.value) > 0) card.classList.add('qty-active');
+            else card.classList.remove('qty-active');
+        }
+    });
+
+    /* ---- Counter +/- buttons ------------------------------------ */
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-counter]');
+        if (!btn) return;
+        var inputId = btn.dataset.counter;
+        var action  = btn.dataset.action;
+        var input   = document.getElementById(inputId);
+        if (!input) return;
+        var min = parseInt(input.min !== '' ? input.min : 0);
+        var max = parseInt(input.max !== '' ? input.max : 99);
+        var val = parseInt(input.value || 0);
+        if (action === 'inc') val = Math.min(max, val + 1);
+        if (action === 'dec') val = Math.max(min, val - 1);
+        input.value = val;
+
+        /* update the visible counter-display span */
+        var displayMap = {
+            passenger_adults:   'adults-display',
+            passenger_children: 'children-display',
+            passenger_infants:  'infants-display'
+        };
+        var dispEl = document.getElementById(displayMap[inputId]);
+        if (dispEl) {
+            dispEl.textContent = val;
+            dispEl.classList.remove('bump');
+            void dispEl.offsetWidth;
+            dispEl.classList.add('bump');
+        }
+
+        /* fire change + input so book.js picks it up */
+        input.dispatchEvent(new Event('input',  { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+
+        /* disable dec at min, inc at max */
+        var group = input.closest('.counter-group');
+        if (group) {
+            var dec = group.querySelector('[data-action="dec"]');
+            var inc = group.querySelector('[data-action="inc"]');
+            if (dec) dec.disabled = (val <= min);
+            if (inc) inc.disabled = (val >= max);
+        }
+    });
+
+    /* ---- Service card header click → toggle checkbox ------------ */
+    document.addEventListener('click', function (e) {
+        var header = e.target.closest('.service-card-header');
+        if (!header) return;
+        if (e.target.type === 'checkbox') return;
+        var cb = header.querySelector('input[type="checkbox"]');
+        if (cb) {
+            cb.checked = !cb.checked;
+            cb.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+    });
+
+    /* Keep service-card.is-active in sync with the checkbox */
+    ['add_vehicle', 'add_cargo'].forEach(function (id) {
+        var cb = document.getElementById(id);
+        if (!cb) return;
+        function sync() {
+            var card = document.getElementById(id === 'add_vehicle' ? 'vehicle-card' : 'cargo-card');
+            if (card) card.classList.toggle('is-active', cb.checked);
+        }
+        cb.addEventListener('change', sync);
+        sync();
+    });
+
+    /* ---- File upload zone -------------------------------------- */
+    var uploadSVG = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>';
+    var checkSVG  = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>';
+
+    document.addEventListener('change', function (e) {
+        if (!e.target || e.target.type !== 'file') return;
+        var zone = e.target.closest('.file-upload-zone');
+        if (!zone) return;
+        var file = e.target.files && e.target.files[0];
+        var icon = zone.querySelector('.file-upload-icon');
+        var text = zone.querySelector('.file-upload-text');
+        var name = zone.querySelector('.file-upload-name');
+        if (file) {
+            zone.classList.add('has-file');
+            if (icon) icon.innerHTML = checkSVG;
+            if (text) text.textContent = 'File selected';
+            if (name) name.textContent = file.name;
+        } else {
+            zone.classList.remove('has-file');
+            if (icon) icon.innerHTML = uploadSVG;
+            if (text) text.textContent = 'Click or drag to upload';
+            if (name) name.textContent = '';
+        }
+    });
+
+    document.addEventListener('dragover', function (e) {
+        var zone = e.target.closest && e.target.closest('.file-upload-zone');
+        if (zone) { e.preventDefault(); zone.classList.add('drag-over'); }
+    });
+    document.addEventListener('dragleave', function (e) {
+        var zone = e.target.closest && e.target.closest('.file-upload-zone');
+        if (zone) zone.classList.remove('drag-over');
+    });
+    document.addEventListener('drop', function (e) {
+        var zone = e.target.closest && e.target.closest('.file-upload-zone');
+        if (zone) zone.classList.remove('drag-over');
+    });
+
+    /* ---- Step progress line: keep data-active in sync ----------- */
+    var stepNav = document.getElementById('step-nav');
+    if (stepNav) {
+        new MutationObserver(function () {
+            var all = Array.from(stepNav.querySelectorAll('.step.active[data-step]'));
+            var maxStep = all.reduce(function (m, li) {
+                return Math.max(m, parseInt(li.dataset.step || 1));
+            }, 1);
+            stepNav.dataset.active = String(maxStep);
+        }).observe(stepNav, { subtree: true, attributeFilter: ['class'] });
+    }
+
+    /* ---- Initial state ---------------------------------------- */
+    (function init() {
+        ['passenger_adults', 'passenger_children', 'passenger_infants'].forEach(function (id) {
+            var input = document.getElementById(id);
+            if (!input) return;
+            var group = input.closest('.counter-group');
+            if (!group) return;
+            var val = parseInt(input.value || 0);
+            var min = parseInt(input.min !== '' ? input.min : 0);
+            var max = parseInt(input.max !== '' ? input.max : 99);
+            var dec = group.querySelector('[data-action="dec"]');
+            var inc = group.querySelector('[data-action="inc"]');
+            if (dec) dec.disabled = (val <= min);
+            if (inc) inc.disabled = (val >= max);
+        });
+        updateAddonLimits();
+    })();
 })();
 </script>
 

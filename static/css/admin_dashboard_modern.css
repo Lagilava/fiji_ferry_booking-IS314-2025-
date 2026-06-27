@@ -1,0 +1,215 @@
+/* ============================================================================
+   ADMIN DASHBOARD — MODERN POLISH LAYER
+   Loaded after admin_dashboard.css so it refines the visual layer only.
+
+   IMPORTANT: this file deliberately reuses the existing theme tokens
+   (--card-bg, --text, --text-light, --border, --shadow, --gradient-primary,
+   --primary) which already adapt to light / OS-dark via the dashboard's
+   `@media (prefers-color-scheme: dark)` rules. It must NOT hardcode its own
+   surface or text colours, or it breaks readability in dark mode.
+   ============================================================================ */
+
+:root {
+    --md-radius: 16px;
+    --md-radius-sm: 12px;
+}
+
+/* ---- Layout rhythm ---- */
+.dashboard-container {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 1.5rem 1.25rem 3rem;
+}
+.dashboard-container > section {
+    margin-bottom: 2rem;
+}
+
+/* ---- Section titles: readable + gradient accent bar (no colour override) ---- */
+.dashboard-container .section-title {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--text);
+    padding-left: 0.85rem;
+    margin-bottom: 1rem;
+}
+.dashboard-container > section > .section-title::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 50%;
+    transform: translateY(-50%);
+    width: 4px; height: 1.15em;
+    border-radius: 4px;
+    background: var(--gradient-primary);
+}
+
+/* ---- Header: rounded + soft shadow (keep its own background) ---- */
+.dashboard-header {
+    border-radius: var(--md-radius);
+    overflow: hidden;
+    box-shadow: var(--shadow);
+}
+
+/* ---- Cards: unify radius / border / shadow using theme tokens ---- */
+.widget-card,
+.recent-bookings-section,
+.recent-activity-section,
+.analytics-section .dashboard-nav,
+.analytics-section .tab-content,
+.qr-scanner-section .widget-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--md-radius);
+    box-shadow: var(--shadow);
+    transition: box-shadow 0.25s ease, transform 0.25s ease;
+}
+.widget-card:hover {
+    box-shadow: var(--shadow-hover);
+}
+
+.widget-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 1.25rem;
+}
+
+/* ---- KPI metric cards: nested surface + solid brand numbers ---- */
+.performance-widget .stat-item {
+    background: var(--background);
+    border: 1px solid var(--border) !important;
+    border-radius: var(--md-radius-sm) !important;
+}
+.performance-widget .stat-item:hover {
+    box-shadow: var(--shadow-hover) !important;
+}
+.performance-widget .stat-number {
+    font-size: 2.3rem !important;
+    font-weight: 800 !important;
+    letter-spacing: -0.02em;
+    color: var(--primary) !important;
+}
+.performance-widget .stat-label {
+    color: var(--text-light) !important;
+    font-size: 0.78rem !important;
+}
+
+/* ---- Quick action buttons: modern pills using theme surfaces ---- */
+.quick-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+}
+.quick-actions .btn-primary-custom,
+.quick-actions .btn {
+    border-radius: 999px !important;
+    font-weight: 600 !important;
+    padding: 0.6rem 1.15rem !important;
+    border: 1px solid var(--border) !important;
+    background: var(--card-bg) !important;
+    color: var(--text) !important;
+    box-shadow: var(--shadow);
+    transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, color 0.18s ease;
+}
+.quick-actions .btn-primary-custom:hover,
+.quick-actions .btn:hover {
+    transform: translateY(-2px);
+    background: var(--gradient-primary) !important;
+    color: #fff !important;
+    border-color: transparent !important;
+    box-shadow: var(--shadow-hover);
+}
+.quick-actions .btn i { opacity: 0.9; }
+.quick-actions .btn-primary-custom--danger {
+    background: #ef4444 !important;
+    color: #fff !important;
+    border-color: #ef4444 !important;
+}
+.quick-actions .btn-primary-custom--danger:hover {
+    background: #dc2626 !important;
+    border-color: #dc2626 !important;
+}
+
+/* ---- Analytics tabs ---- */
+.custom-tabs {
+    border-bottom: 1px solid var(--border);
+    gap: 0.25rem;
+    padding: 0.5rem 0.5rem 0;
+    flex-wrap: wrap;
+    background: transparent;
+}
+.custom-tabs .nav-link {
+    border: none !important;
+    border-radius: 10px 10px 0 0 !important;
+    color: var(--text-light) !important;
+    font-weight: 600;
+    padding: 0.6rem 1rem !important;
+    transition: background 0.18s ease, color 0.18s ease;
+}
+.custom-tabs .nav-link:hover {
+    background: var(--background) !important;
+    color: var(--text) !important;
+}
+.custom-tabs .nav-link.active {
+    color: var(--primary) !important;
+    background: var(--background) !important;
+    box-shadow: inset 0 -3px 0 var(--primary);
+}
+
+/* ---- Chart panels ---- */
+.analytics-section .tab-content {
+    border-top: none;
+    border-radius: 0 0 var(--md-radius) var(--md-radius);
+    padding: 1.25rem;
+}
+.chart-wrapper {
+    background: var(--background);
+    border: 1px solid var(--border);
+    border-radius: var(--md-radius-sm);
+    padding: 1rem;
+    min-height: 320px;
+}
+.chart-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 0.85rem;
+}
+
+/* ---- Recent tables ---- */
+.recent-bookings-section,
+.recent-activity-section {
+    padding: 1.25rem 1.35rem;
+}
+.recent-bookings-table th,
+.recent-activity-section th {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-light);
+    border-bottom: 1px solid var(--border);
+    padding: 0.65rem 0.75rem;
+    text-align: left;
+}
+.recent-bookings-table td,
+.recent-activity-section td {
+    padding: 0.7rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+}
+.recent-bookings-table tbody tr:hover,
+.recent-activity-section tbody tr:hover {
+    background: var(--background);
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 640px) {
+    .dashboard-container { padding: 1rem 0.85rem 2.5rem; }
+    .widget-grid { grid-template-columns: 1fr; }
+    .quick-actions .btn-primary-custom,
+    .quick-actions .btn { flex: 1 1 100%; justify-content: center; }
+    .chart-wrapper { min-height: 260px; padding: 0.75rem; }
+}

@@ -1,0 +1,6 @@
+# Local development dependencies.
+# Installs everything in requirements.txt plus the MySQL driver used by the
+# local dev database. Production (Render) uses requirements.txt + PostgreSQL.
+-r requirements.txt
+
+mysqlclient==2.2.7

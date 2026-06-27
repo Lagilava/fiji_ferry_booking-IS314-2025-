@@ -1,0 +1,106 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Destinations · Fiji Ferry{% endblock %}
+
+{% block extra_css %}
+<style>
+    .dest-hero {
+        position: relative; border-radius: 22px; overflow: hidden;
+        padding: 3.25rem 2rem; margin-bottom: 2.25rem; color: #fff; text-align: center;
+        background:
+            linear-gradient(120deg, rgba(4,120,87,.82) 0%, rgba(34,174,194,.72) 100%),
+            url('https://images.unsplash.com/photo-1540202404-a2f29016b523?auto=format&fit=crop&w=1600&q=80') center/cover;
+        box-shadow: var(--shadow-xl);
+    }
+    .dest-hero h1 { font-family: 'Playfair Display', serif; font-size: clamp(2rem, 5vw, 3rem); font-weight: 700; margin: 0 0 .6rem; }
+    .dest-hero p { font-size: 1.1rem; opacity: .96; max-width: 640px; margin: 0 auto; }
+
+    .dest-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.5rem; }
+    .dest-card {
+        background: var(--bg-primary); border: 1px solid var(--border); border-radius: 18px;
+        overflow: hidden; box-shadow: var(--shadow-sm); transition: transform .25s, box-shadow .25s;
+        display: flex; flex-direction: column;
+    }
+    .dest-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-xl); }
+    .dest-card__media { position: relative; height: 200px; overflow: hidden; }
+    .dest-card__media img { width: 100%; height: 100%; object-fit: cover; transition: transform .5s; }
+    .dest-card:hover .dest-card__media img { transform: scale(1.07); }
+    .dest-card__media::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to top, rgba(15,23,42,.65), transparent 55%); }
+    .dest-card__title { position: absolute; left: 1.1rem; bottom: .9rem; z-index: 1; color: #fff; }
+    .dest-card__title h2 { font-family: 'Playfair Display', serif; font-size: 1.5rem; font-weight: 700; margin: 0; }
+    .dest-card__title .tag { font-size: .8rem; opacity: .92; }
+    .dest-card__fare {
+        position: absolute; top: 1rem; right: 1rem; z-index: 1;
+        background: rgba(255,255,255,.95); color: var(--primary-dark);
+        border-radius: 12px; padding: .45rem .7rem; text-align: right; box-shadow: var(--shadow-md);
+    }
+    .dest-card__fare .lbl { display: block; font-size: .62rem; text-transform: uppercase; letter-spacing: .05em; color: var(--text-secondary); }
+    .dest-card__fare .amt { font-weight: 800; font-size: 1rem; }
+    .dest-card__body { padding: 1.25rem; display: flex; flex-direction: column; gap: .85rem; flex: 1; }
+    .dest-card__blurb { font-size: .92rem; line-height: 1.55; color: var(--text-secondary); margin: 0; }
+    .dest-card__meta { display: flex; flex-wrap: wrap; gap: .45rem; }
+    .dest-chip { font-size: .74rem; font-weight: 600; padding: .28rem .6rem; border-radius: 999px; background: var(--bg-surface); color: var(--text-secondary); display: inline-flex; align-items: center; gap: .35rem; }
+    .dest-card__from { font-size: .8rem; color: var(--text-muted); }
+    .dest-card__foot { margin-top: auto; padding-top: 1rem; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .dest-next { font-size: .82rem; color: var(--text-secondary); }
+    .dest-next strong { color: var(--text-primary); }
+    .dest-empty { text-align: center; padding: 4rem 1rem; color: var(--text-secondary); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div data-aos="fade-up">
+    <section class="dest-hero">
+        <h1>Explore Fiji by Sea</h1>
+        <p>From the buzzing capital to untouched island chains — discover every destination on our network and find your next sailing.</p>
+    </section>
+
+    {% if destinations %}
+    <div class="dest-grid">
+        {% for d in destinations %}
+        <article class="dest-card">
+            <div class="dest-card__media">
+                <img src="{{ d.image }}" alt="{{ d.name }}, Fiji" loading="lazy">
+                <div class="dest-card__fare">
+                    <span class="lbl">from</span>
+                    <span class="amt">FJD {{ d.min_fare|floatformat:2 }}</span>
+                </div>
+                <div class="dest-card__title">
+                    <div class="tag">{{ d.tagline }}</div>
+                    <h2>{{ d.name }}</h2>
+                </div>
+            </div>
+            <div class="dest-card__body">
+                <p class="dest-card__blurb">{{ d.blurb }}</p>
+                <div class="dest-card__meta">
+                    <span class="dest-chip"><i class="fas fa-route"></i> {{ d.route_count }} route{{ d.route_count|pluralize }}</span>
+                    {% if d.next_departure %}
+                    <span class="dest-chip"><i class="fas fa-clock"></i> Next: {{ d.next_departure|date:"M j, H:i" }}</span>
+                    {% endif %}
+                </div>
+                <div class="dest-card__from"><i class="fas fa-location-dot"></i> Sail from: {{ d.from_ports|join:", " }}</div>
+                <div class="dest-card__foot">
+                    <span class="dest-next">
+                        {% if d.next_departure %}<strong>Departing soon</strong>{% else %}Schedule coming soon{% endif %}
+                    </span>
+                    {% if d.next_departure %}
+                    <a href="{% url 'bookings:book_ticket' %}?to_port={{ d.name|urlencode }}" class="btn btn-primary btn-small">
+                        <i class="fas fa-ticket"></i> Book trip
+                    </a>
+                    {% else %}
+                    <a href="{% url 'bookings:live_departures' %}" class="btn btn-secondary btn-small">View departures</a>
+                    {% endif %}
+                </div>
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="dest-empty">
+        <h2 class="text-xl font-semibold mb-2" style="color: var(--text-primary);">No destinations available yet</h2>
+        <p>Our network is being set up — please check back soon.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

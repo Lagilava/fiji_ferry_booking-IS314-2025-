@@ -23,6 +23,29 @@ def update_schedules_status():
 
 
 @shared_task
+def refresh_weather():
+    """Keep weather fresh for every route with upcoming active schedules.
+
+    Uses the free, key-less Open-Meteo provider so the homepage and admin
+    dashboard always show current conditions without any paid API or manual run.
+    """
+    now = timezone.now()
+    from .models import Route
+    from .weather.provider import fetch_and_store_weather
+
+    route_ids = (
+        Schedule.objects
+        .filter(status='scheduled', departure_time__gt=now)
+        .values_list('route_id', flat=True)
+        .distinct()
+    )
+    routes = Route.objects.select_related('departure_port').filter(id__in=list(route_ids))
+    ok = sum(1 for r in routes if fetch_and_store_weather(r))
+    logger.info("refresh_weather: updated %s route(s)", ok)
+    return ok
+
+
+@shared_task
 def expire_pending_bookings(max_age_minutes=30):
     """LOG-2: release seats held by abandoned 'pending' bookings.
 

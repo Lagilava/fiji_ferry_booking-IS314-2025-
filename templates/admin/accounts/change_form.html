@@ -1,0 +1,147 @@
+{% extends "admin/change_form.html" %}
+{% load static i18n %}
+
+{% block after_related_objects %}
+{{ block.super }}
+
+{% if user_obj %}
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+<style>
+.support-panel {
+  margin: 1.5rem 0;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 2px 12px rgba(0,0,0,.05);
+  font-family: system-ui, -apple-system, sans-serif;
+}
+.support-panel__header {
+  background: linear-gradient(135deg, #1e293b, #28309d);
+  color: #fff;
+  padding: 1rem 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  font-weight: 700;
+  font-size: .95rem;
+}
+.support-body { padding: 1.25rem; }
+.support-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+@media (max-width: 640px) { .support-grid { grid-template-columns: 1fr; } }
+
+.support-action {
+  display: flex; flex-direction: column; gap: .5rem;
+  padding: 1rem 1.1rem;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 12px;
+  background: #f9fafb;
+  text-decoration: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+.support-action:hover { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,.1); }
+.support-action__icon {
+  width: 34px; height: 34px; border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: .9rem; flex-shrink: 0;
+}
+.icon-blue   { background: rgba(59,130,246,.12);  color: #2563eb; }
+.icon-green  { background: rgba(16,185,129,.12);  color: #059669; }
+.icon-amber  { background: rgba(245,158,11,.12);  color: #d97706; }
+.icon-red    { background: rgba(239,68,68,.12);   color: #dc2626; }
+.icon-purple { background: rgba(139,92,246,.12);  color: #7c3aed; }
+.support-action__title { font-weight: 700; font-size: .85rem; color: #111827; }
+.support-action__desc  { font-size: .75rem; color: #6b7280; line-height: 1.4; }
+
+.pw-section { margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid #e5e7eb; }
+.pw-section h4 { font-size: .875rem; font-weight: 700; margin: 0 0 .9rem; color: #111; }
+.pw-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .85rem; }
+@media (max-width: 640px) { .pw-grid { grid-template-columns: 1fr; } }
+.pw-field { display: flex; flex-direction: column; gap: .35rem; }
+.pw-field label { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: #6b7280; }
+.pw-field input {
+  padding: .65rem .9rem; border: 1.5px solid #e5e7eb; border-radius: 9px;
+  font-size: .9rem; font-family: inherit;
+  transition: border-color .2s;
+}
+.pw-field input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,.1); }
+.pw-errors { font-size: .75rem; color: #dc2626; margin-top: .2rem; }
+.btn-setpw {
+  margin-top: .85rem;
+  display: inline-flex; align-items: center; gap: .4rem;
+  padding: .6rem 1.25rem; background: #ef4444; color: #fff;
+  border: none; border-radius: 9px; font-size: .85rem; font-weight: 700;
+  cursor: pointer; font-family: inherit; transition: background .15s;
+}
+.btn-setpw:hover { background: #dc2626; }
+</style>
+
+<div class="support-panel">
+  <div class="support-panel__header">
+    <i class="fas fa-life-ring"></i> User Support — {{ user_obj.email }}
+  </div>
+  <div class="support-body">
+
+    <!-- Quick actions -->
+    <div class="support-grid">
+      <a class="support-action" href="{% url 'custom_admin:accounts_user_transfer' user_obj.pk %}">
+        <div class="support-action__icon icon-amber"><i class="fas fa-exchange-alt"></i></div>
+        <div class="support-action__title">Transfer bookings</div>
+        <div class="support-action__desc">Move all bookings from this account to another registered user.</div>
+      </a>
+      <a class="support-action" href="{% url 'custom_admin:accounts_user_claim_guest' user_obj.pk %}">
+        <div class="support-action__icon icon-green"><i class="fas fa-link"></i></div>
+        <div class="support-action__title">Claim guest bookings</div>
+        <div class="support-action__desc">Link any guest bookings made with this email to this account.</div>
+      </a>
+      <a class="support-action" href="{% url 'custom_admin:accounts_user_changelist' %}?q={{ user_obj.email }}">
+        <div class="support-action__icon icon-blue"><i class="fas fa-search"></i></div>
+        <div class="support-action__title">Find duplicate accounts</div>
+        <div class="support-action__desc">Search for other accounts with a similar email or name.</div>
+      </a>
+      <a class="support-action" href="{% url 'custom_admin:bookings_booking_changelist' %}?user__id__exact={{ user_obj.pk }}">
+        <div class="support-action__icon icon-purple"><i class="fas fa-ticket-alt"></i></div>
+        <div class="support-action__title">View all bookings</div>
+        <div class="support-action__desc">See the full booking history for this user in the booking list.</div>
+      </a>
+    </div>
+
+    <!-- Inline password change -->
+    <div class="pw-section">
+      <h4><i class="fas fa-key" style="color:#ef4444;"></i> Set new password for this user</h4>
+      <p style="font-size:.8rem;color:#6b7280;margin:0 0 .9rem;">
+        Use this when the user has lost access to their email and cannot reset their own password.
+        The user will be forced to log in again after this is saved.
+      </p>
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="_set_password" value="1">
+        <div class="pw-grid">
+          <div class="pw-field">
+            <label for="id_password1">New password</label>
+            <input type="password" id="id_password1" name="password1" autocomplete="new-password" required>
+            {% if pw_form.errors.password1 %}
+              <div class="pw-errors">{{ pw_form.errors.password1|join:", " }}</div>
+            {% endif %}
+          </div>
+          <div class="pw-field">
+            <label for="id_password2">Confirm new password</label>
+            <input type="password" id="id_password2" name="password2" autocomplete="new-password" required>
+            {% if pw_form.errors.password2 %}
+              <div class="pw-errors">{{ pw_form.errors.password2|join:", " }}</div>
+            {% endif %}
+          </div>
+        </div>
+        {% if pw_form.non_field_errors %}
+          <div class="pw-errors" style="margin-top:.4rem;">{{ pw_form.non_field_errors|join:", " }}</div>
+        {% endif %}
+        <button type="submit" class="btn-setpw">
+          <i class="fas fa-lock"></i> Set password &amp; log user out
+        </button>
+      </form>
+    </div>
+
+  </div>
+</div>
+{% endif %}
+{% endblock %}

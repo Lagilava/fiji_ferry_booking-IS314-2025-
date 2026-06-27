@@ -1,0 +1,8 @@
+{% comment %}
+Included at the bottom of the user change page via change_view extra_context.
+This file is NOT a standalone template — it's rendered as a string and passed
+as extra_context['support_html'], then {{ support_html }} in a custom change_form.
+Instead, we inject it via the admin change_view submit row override.
+
+Actually we inject it via a custom fieldset declared in change_view extra_context.
+{% endcomment %}

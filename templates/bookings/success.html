@@ -25,6 +25,15 @@ section {
 
 {% block extra_js %}
 <script>
+    // Booking is complete — clear any saved booking-in-progress state so the
+    // next "Book Now" starts fresh instead of resuming this finished booking.
+    try {
+        sessionStorage.removeItem('ffb_booking_form');
+        sessionStorage.removeItem('ffb_guest_verified');
+        sessionStorage.removeItem('ffb_guest_verified_email');
+    } catch (e) { /* sessionStorage unavailable — nothing to clear */ }
+</script>
+<script>
 document.addEventListener('DOMContentLoaded', function () {
     // Initialize AOS
     function initializeAOS() {

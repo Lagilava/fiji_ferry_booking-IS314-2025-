@@ -1,0 +1,237 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrastyle %}{{ block.super }}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<style>
+.sup-wrap { max-width: 1100px; margin: 0 auto; padding: 1.5rem 1rem 4rem; font-family: Inter, sans-serif; }
+.sup-back  { display: inline-flex; align-items: center; gap: .4rem; color: #3b82f6; text-decoration: none;
+             font-size: .85rem; font-weight: 600; margin-bottom: 1.25rem; }
+.sup-back:hover { text-decoration: underline; }
+.sup-title { font-size: 1.5rem; font-weight: 800; margin: 0 0 .3rem; }
+.sup-subtitle { color: #6b7280; font-size: .875rem; margin: 0 0 2rem; }
+
+.sup-section { margin-bottom: 2rem; }
+.sup-section-title {
+  font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .6px;
+  color: #6b7280; margin: 0 0 .75rem; display: flex; align-items: center; gap: .5rem;
+}
+.sup-section-title .cnt {
+  background: #ef4444; color: #fff; border-radius: 100px;
+  font-size: .68rem; padding: .1rem .45rem; font-weight: 800;
+}
+.sup-section-title .cnt.amber { background: #f59e0b; }
+.sup-section-title .cnt.green { background: #10b981; }
+.sup-section-title .cnt.blue  { background: #3b82f6; }
+
+.sup-table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+.sup-table th {
+  text-align: left; padding: .5rem .85rem; font-size: .72rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .4px; color: #6b7280;
+  border-bottom: 2px solid #e5e7eb; background: #f9fafb;
+}
+.sup-table td { padding: .7rem .85rem; border-bottom: 1px solid #f3f4f6; color: #111827; vertical-align: middle; }
+.sup-table tbody tr:hover { background: #f9fafb; }
+.sup-table tbody tr:last-child td { border-bottom: none; }
+
+.sup-card {
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 16px;
+  overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.05);
+}
+
+.tag { display: inline-flex; align-items: center; gap: .25rem; padding: .2rem .6rem;
+       border-radius: 100px; font-size: .7rem; font-weight: 700; text-transform: uppercase; }
+.tag-inactive { background: #fee2e2; color: #991b1b; }
+.tag-pending  { background: #fef3c7; color: #92400e; }
+.tag-new      { background: #dbeafe; color: #1e40af; }
+
+.btn-sm {
+  display: inline-flex; align-items: center; gap: .3rem;
+  padding: .3rem .7rem; border-radius: 8px; font-size: .76rem; font-weight: 700;
+  text-decoration: none; cursor: pointer; border: none; font-family: inherit;
+  transition: opacity .15s;
+}
+.btn-sm:hover { opacity: .8; }
+.btn-primary { background: #3b82f6; color: #fff; }
+.btn-amber   { background: #f59e0b; color: #fff; }
+.btn-green   { background: #10b981; color: #fff; }
+.btn-red     { background: #ef4444; color: #fff; }
+
+.empty { text-align: center; padding: 1.5rem; color: #9ca3af; font-size: .875rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="sup-wrap tool-page">
+  {% include "admin/_tool_header.html" with icon="🛟" heading="User Support Dashboard" subtitle="Surface accounts that may need manual intervention." %}
+
+  <!-- Never logged in -->
+  <div class="sup-section">
+    <div class="sup-section-title">
+      <i class="fas fa-user-clock"></i> Never logged in
+      <span class="cnt blue">{{ never_logged_in|length }}</span>
+    </div>
+    <div class="sup-card">
+      {% if never_logged_in %}
+      <table class="sup-table">
+        <thead><tr><th>Email</th><th>Username</th><th>Registered</th><th>Actions</th></tr></thead>
+        <tbody>
+          {% for u in never_logged_in %}
+          <tr>
+            <td>{{ u.email }}</td>
+            <td>{{ u.username }}</td>
+            <td>{{ u.created_at|date:"d M Y" }}</td>
+            <td>
+              <a class="btn-sm btn-amber" href="{% url 'custom_admin:accounts_user_support' %}?action=send_reset&uid={{ u.pk }}">
+                <i class="fas fa-envelope"></i> Send reset
+              </a>
+              <a class="btn-sm btn-primary" href="{% url 'custom_admin:accounts_user_change' u.pk %}">
+                <i class="fas fa-edit"></i> Edit
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty"><i class="fas fa-check-circle"></i> All users have logged in at least once.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Long inactive -->
+  <div class="sup-section">
+    <div class="sup-section-title">
+      <i class="fas fa-moon"></i> Inactive 90+ days
+      <span class="cnt amber">{{ long_inactive|length }}</span>
+    </div>
+    <div class="sup-card">
+      {% if long_inactive %}
+      <table class="sup-table">
+        <thead><tr><th>Email</th><th>Last login</th><th>Actions</th></tr></thead>
+        <tbody>
+          {% for u in long_inactive %}
+          <tr>
+            <td>{{ u.email }}</td>
+            <td>{{ u.last_login|date:"d M Y H:i"|default:"Never" }}</td>
+            <td>
+              <a class="btn-sm btn-amber" href="{% url 'custom_admin:accounts_user_change' u.pk %}">
+                <i class="fas fa-edit"></i> Edit / set password
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty"><i class="fas fa-check-circle"></i> No long-inactive accounts.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Deactivated accounts -->
+  <div class="sup-section">
+    <div class="sup-section-title">
+      <i class="fas fa-ban"></i> Deactivated accounts
+      <span class="cnt">{{ deactivated|length }}</span>
+    </div>
+    <div class="sup-card">
+      {% if deactivated %}
+      <table class="sup-table">
+        <thead><tr><th>Email</th><th>Username</th><th>Deactivated</th><th>Actions</th></tr></thead>
+        <tbody>
+          {% for u in deactivated %}
+          <tr>
+            <td>{{ u.email }}</td>
+            <td>{{ u.username }}</td>
+            <td>{{ u.updated_at|date:"d M Y" }}</td>
+            <td>
+              <a class="btn-sm btn-green" href="{% url 'custom_admin:accounts_user_change' u.pk %}">
+                <i class="fas fa-power-off"></i> Review / reactivate
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty"><i class="fas fa-check-circle"></i> No deactivated accounts.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Users with pending bookings -->
+  <div class="sup-section">
+    <div class="sup-section-title">
+      <i class="fas fa-hourglass-half"></i> Users with pending bookings
+      <span class="cnt amber">{{ has_pending|length }}</span>
+    </div>
+    <div class="sup-card">
+      {% if has_pending %}
+      <table class="sup-table">
+        <thead><tr><th>Email</th><th>Actions</th></tr></thead>
+        <tbody>
+          {% for u in has_pending %}
+          <tr>
+            <td>{{ u.email }}</td>
+            <td>
+              <a class="btn-sm btn-primary" href="{% url 'custom_admin:accounts_user_change' u.pk %}">
+                <i class="fas fa-eye"></i> View account
+              </a>
+              <a class="btn-sm btn-amber"
+                 href="{% url 'custom_admin:bookings_booking_changelist' %}?user__id__exact={{ u.pk }}&status__exact=pending">
+                <i class="fas fa-ticket-alt"></i> Pending bookings
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty"><i class="fas fa-check-circle"></i> No users with pending bookings.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Claimable guest bookings -->
+  <div class="sup-section">
+    <div class="sup-section-title">
+      <i class="fas fa-link"></i> Guest bookings claimable by registered users
+      <span class="cnt blue">{{ claimable_guest_bookings|length }}</span>
+    </div>
+    <div class="sup-card">
+      {% if claimable_guest_bookings %}
+      <table class="sup-table">
+        <thead><tr><th>Booking</th><th>Guest email</th><th>Route</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>
+          {% for b in claimable_guest_bookings %}
+          <tr>
+            <td>#{{ b.id }}</td>
+            <td>{{ b.guest_email }}</td>
+            <td>
+              {% if b.schedule %}
+                {{ b.schedule.route.departure_port.name }} → {{ b.schedule.route.destination_port.name }}
+              {% else %}—{% endif %}
+            </td>
+            <td><span class="tag tag-pending">{{ b.status }}</span></td>
+            <td>
+              {% with uid=b.guest_email %}
+              <a class="btn-sm btn-green"
+                 href="{% url 'custom_admin:accounts_user_changelist' %}?q={{ b.guest_email }}">
+                <i class="fas fa-user"></i> Find user
+              </a>
+              {% endwith %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty"><i class="fas fa-check-circle"></i> No claimable guest bookings.</div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}

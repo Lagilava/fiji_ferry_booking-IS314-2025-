@@ -1,0 +1,249 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block title %}Operations Dashboard — {{ site_header }}{% endblock %}
+
+{% block extrahead %}
+<style>
+:root { --g: #10b981; --r: #ef4444; --y: #f59e0b; --b: #3b82f6; --p: #8b5cf6; }
+.ops-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 1.25rem; margin: 1.25rem 0; }
+.ops-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; overflow: hidden; }
+.ops-card__head { display: flex; align-items: center; gap: .6rem; padding: .85rem 1.1rem; font-weight: 700; font-size: .85rem; border-bottom: 1px solid #f3f4f6; }
+.ops-card__head .badge { margin-left: auto; background: #f3f4f6; border-radius: 999px; padding: .15rem .55rem; font-size: .72rem; font-weight: 700; }
+.badge-red  { background: #fef2f2 !important; color: #dc2626 !important; }
+.badge-amber{ background: #fffbeb !important; color: #d97706 !important; }
+.badge-blue { background: #eff6ff !important; color: #2563eb !important; }
+.badge-green{ background: #f0fdf4 !important; color: #16a34a !important; }
+.ops-card__body { padding: 0; max-height: 340px; overflow-y: auto; }
+.ops-row { display: flex; align-items: flex-start; gap: .75rem; padding: .7rem 1.1rem; border-bottom: 1px solid #f9fafb; font-size: .82rem; }
+.ops-row:last-child { border-bottom: 0; }
+.ops-row__dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
+.dot-red   { background: var(--r); }
+.dot-amber { background: var(--y); }
+.dot-green { background: var(--g); }
+.dot-blue  { background: var(--b); }
+.dot-purple{ background: var(--p); }
+.ops-row__main { flex: 1; min-width: 0; }
+.ops-row__title { font-weight: 600; color: #111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ops-row__sub   { color: #6b7280; font-size: .75rem; margin-top: .1rem; }
+.ops-row__action { flex-shrink: 0; }
+.btn-xs { display: inline-flex; align-items: center; gap: .25rem; padding: .3rem .7rem; border-radius: 7px; font-size: .75rem; font-weight: 700; border: none; cursor: pointer; text-decoration: none; }
+.btn-xs-green  { background: #d1fae5; color: #065f46; }
+.btn-xs-red    { background: #fee2e2; color: #991b1b; }
+.btn-xs-blue   { background: #dbeafe; color: #1d4ed8; }
+.btn-xs-amber  { background: #fef3c7; color: #92400e; }
+.ops-empty { padding: 1.25rem; text-align: center; color: #9ca3af; font-size: .82rem; }
+.manual-confirm-form { display: flex; gap: .5rem; align-items: center; }
+.manual-confirm-form input { border: 1px solid #d1d5db; border-radius: 6px; padding: .25rem .5rem; font-size: .75rem; width: 130px; }
+.section-label { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: #9ca3af; padding: .5rem 1.1rem .25rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="content-main" class="tool-page" data-live-refresh data-live-selector="#content-main">
+  {% include "admin/_tool_header.html" with icon="⚙️" subtitle="Real-time view of operational issues requiring staff attention. Updates live as bookings, payments and schedules change." %}
+
+  <div class="ops-grid">
+
+    {# ── Failed Payments ─────────────────────────────────────────────── #}
+    <div class="ops-card">
+      <div class="ops-card__head" style="color:#dc2626;">
+        ❌ Failed Payments
+        <span class="badge {% if failed_payments %}badge-red{% endif %}">{{ failed_payments|length }}</span>
+      </div>
+      <div class="ops-card__body">
+        {% if failed_payments %}
+          {% for p in failed_payments %}
+          <div class="ops-row">
+            <div class="ops-row__dot dot-red"></div>
+            <div class="ops-row__main">
+              <div class="ops-row__title">Booking #{{ p.booking_id }} — FJ${{ p.amount }}</div>
+              <div class="ops-row__sub">
+                {{ p.booking.user.email|default:p.booking.guest_email|default:"Guest" }} ·
+                {{ p.payment_date|date:"M d H:i" }} · {{ p.payment_method }}
+              </div>
+            </div>
+            <div class="ops-row__action">
+              <form method="post" action="{% url 'custom_admin:manual_confirm' %}" class="manual-confirm-form">
+                {% csrf_token %}
+                <input type="hidden" name="booking_id" value="{{ p.booking_id }}">
+                <input type="text" name="reference" placeholder="Ref / receipt #">
+                <button type="submit" class="btn-xs btn-xs-green">✓ Confirm</button>
+              </form>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="ops-empty">✅ No failed payments</div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ── Stale Pending (>30 min) ─────────────────────────────────────── #}
+    <div class="ops-card">
+      <div class="ops-card__head" style="color:#d97706;">
+        ⏳ Stuck Pending Checkouts
+        <span class="badge {% if stale_pending %}badge-amber{% endif %}">{{ stale_pending|length }}</span>
+      </div>
+      <div class="ops-card__body">
+        {% if stale_pending %}
+          {% for b in stale_pending %}
+          <div class="ops-row">
+            <div class="ops-row__dot dot-amber"></div>
+            <div class="ops-row__main">
+              <div class="ops-row__title">
+                #{{ b.id }} — {{ b.schedule.route.departure_port.name }} → {{ b.schedule.route.destination_port.name }}
+              </div>
+              <div class="ops-row__sub">
+                {{ b.user.email|default:b.guest_email|default:"Guest" }} · booked {{ b.booking_date|date:"M d H:i" }} · FJ${{ b.total_price }}
+              </div>
+            </div>
+            <div class="ops-row__action">
+              <a href="{% url 'custom_admin:bookings_booking_change' b.pk %}" class="btn-xs btn-xs-blue">View</a>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="ops-empty">✅ No stuck checkouts</div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ── Near-Full Schedules ─────────────────────────────────────────── #}
+    <div class="ops-card">
+      <div class="ops-card__head" style="color:#7c3aed;">
+        🚢 Near-Full Departures (next 48 h, &lt;10% seats left)
+        <span class="badge {% if capacity_alerts %}badge-red{% endif %}">{{ capacity_alerts|length }}</span>
+      </div>
+      <div class="ops-card__body">
+        {% if capacity_alerts %}
+          {% for s in capacity_alerts %}
+          <div class="ops-row">
+            <div class="ops-row__dot dot-purple"></div>
+            <div class="ops-row__main">
+              <div class="ops-row__title">{{ s.ferry.name }} — {{ s.route.departure_port.name }} → {{ s.route.destination_port.name }}</div>
+              <div class="ops-row__sub">{{ s.departure_time|date:"M d H:i" }} · {{ s.available_seats }} seat{{ s.available_seats|pluralize }} remaining of {{ s.ferry.capacity }}</div>
+            </div>
+            <div class="ops-row__action">
+              <a href="{% url 'custom_admin:departure_manifest' %}?schedule_id={{ s.id }}" class="btn-xs btn-xs-blue">Manifest</a>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="ops-empty">✅ No near-full departures</div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ── Unaccompanied Minors ────────────────────────────────────────── #}
+    <div class="ops-card">
+      <div class="ops-card__head" style="color:#dc2626;">
+        👶 Unaccompanied Minors (upcoming)
+        <span class="badge {% if unaccompanied %}badge-red{% endif %}">{{ unaccompanied|length }}</span>
+      </div>
+      <div class="ops-card__body">
+        {% if unaccompanied %}
+          {% for b in unaccompanied %}
+          <div class="ops-row">
+            <div class="ops-row__dot dot-red"></div>
+            <div class="ops-row__main">
+              <div class="ops-row__title">#{{ b.id }} — {{ b.schedule.route.departure_port.name }} → {{ b.schedule.route.destination_port.name }}</div>
+              <div class="ops-row__sub">{{ b.user.email|default:b.guest_email|default:"Guest" }} · {{ b.schedule.departure_time|date:"M d H:i" }} · {{ b.passenger_children }} child{{ b.passenger_children|pluralize:",ren" }}</div>
+            </div>
+            <div class="ops-row__action">
+              <a href="{% url 'custom_admin:bookings_booking_change' b.pk %}" class="btn-xs btn-xs-amber">Review</a>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="ops-empty">✅ None upcoming</div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ── Emergency Bookings ──────────────────────────────────────────── #}
+    <div class="ops-card">
+      <div class="ops-card__head" style="color:#dc2626;">
+        🚨 Emergency Bookings (upcoming)
+        <span class="badge {% if emergency %}badge-red{% endif %}">{{ emergency|length }}</span>
+      </div>
+      <div class="ops-card__body">
+        {% if emergency %}
+          {% for b in emergency %}
+          <div class="ops-row">
+            <div class="ops-row__dot dot-red"></div>
+            <div class="ops-row__main">
+              <div class="ops-row__title">#{{ b.id }} — {{ b.schedule.route.departure_port.name }} → {{ b.schedule.route.destination_port.name }}</div>
+              <div class="ops-row__sub">{{ b.user.email|default:b.guest_email|default:"Guest" }} · {{ b.schedule.departure_time|date:"M d H:i" }}</div>
+            </div>
+            <div class="ops-row__action">
+              <a href="{% url 'custom_admin:bookings_booking_change' b.pk %}" class="btn-xs btn-xs-red">View</a>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="ops-empty">✅ None upcoming</div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ── Unverified Passenger Documents ──────────────────────────────── #}
+    <div class="ops-card">
+      <div class="ops-card__head" style="color:#2563eb;">
+        📄 Unverified Documents (confirmed upcoming)
+        <span class="badge {% if unverified_docs %}badge-amber{% endif %}">{{ unverified_docs|length }}</span>
+      </div>
+      <div class="ops-card__body">
+        {% if unverified_docs %}
+          {% for p in unverified_docs %}
+          <div class="ops-row">
+            <div class="ops-row__dot dot-{% if p.verification_status == 'rejected' %}red{% else %}amber{% endif %}"></div>
+            <div class="ops-row__main">
+              <div class="ops-row__title">{{ p.first_name }} {{ p.last_name }} — {{ p.verification_status|title }}</div>
+              <div class="ops-row__sub">
+                Booking #{{ p.booking_id }} · {{ p.booking.schedule.departure_time|date:"M d H:i" }} ·
+                {{ p.booking.schedule.route.departure_port.name }} → {{ p.booking.schedule.route.destination_port.name }}
+              </div>
+            </div>
+            <div class="ops-row__action">
+              <a href="{% url 'custom_admin:bookings_passenger_change' p.pk %}" class="btn-xs btn-xs-blue">Verify</a>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="ops-empty">✅ All documents verified</div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ── Cancellations last 24 h ─────────────────────────────────────── #}
+    <div class="ops-card" style="grid-column: 1 / -1;">
+      <div class="ops-card__head" style="color:#374151;">
+        🔁 Cancellations — Last 24 Hours
+        <span class="badge">{{ cancelled_24h|length }}</span>
+      </div>
+      <div class="ops-card__body" style="max-height:240px;">
+        {% if cancelled_24h %}
+          {% for b in cancelled_24h %}
+          <div class="ops-row">
+            <div class="ops-row__dot dot-red"></div>
+            <div class="ops-row__main">
+              <div class="ops-row__title">#{{ b.id }} — FJ${{ b.total_price }}</div>
+              <div class="ops-row__sub">{{ b.user.email|default:b.guest_email|default:"Guest" }} · {{ b.booking_date|date:"M d H:i" }}</div>
+            </div>
+            <div class="ops-row__action">
+              <a href="{% url 'custom_admin:bookings_booking_change' b.pk %}" class="btn-xs btn-xs-blue">View</a>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="ops-empty">No cancellations in the last 24 hours</div>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="{% static 'js/admin_live_refresh.js' %}" defer></script>
+{% endblock %}

@@ -1,0 +1,20 @@
+{% comment %}
+Shared hero header for custom-admin tool pages. Gives every quick-action
+page the same gradient banner / typography as the main dashboard.
+
+Usage:
+  {% include "admin/_tool_header.html" with icon="📋" subtitle="Short description." %}
+
+`title` is taken from the view context (each tool view already sets it).
+{% endcomment %}
+{% load static %}
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="{% static 'css/admin_tools.css' %}">
+<div class="tool-hero">
+  <div class="tool-hero__icon">{{ icon|default:"🛠️" }}</div>
+  <div class="tool-hero__text">
+    <h1 class="tool-hero__title">{{ heading|default:title }}</h1>
+    {% if subtitle %}<div class="tool-hero__subtitle">{{ subtitle }}</div>{% endif %}
+  </div>
+  <a href="{% url 'admin:index' %}" class="tool-hero__back">← Dashboard</a>
+</div>

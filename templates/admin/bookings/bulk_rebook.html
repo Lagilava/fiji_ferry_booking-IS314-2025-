@@ -1,0 +1,111 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}Bulk Rebook — {{ site_header }}{% endblock %}
+
+{% block extrahead %}
+<style>
+.rebook-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1rem; }
+@media (max-width: 720px) { .rebook-layout { grid-template-columns: 1fr; } }
+.rebook-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; overflow: hidden; }
+.rebook-card__head { padding: .85rem 1.1rem; font-weight: 700; font-size: .875rem; border-bottom: 1px solid #f3f4f6; background: #f8fafc; }
+.rebook-card__body { padding: 1.1rem; }
+.schedule-select { width: 100%; padding: .55rem .75rem; border: 1px solid #d1d5db; border-radius: 8px; font-size: .875rem; margin-bottom: 1rem; }
+.booking-list { list-style: none; margin: 0; padding: 0; max-height: 380px; overflow-y: auto; }
+.booking-list li { display: flex; align-items: center; gap: .75rem; padding: .55rem 0; border-bottom: 1px solid #f3f4f6; font-size: .82rem; }
+.booking-list li:last-child { border-bottom: 0; }
+.bl-id { font-weight: 700; color: #1d4ed8; min-width: 48px; }
+.bl-email { flex: 1; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bl-pax { color: #6b7280; white-space: nowrap; }
+.bl-price { font-weight: 700; color: #059669; white-space: nowrap; }
+.btn-rebook { width: 100%; padding: .65rem; background: #10b981; color: #fff; border: none; border-radius: 9px; font-weight: 700; font-size: .9rem; cursor: pointer; margin-top: .5rem; }
+.btn-rebook:hover { background: #059669; }
+.warning-box { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 10px; padding: .75rem 1rem; font-size: .82rem; color: #92400e; margin-bottom: 1rem; }
+.step-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 1.25rem; margin-bottom: 1.25rem; }
+.step-card h3 { margin: 0 0 .75rem; font-size: .9rem; font-weight: 700; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="content-main" class="tool-page">
+  {% include "admin/_tool_header.html" with icon="🔄" subtitle="Move all confirmed bookings from a cancelled or changed departure to a new schedule. Seat inventory is updated atomically — no overbooking possible." %}
+
+  {# Step 1: pick source schedule #}
+  <div class="step-card">
+    <h3>Step 1 — Select the departure to rebook FROM</h3>
+    <form method="get">
+      <select name="schedule_id" class="schedule-select">
+        <option value="">— Choose source departure —</option>
+        {% for s in upcoming_schedules %}
+        <option value="{{ s.id }}" {% if source and source.id == s.id %}selected{% endif %}>
+          {{ s.departure_time|date:"M d, H:i" }} — {{ s.route.departure_port.name }} → {{ s.route.destination_port.name }} ({{ s.ferry.name }}, {{ s.available_seats }} seats left, status: {{ s.status }})
+        </option>
+        {% endfor %}
+      </select>
+      <button type="submit" style="padding:.5rem 1.1rem;background:#374151;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;">Load</button>
+    </form>
+  </div>
+
+  {% if source %}
+  <div class="rebook-layout">
+
+    {# Left: current bookings #}
+    <div class="rebook-card">
+      <div class="rebook-card__head">
+        📋 {{ source_bookings|length }} confirmed booking{{ source_bookings|length|pluralize }} on
+        {{ source.route.departure_port.name }} → {{ source.route.destination_port.name }} · {{ source.departure_time|date:"M d H:i" }}
+      </div>
+      <div class="rebook-card__body">
+        {% if source_bookings %}
+        <ul class="booking-list">
+          {% for b in source_bookings %}
+          <li>
+            <span class="bl-id">#{{ b.id }}</span>
+            <span class="bl-email">{{ b.user.email|default:b.guest_email|default:"Guest" }}</span>
+            <span class="bl-pax">{{ b.passenger_adults|add:b.passenger_children|add:b.passenger_infants }} pax</span>
+            <span class="bl-price">FJ${{ b.total_price }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+          <p style="color:#9ca3af;font-size:.83rem;">No confirmed bookings on this departure.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    {# Right: rebook form #}
+    <div class="rebook-card">
+      <div class="rebook-card__head">🎯 Step 2 — Move to which departure?</div>
+      <div class="rebook-card__body">
+        {% if source_bookings %}
+        <div class="warning-box">
+          ⚠️ This will move <strong>all {{ source_bookings|length }} booking{{ source_bookings|length|pluralize }}</strong>
+          to the selected departure. Seat counts are adjusted automatically.
+          Passengers are NOT notified automatically — send notifications separately.
+        </div>
+        <form method="post">
+          {% csrf_token %}
+          <input type="hidden" name="source_schedule_id" value="{{ source.id }}">
+          <label style="font-size:.8rem;font-weight:700;display:block;margin-bottom:.4rem;">Target departure</label>
+          <select name="target_schedule_id" class="schedule-select" required>
+            <option value="">— Choose target departure —</option>
+            {% for s in upcoming_schedules %}
+            {% if s.id != source.id %}
+            <option value="{{ s.id }}">
+              {{ s.departure_time|date:"M d, H:i" }} — {{ s.route.departure_port.name }} → {{ s.route.destination_port.name }} ({{ s.ferry.name }}, {{ s.available_seats }} seats)
+            </option>
+            {% endif %}
+            {% endfor %}
+          </select>
+          <button type="submit" class="btn-rebook">✓ Rebook all {{ source_bookings|length }} booking{{ source_bookings|length|pluralize }}</button>
+        </form>
+        {% else %}
+          <p style="color:#9ca3af;font-size:.83rem;">Nothing to rebook — no confirmed bookings on this departure.</p>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

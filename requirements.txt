@@ -9,7 +9,10 @@ python-decouple==3.8
 python-dotenv==1.0.1
 
 # Database Drivers
-mysqlclient==2.2.7
+# Production uses PostgreSQL (via DATABASE_URL). For local MySQL development,
+# install requirements-local.txt instead, which adds mysqlclient.
+psycopg2-binary==2.9.9
+dj-database-url==2.2.0
 
 # WebSockets & Real-Time
 channels==4.1.0

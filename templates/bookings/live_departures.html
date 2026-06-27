@@ -1,0 +1,331 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Live Departures · Fiji Ferry{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* ── Hero ──────────────────────────────────────────── */
+    .dep-hero {
+        position: relative; border-radius: 22px; overflow: hidden;
+        padding: 3rem 2rem; margin-bottom: 2rem; color: #fff;
+        background:
+            linear-gradient(120deg, rgba(2,32,71,.85) 0%, rgba(34,174,194,.75) 100%),
+            url('https://images.unsplash.com/photo-1502209524164-acea936639a2?auto=format&fit=crop&w=1600&q=80') center/cover;
+        box-shadow: var(--shadow-xl);
+    }
+    .dep-hero h1 { font-family: 'Playfair Display', serif; font-size: clamp(1.8rem, 4vw, 2.8rem); font-weight: 700; margin: 0 0 .5rem; }
+    .dep-hero p { font-size: 1.05rem; opacity: .95; max-width: 620px; margin: 0 0 1rem; }
+    .dep-live-chip {
+        display: inline-flex; align-items: center; gap: .5rem; font-size: .8rem; font-weight: 700;
+        text-transform: uppercase; letter-spacing: .05em; background: rgba(255,255,255,.18);
+        padding: .35rem .85rem; border-radius: 999px; margin-bottom: 1rem;
+    }
+    .dep-live-chip .dot { width: 9px; height: 9px; border-radius: 50%; background: #34d399; animation: depPulse 1.8s infinite; }
+    @keyframes depPulse { 0%{box-shadow:0 0 0 0 rgba(52,211,153,.7);} 70%{box-shadow:0 0 0 10px rgba(52,211,153,0);} 100%{box-shadow:0 0 0 0 rgba(52,211,153,0);} }
+
+    .dep-stats { display: flex; flex-wrap: wrap; gap: .85rem; margin-top: 1.5rem; }
+    .dep-stat { background: rgba(255,255,255,.12); border-radius: 14px; padding: .9rem 1.2rem; text-align: center; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); min-width: 100px; }
+    .dep-stat .num { font-size: 1.7rem; font-weight: 800; line-height: 1; }
+    .dep-stat .lbl { font-size: .72rem; opacity: .85; margin-top: .25rem; }
+    .dep-stat .num-green { color: #6ee7b7; }
+    .dep-stat .num-yellow { color: #fcd34d; }
+
+    /* ── Filters ───────────────────────────────────────── */
+    .dep-filters {
+        background: var(--bg-primary); border: 1px solid var(--border);
+        border-radius: 16px; padding: 1.1rem 1.4rem; margin-bottom: 1.5rem;
+        box-shadow: var(--shadow-sm);
+        display: flex; flex-wrap: wrap; gap: .9rem; align-items: flex-end;
+    }
+    .dep-filters form { display: contents; }
+    .dep-filter-group { display: flex; flex-direction: column; gap: .3rem; flex: 1; min-width: 140px; }
+    .dep-filter-group label { font-size: .75rem; font-weight: 600; color: var(--text-secondary); }
+    .dep-filter-group select, .dep-filter-group input[type=date] {
+        padding: .6rem .85rem; border: 1.5px solid var(--border);
+        border-radius: 10px; background: var(--bg-secondary); color: var(--text-primary);
+        font-size: .88rem; font-family: inherit; width: 100%; cursor: pointer;
+    }
+    .dep-filter-group select:focus, .dep-filter-group input:focus {
+        outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(16,185,129,.12);
+    }
+    [data-theme="dark"] .dep-filter-group select,
+    [data-theme="dark"] .dep-filter-group input[type=date] { background: var(--bg-surface); }
+
+    /* ── Board header ──────────────────────────────────── */
+    .dep-board-header {
+        display: flex; justify-content: space-between; align-items: center;
+        margin-bottom: .9rem; flex-wrap: wrap; gap: .5rem;
+    }
+    .dep-board-title { font-weight: 700; color: var(--text-primary); }
+    .dep-refresh-note { font-size: .78rem; color: var(--text-secondary); display: flex; align-items: center; gap: .35rem; }
+    .dep-countdown { font-weight: 700; color: var(--primary); }
+
+    /* ── Cards ─────────────────────────────────────────── */
+    .dep-board { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.1rem; }
+    .dep-tile {
+        background: var(--bg-primary); border: 1px solid var(--border); border-radius: 16px;
+        overflow: hidden; box-shadow: var(--shadow-sm); transition: transform .2s, box-shadow .2s;
+        display: flex; flex-direction: column;
+    }
+    .dep-tile:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); }
+
+    /* Status stripe at top */
+    .dep-stripe { height: 4px; }
+    .dep-stripe--scheduled { background: var(--primary); }
+    .dep-stripe--delayed   { background: #f59e0b; }
+    .dep-stripe--cancelled { background: #ef4444; }
+
+    .dep-tile-inner { padding: 1.25rem; display: flex; flex-direction: column; gap: .9rem; flex: 1; }
+    .dep-tile__route { display: flex; align-items: center; gap: .6rem; font-family: 'Playfair Display', serif; font-size: 1.2rem; font-weight: 700; color: var(--text-primary); }
+    .dep-tile__route .arrow { color: var(--secondary); }
+    .dep-tile__time { display: flex; align-items: baseline; gap: .5rem; }
+    .dep-tile__time .t { font-size: 1.45rem; font-weight: 800; color: var(--primary-dark); }
+    .dep-tile__time .d { font-size: .85rem; color: var(--text-secondary); }
+
+    .dep-meta { display: flex; flex-wrap: wrap; gap: .45rem; }
+    .dep-badge { font-size: .76rem; font-weight: 600; padding: .28rem .6rem; border-radius: 999px; background: var(--bg-surface); color: var(--text-secondary); display: inline-flex; align-items: center; gap: .35rem; }
+    .dep-badge--avail    { background: var(--primary-light); color: var(--primary-dark); }
+    .dep-badge--limited  { background: var(--accent-light); color: var(--accent-dark); }
+    .dep-badge--sold     { background: rgba(239,68,68,.12); color: var(--error); }
+    .dep-badge--delayed  { background: rgba(245,158,11,.12); color: #d97706; }
+    .dep-badge--cancelled { background: rgba(239,68,68,.1); color: #dc2626; }
+
+    .dep-tile__foot { display: flex; align-items: center; justify-content: space-between; margin-top: auto; padding-top: .9rem; border-top: 1px solid var(--border); }
+    .dep-fare .amt { font-size: 1.25rem; font-weight: 800; color: var(--text-primary); }
+    .dep-fare .from { font-size: .72rem; color: var(--text-muted); }
+
+    .btn-small { font-size: .82rem; padding: .5rem 1rem; }
+
+    /* ── Empty state ───────────────────────────────────── */
+    .dep-empty { text-align: center; padding: 4rem 1rem; }
+    .dep-empty i { font-size: 2.5rem; color: var(--text-muted); margin-bottom: 1rem; }
+
+    @media (max-width: 600px) {
+        .dep-hero { border-radius: 14px; padding: 2rem 1.25rem; }
+        .dep-board { grid-template-columns: 1fr; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div data-aos="fade-up">
+
+    <!-- ── Hero ─────────────────────────────────────── -->
+    <section class="dep-hero">
+        <div class="dep-live-chip"><span class="dot"></span> Live</div>
+        <h1>Live Departures</h1>
+        <p>Real-time sailings across Fiji — seat availability, fares, and conditions. Book in a couple of taps.</p>
+        <div class="dep-stats">
+            <div class="dep-stat"><div class="num">{{ total }}</div><div class="lbl">Upcoming sailings</div></div>
+            <div class="dep-stat"><div class="num num-green">{{ on_time }}</div><div class="lbl">On schedule</div></div>
+            <div class="dep-stat"><div class="num num-yellow">{{ delayed }}</div><div class="lbl">Delayed</div></div>
+            <div class="dep-stat"><div class="num">{{ active_ferries }}</div><div class="lbl">Active ferries</div></div>
+            <div class="dep-stat"><div class="num">{{ route_count }}</div><div class="lbl">Routes</div></div>
+        </div>
+    </section>
+
+    <!-- ── Filters ──────────────────────────────────── -->
+    <div class="dep-filters">
+        <form method="get" action="">
+            <div class="dep-filter-group">
+                <label for="f-route">Route</label>
+                <select name="route" id="f-route" onchange="this.form.submit()">
+                    <option value="">All routes</option>
+                    {% for r in routes %}
+                    <option value="{{ r.id }}" {% if route_filter == r.id|stringformat:'s' %}selected{% endif %}>
+                        {{ r.departure_port.name }} &rarr; {{ r.destination_port.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="dep-filter-group">
+                <label for="f-status">Status</label>
+                <select name="status" id="f-status" onchange="this.form.submit()">
+                    <option value="">All statuses</option>
+                    <option value="scheduled" {% if status_filter == 'scheduled' %}selected{% endif %}>On Schedule</option>
+                    <option value="delayed"   {% if status_filter == 'delayed'   %}selected{% endif %}>Delayed</option>
+                    <option value="cancelled" {% if status_filter == 'cancelled' %}selected{% endif %}>Cancelled</option>
+                </select>
+            </div>
+            <div class="dep-filter-group">
+                <label for="f-date">Date</label>
+                <input type="date" name="date" id="f-date" value="{{ date_filter }}" onchange="this.form.submit()">
+            </div>
+            {% if route_filter or status_filter or date_filter %}
+            <div style="display:flex;align-items:flex-end;">
+                <a href="{% url 'bookings:live_departures' %}" class="btn btn-secondary btn-small">Clear filters</a>
+            </div>
+            {% endif %}
+        </form>
+    </div>
+
+    <!-- ── Board (refreshed live in place) ──────────────── -->
+    <div id="dep-live">
+    <div class="dep-board-header">
+        <div class="dep-board-title">
+            {% if departures %}{{ departures|length }} departure{{ departures|length|pluralize }} shown{% if route_filter or status_filter or date_filter %} &mdash; filtered{% endif %}{% else %}No departures match your filters{% endif %}
+        </div>
+        <div class="dep-refresh-note">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+            Refreshes in <span class="dep-countdown" id="dep-cd">45</span>s
+        </div>
+    </div>
+
+    {% if departures %}
+    <div class="dep-board">
+        {% for d in departures %}
+        <article class="dep-tile">
+            <div class="dep-stripe dep-stripe--{{ d.status }}"></div>
+            <div class="dep-tile-inner">
+                <div class="dep-tile__route">
+                    <span>{{ d.from }}</span>
+                    <span class="arrow">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                    </span>
+                    <span>{{ d.to }}</span>
+                </div>
+
+                <div class="dep-tile__time">
+                    <span class="t">{{ d.departure_time|date:"H:i" }}</span>
+                    <span class="d">{{ d.departure_time|date:"D, M j" }}</span>
+                </div>
+
+                <div class="dep-meta">
+                    <span class="dep-badge">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h11a2 2 0 012 2v3"/><rect x="13" y="8" width="8" height="8" rx="1"/></svg>
+                        {{ d.ferry }}
+                    </span>
+                    {% if d.duration_min %}
+                    <span class="dep-badge">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        {{ d.duration_min }} min
+                    </span>
+                    {% endif %}
+
+                    {% if d.status == 'delayed' %}
+                    <span class="dep-badge dep-badge--delayed">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                        Delayed
+                    </span>
+                    {% elif d.status == 'cancelled' %}
+                    <span class="dep-badge dep-badge--cancelled">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        Cancelled
+                    </span>
+                    {% endif %}
+
+                    {% if d.condition %}
+                    <span class="dep-badge">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17.5 19H9a7 7 0 110-14h.3"/><path d="M17.5 5C20.536 5 23 7.464 23 10.5S20.536 16 17.5 16H17"/></svg>
+                        {{ d.condition }}{% if d.temperature %} &middot; {{ d.temperature|floatformat:0 }}&deg;C{% endif %}
+                    </span>
+                    {% endif %}
+
+                    {% if d.seats_label == 'Sold out' %}
+                    <span class="dep-badge dep-badge--sold">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                        Sold out
+                    </span>
+                    {% elif d.seats_label == 'Limited' %}
+                    <span class="dep-badge dep-badge--limited">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        {{ d.seats }} seats left
+                    </span>
+                    {% else %}
+                    <span class="dep-badge dep-badge--avail">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                        {{ d.seats }} seats
+                    </span>
+                    {% endif %}
+                </div>
+
+                <div class="dep-tile__foot">
+                    <div class="dep-fare">
+                        <span class="from">from</span>
+                        <div class="amt">FJD {{ d.base_fare|floatformat:2 }}</div>
+                    </div>
+                    {% if d.seats > 0 and d.status == 'scheduled' %}
+                    <a href="{% url 'bookings:book_ticket' %}?route_id={{ d.route_id }}&date={{ d.departure_time|date:'Y-m-d' }}"
+                       class="btn btn-primary btn-small">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                        Book
+                    </a>
+                    {% else %}
+                    <span class="btn btn-secondary btn-small" style="opacity:.55; pointer-events:none;">
+                        {% if d.status == 'cancelled' %}Cancelled{% elif d.seats == 0 %}Full{% else %}Unavailable{% endif %}
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+
+    {% else %}
+    <div class="dep-empty">
+        <div>
+            <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
+                <path d="M3 11l19-9-9 19-2-8-8-2z"/>
+            </svg>
+        </div>
+        <h2 style="color: var(--text-primary); font-size: 1.2rem; margin: .75rem 0 .4rem;">No upcoming departures</h2>
+        <p>
+            {% if route_filter or status_filter or date_filter %}
+                Try different filters or <a href="{% url 'bookings:live_departures' %}" style="color:var(--primary);">clear all</a>.
+            {% else %}
+                New sailings are scheduled regularly &mdash; please check back soon.
+            {% endif %}
+        </p>
+        <a href="{% url 'bookings:destinations' %}" class="btn btn-secondary mt-4" style="margin-top:1.25rem; display:inline-flex; align-items:center; gap:.4rem;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            Explore destinations
+        </a>
+    </div>
+    {% endif %}
+    </div><!-- /#dep-live -->
+
+</div>
+
+<script>
+(function () {
+    // Live, seamless refresh of the departures board — no full-page reload.
+    // Re-fetches the current (filtered) URL and swaps just #dep-live in place,
+    // so scroll position and the filter form are preserved. Project rule:
+    // changes must reflect live on the client without a manual/hard refresh.
+    var PERIOD = 45;
+    var cd = PERIOD;
+    var el = document.getElementById('dep-cd');
+    var busy = false;
+
+    function refresh() {
+        if (busy || document.hidden) return;
+        busy = true;
+        fetch(window.location.href, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+            .then(function (r) { return r.ok ? r.text() : Promise.reject(r.status); })
+            .then(function (html) {
+                var doc = new DOMParser().parseFromString(html, 'text/html');
+                var fresh = doc.querySelector('#dep-live');
+                var current = document.getElementById('dep-live');
+                if (fresh && current && fresh.innerHTML !== current.innerHTML) {
+                    current.innerHTML = fresh.innerHTML;
+                    el = document.getElementById('dep-cd');
+                }
+            })
+            .catch(function () { /* keep last good board */ })
+            .finally(function () { busy = false; cd = PERIOD; });
+    }
+
+    setInterval(function () {
+        cd -= 1;
+        if (el) el.textContent = Math.max(cd, 0);
+        if (cd <= 0) { cd = PERIOD; refresh(); }
+    }, 1000);
+
+    // Refresh immediately when the tab regains focus.
+    document.addEventListener('visibilitychange', function () {
+        if (!document.hidden) { refresh(); }
+    });
+})();
+</script>
+{% endblock %}

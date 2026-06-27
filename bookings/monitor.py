@@ -13,6 +13,15 @@ Lifecycle contract (as requested):
 ``logs/server_status.json``. These files can be inspected even when nothing is
 connected to the live app — i.e. offline.
 
+Metrics emitted each tick
+--------------------------
+  * Infrastructure: DB latency, cache roundtrip, channel-layer presence.
+  * Celery: active worker count (best-effort ping via Celery inspect).
+  * System: process uptime, thread count, disk usage.
+  * Domain gauges: pending / confirmed / cancelled booking counts, booking
+    throughput (last 1 h / 24 h), upcoming departure count, revenue snapshot
+    (confirmed bookings last 24 h), today's cancellation count.
+
 It only starts for actual server processes, never for management commands such
 as migrate/test/shell/collectstatic, and is guarded against the runserver
 autoreloader starting it twice.
@@ -24,7 +33,7 @@ import os
 import sys
 import threading
 import time
-from datetime import datetime, timezone as dt_timezone
+from datetime import datetime, timedelta, timezone as dt_timezone
 
 logger = logging.getLogger("bookings.monitor")
 
@@ -44,6 +53,13 @@ def _status_paths():
     logs = os.path.join(settings.BASE_DIR, "logs")
     os.makedirs(logs, exist_ok=True)
     return os.path.join(logs, "server_monitor.log"), os.path.join(logs, "server_status.json")
+
+
+def _timed(fn):
+    """Run a check, returning (ok, error, latency_ms)."""
+    start = time.perf_counter()
+    ok, err = fn()
+    return ok, err, round((time.perf_counter() - start) * 1000, 2)
 
 
 def _check_database():
@@ -74,23 +90,118 @@ def _check_channel_layer():
         return False, str(e)[:200]
 
 
-def _snapshot(pid, started_at):
-    db_ok, db_err = _check_database()
-    cache_ok, cache_err = _check_cache()
-    ch_ok, ch_err = _check_channel_layer()
+def _check_celery():
+    """Ping active Celery workers via inspect; best-effort — never raises."""
+    try:
+        from ferry_system.celery import app as celery_app
+        inspect = celery_app.control.inspect(timeout=1.5)
+        active = inspect.ping()
+        if active:
+            workers = list(active.keys())
+            return True, None, len(workers)
+        return False, "no workers responded to ping", 0
+    except Exception as e:
+        return False, str(e)[:160], 0
+
+
+def _system_metrics(started_at):
+    """Cross-platform, stdlib-only process/system gauges for offline inspection."""
+    metrics = {}
+    try:
+        started_dt = datetime.fromisoformat(started_at)
+        uptime = (datetime.now(dt_timezone.utc) - started_dt).total_seconds()
+        metrics["uptime_seconds"] = round(uptime, 1)
+    except Exception:
+        metrics["uptime_seconds"] = None
+    try:
+        metrics["threads"] = threading.active_count()
+    except Exception:
+        metrics["threads"] = None
+    try:
+        import shutil
+        from django.conf import settings
+        usage = shutil.disk_usage(str(settings.BASE_DIR))
+        metrics["disk_free_gb"] = round(usage.free / (1024 ** 3), 2)
+        metrics["disk_used_pct"] = round(usage.used / usage.total * 100, 1)
+    except Exception:
+        metrics["disk_free_gb"] = None
+    return metrics
+
+
+def _domain_gauges():
+    """Cheap, read-only business gauges — surface operational state without a dashboard."""
+    gauges = {}
+    try:
+        from decimal import Decimal
+        from django.db.models import Sum
+        from django.utils import timezone as djtz
+        from .models import Booking, Schedule, Payment
+        now = djtz.now()
+        cutoff_1h = now - timedelta(hours=1)
+        cutoff_24h = now - timedelta(hours=24)
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        # Booking state counts.
+        gauges["pending_bookings"] = Booking.objects.filter(status="pending").count()
+        gauges["confirmed_bookings"] = Booking.objects.filter(status="confirmed").count()
+        gauges["cancelled_today"] = Booking.objects.filter(
+            status="cancelled", booking_date__gte=today_start
+        ).count()
+
+        # Throughput — bookings created recently.
+        gauges["bookings_last_1h"] = Booking.objects.filter(booking_date__gte=cutoff_1h).count()
+        gauges["bookings_last_24h"] = Booking.objects.filter(booking_date__gte=cutoff_24h).count()
+
+        # Revenue from confirmed bookings in the last 24 h.
+        revenue = (
+            Payment.objects.filter(
+                payment_status="completed",
+                booking__status="confirmed",
+                booking__booking_date__gte=cutoff_24h,
+            ).aggregate(total=Sum("amount"))["total"] or Decimal("0")
+        )
+        gauges["revenue_last_24h_fjd"] = float(revenue)
+
+        # Schedule state.
+        gauges["upcoming_schedules"] = Schedule.objects.filter(
+            status="scheduled", departure_time__gt=now
+        ).count()
+        gauges["departing_next_2h"] = Schedule.objects.filter(
+            status="scheduled",
+            departure_time__gt=now,
+            departure_time__lte=now + timedelta(hours=2),
+        ).count()
+    except Exception as e:  # pragma: no cover - only on DB outage / early boot
+        gauges["error"] = str(e)[:160]
+    return gauges
+
+
+def _snapshot(pid, started_at, consecutive_failures=0):
+    db_ok, db_err, db_ms = _timed(_check_database)
+    cache_ok, cache_err, cache_ms = _timed(_check_cache)
+    ch_ok, ch_err, ch_ms = _timed(_check_channel_layer)
+    celery_ok, celery_err, celery_workers = _check_celery()
     healthy = db_ok and cache_ok
-    return {
+    snapshot = {
         "state": "running",
         "healthy": healthy,
+        "severity": "ok" if healthy else ("critical" if consecutive_failures >= 3 else "warning"),
+        "consecutive_failures": consecutive_failures,
         "pid": pid,
         "started_at": started_at,
         "checked_at": datetime.now(dt_timezone.utc).isoformat(),
         "checks": {
-            "database": {"ok": db_ok, "error": db_err},
-            "cache": {"ok": cache_ok, "error": cache_err},
-            "channel_layer": {"ok": ch_ok, "error": ch_err},
+            "database": {"ok": db_ok, "error": db_err, "latency_ms": db_ms},
+            "cache": {"ok": cache_ok, "error": cache_err, "latency_ms": cache_ms},
+            "channel_layer": {"ok": ch_ok, "error": ch_err, "latency_ms": ch_ms},
+            "celery": {"ok": celery_ok, "error": celery_err, "active_workers": celery_workers},
         },
+        "system": _system_metrics(started_at),
     }
+    # Domain gauges only make sense when the DB is reachable.
+    if db_ok:
+        snapshot["gauges"] = _domain_gauges()
+    return snapshot
 
 
 def _write_status(log_path, status_path, snapshot):
@@ -101,13 +212,27 @@ def _write_status(log_path, status_path, snapshot):
         logger.exception("monitor: failed to write status file")
     level = logging.INFO if snapshot.get("healthy") else logging.ERROR
     checks = snapshot.get("checks", {})
-    summary = " ".join(f"{k}={'ok' if v['ok'] else 'FAIL'}" for k, v in checks.items())
-    logger.log(level, "heartbeat pid=%s healthy=%s %s",
-               snapshot.get("pid"), snapshot.get("healthy"), summary)
+    parts = []
+    for k, v in checks.items():
+        if k == "celery":
+            parts.append(f"celery={'ok' if v['ok'] else 'FAIL'}(workers={v.get('active_workers', 0)})")
+        else:
+            parts.append(f"{k}={'ok' if v['ok'] else 'FAIL'}({v.get('latency_ms', '?')}ms)")
+    gauges = snapshot.get("gauges", {})
+    if gauges and not gauges.get("error"):
+        parts.append(
+            f"bookings(1h={gauges.get('bookings_last_1h', '?')} "
+            f"24h={gauges.get('bookings_last_24h', '?')} "
+            f"pending={gauges.get('pending_bookings', '?')})"
+        )
+    summary = " ".join(parts)
+    severity = snapshot.get("severity", "ok")
+    logger.log(level, "heartbeat pid=%s severity=%s %s",
+               snapshot.get("pid"), severity, summary)
     try:
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(f"[{snapshot['checked_at']}] {snapshot['state']} "
-                    f"healthy={snapshot['healthy']} {summary}\n")
+                    f"severity={severity} healthy={snapshot['healthy']} {summary}\n")
     except Exception:
         logger.exception("monitor: failed to append heartbeat log")
 
@@ -121,9 +246,18 @@ def _run(interval, pid, started_at):
     except Exception:
         pass
     # Loop until the process exits (daemon thread) or stop is requested.
+    consecutive_failures = 0
     while not _stop_event.is_set():
         try:
-            _write_status(log_path, status_path, _snapshot(pid, started_at))
+            snapshot = _snapshot(pid, started_at, consecutive_failures)
+            consecutive_failures = consecutive_failures + 1 if not snapshot["healthy"] else 0
+            # Re-stamp severity now that the failure streak is updated.
+            snapshot["consecutive_failures"] = consecutive_failures
+            if snapshot["healthy"]:
+                snapshot["severity"] = "ok"
+            else:
+                snapshot["severity"] = "critical" if consecutive_failures >= 3 else "warning"
+            _write_status(log_path, status_path, snapshot)
         except Exception:
             logger.exception("monitor: tick failed")
         _stop_event.wait(interval)

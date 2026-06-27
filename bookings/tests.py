@@ -4,6 +4,7 @@ Fully offline: the only external dependency (Stripe) is mocked, and email is
 mocked. Run with:  python manage.py test bookings
 """
 import datetime
+import json
 from decimal import Decimal
 from types import SimpleNamespace
 from unittest import mock
@@ -573,3 +574,190 @@ class AdminDashboardConsumerTests(TransactionTestCase):
                 break
         self.assertTrue(got_pong, "consumer did not respond to ping after MaintenanceLog save")
         await comm.disconnect()
+
+
+class ChatbotAssistantTests(TestCase):
+    """Rule-based help assistant: intent routing + HTTP endpoint."""
+
+    def test_intent_routing(self):
+        from bookings import chatbot
+        cases = {
+            "how do i book a ticket": "booking_how_to",
+            "can I bring my car": "vehicle_cargo",
+            "I need a refund": "cancel_refund",
+            "what payment methods do you take": "payment",
+            "where are my tickets": "ticket_checkin",
+            "bula": "greeting",
+            "zxcvqwer nonsense": "fallback",
+        }
+        for message, expected in cases.items():
+            self.assertEqual(chatbot.answer(message)["intent"], expected, msg=message)
+
+    def test_typo_and_synonym_tolerance(self):
+        from bookings import chatbot
+        cases = {
+            "waht routes do you have": "routes_destinations",
+            "book a boat ride": "booking_how_to",
+            "can i bring my motorcycle": "vehicle_cargo",
+            "where are my tix": "ticket_checkin",
+            "next departures": "live_departures",
+        }
+        for message, expected in cases.items():
+            self.assertEqual(chatbot.answer(message)["intent"], expected, msg=message)
+
+    def test_my_bookings_requires_login_prompt(self):
+        from bookings import chatbot
+        # Anonymous: handler returns the login-prompt reply.
+        result = chatbot.answer("show me my next trip")
+        self.assertEqual(result["intent"], "my_bookings")
+        self.assertIn("/accounts/login/", result["reply"])
+
+    def test_my_bookings_personalized_for_user(self):
+        from bookings import chatbot
+        user = User.objects.create_user(
+            username="chatuser", email="chatuser@example.com", password="x")
+        result = chatbot.answer("my next trip", user=user)
+        self.assertEqual(result["intent"], "my_bookings")
+        # No trips yet → friendly prompt to book, not the login prompt.
+        self.assertIn("/bookings/book/", result["reply"])
+        self.assertNotIn("/accounts/login/", result["reply"])
+
+    def test_empty_message_greets(self):
+        from bookings import chatbot
+        result = chatbot.answer("")
+        self.assertEqual(result["intent"], "greeting")
+        self.assertTrue(result["suggestions"])
+
+    def test_endpoint_returns_reply(self):
+        resp = self.client.post(
+            "/bookings/api/assistant/",
+            data=json.dumps({"message": "how much does it cost"}),
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(resp.status_code, 200)
+        payload = json.loads(resp.content)
+        self.assertEqual(payload["intent"], "pricing")
+        self.assertIn("reply", payload)
+
+    def test_endpoint_rejects_get(self):
+        resp = self.client.get("/bookings/api/assistant/", HTTP_HOST="localhost")
+        self.assertEqual(resp.status_code, 405)
+
+
+class SecurityAgentTests(TestCase):
+    """Cybersecurity agent audit: shape + non-destructive behaviour."""
+
+    def test_audit_returns_structured_result(self):
+        from bookings import security
+        result = security.run_audit()
+        for key in ("ran_at", "passed", "total", "ok", "checks",
+                    "critical_count", "warning_count"):
+            self.assertIn(key, result)
+        self.assertGreater(result["total"], 0)
+        self.assertEqual(result["total"], len(result["checks"]))
+        for c in result["checks"]:
+            self.assertIn(c["severity"], ("critical", "warning", "info"))
+
+    def test_ok_reflects_absence_of_criticals(self):
+        from bookings import security
+        result = security.run_audit()
+        self.assertEqual(result["ok"], result["critical_count"] == 0)
+
+
+class BookingScheduleLiveSafetyTests(TestCase):
+    """Step-1 must reflect live schedule state so a customer can't proceed
+    toward payment on a schedule an operator just delayed/cancelled/sold out."""
+
+    def setUp(self):
+        self.user = make_user("rider@x.com")
+        self.sch = make_schedule(seats=10)
+
+    def _validate_step1(self, schedule_id, adults=2):
+        self.client.force_login(self.user)
+        return self.client.post('/bookings/api/validate_step/', {
+            'step': '1', 'schedule_id': str(schedule_id),
+            'adults': str(adults), 'children': '0', 'infants': '0',
+        }, HTTP_HOST='localhost')
+
+    def test_step1_passes_for_scheduled(self):
+        r = self._validate_step1(self.sch.id)
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.json()['valid'])
+
+    def test_step1_rejects_cancelled_with_no_stale_cache(self):
+        # Initially valid…
+        self.assertTrue(self._validate_step1(self.sch.id).json()['valid'])
+        # …operator cancels it…
+        Schedule.objects.filter(pk=self.sch.pk).update(status='cancelled')
+        # …and the very next gate call must reject it (no 1-hour caching).
+        body = self._validate_step1(self.sch.id).json()
+        self.assertFalse(body['valid'])
+        self.assertTrue(any(e['field'] == 'schedule_id' for e in body['errors']))
+
+    def test_step1_rejects_delayed(self):
+        Schedule.objects.filter(pk=self.sch.pk).update(status='delayed')
+        self.assertFalse(self._validate_step1(self.sch.id).json()['valid'])
+
+    def test_step1_rejects_oversized_party(self):
+        Schedule.objects.filter(pk=self.sch.pk).update(available_seats=1)
+        self.assertFalse(self._validate_step1(self.sch.id, adults=5).json()['valid'])
+
+    def test_updates_endpoint_reports_live_statuses(self):
+        cancelled = make_schedule(seats=5)
+        Schedule.objects.filter(pk=cancelled.pk).update(status='cancelled')
+        ids = f"{self.sch.id},{cancelled.id}"
+        r = self.client.get(
+            f'/bookings/api/bookings/updates/?status_ids={ids}', HTTP_HOST='localhost')
+        statuses = r.json()['statuses']
+        self.assertTrue(statuses[str(self.sch.id)]['bookable'])
+        self.assertFalse(statuses[str(cancelled.id)]['bookable'])
+        self.assertEqual(statuses[str(cancelled.id)]['status'], 'cancelled')
+
+
+class ChatbotConversationTests(TestCase):
+    """Session context, follow-up slot filling, and live route-aware answers."""
+
+    def test_extract_ports_recognizes_port_names(self):
+        from bookings import chatbot
+        sch = make_schedule()
+        origin = sch.route.departure_port.name
+        names = {p["name"] for p in chatbot.extract_ports(origin.lower())}
+        self.assertIn(origin, names)
+
+    def test_pricing_asks_followup_then_fills_with_route(self):
+        from bookings import chatbot
+        sch = make_schedule()
+        # Generic fare question → answers AND asks a follow-up (pending route).
+        r1 = chatbot.answer("how much are the fares")
+        self.assertEqual(r1["intent"], "pricing")
+        self.assertEqual(r1["context"].get("pending", {}).get("slot"), "route")
+        # Replying with just a destination fills the slot with live data.
+        dest = sch.route.destination_port.name
+        r2 = chatbot.answer(dest, context=r1["context"])
+        self.assertEqual(r2["intent"], "pricing")
+        self.assertIn("FJ$", r2["reply"])
+        self.assertIn(dest, r2["reply"])
+
+    def test_departures_filtered_by_named_port(self):
+        from bookings import chatbot
+        sch = make_schedule()
+        origin = sch.route.departure_port.name
+        r = chatbot.answer("next departures from " + origin)
+        self.assertEqual(r["intent"], "live_departures")
+        self.assertIn(origin, r["reply"])
+
+    def test_bare_port_reuses_last_route_aware_intent(self):
+        from bookings import chatbot
+        sch = make_schedule()
+        dest = sch.route.destination_port.name
+        # last intent was pricing, no pending → a bare place still gets a fare.
+        r = chatbot.answer(dest, context={"last_intent": "pricing"})
+        self.assertEqual(r["intent"], "pricing")
+        self.assertIn("FJ$", r["reply"])
+
+    def test_context_is_returned_for_persistence(self):
+        from bookings import chatbot
+        r = chatbot.answer("how do i book")
+        self.assertIn("context", r)
+        self.assertEqual(r["context"]["last_intent"], "booking_how_to")

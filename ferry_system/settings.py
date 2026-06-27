@@ -17,13 +17,31 @@ load_dotenv(os.path.join(BASE_DIR, '.env'))
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 SECRET_KEY = config('SECRET_KEY', default='django-insecure-change-me-in-production')
 DEBUG = config('DEBUG', default=True, cast=bool)
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
-CSRF_TRUSTED_ORIGINS = [
-    'http://localhost:8000',
-    'http://127.0.0.1:8000',
-    'https://localhost',
-    'https://127.0.0.1',
+
+# Hosts/origins are env-driven so the same code runs in dev and production.
+# Provide a comma-separated list, e.g. ALLOWED_HOSTS=fijiferry.com,www.fijiferry.com
+ALLOWED_HOSTS = [
+    h.strip() for h in config('ALLOWED_HOSTS', default='127.0.0.1,localhost').split(',') if h.strip()
 ]
+CSRF_TRUSTED_ORIGINS = [
+    o.strip() for o in config(
+        'CSRF_TRUSTED_ORIGINS',
+        default='http://localhost:8000,http://127.0.0.1:8000,https://localhost,https://127.0.0.1',
+    ).split(',') if o.strip()
+]
+
+# Render injects the public hostname at runtime — trust it automatically.
+RENDER_EXTERNAL_HOSTNAME = config('RENDER_EXTERNAL_HOSTNAME', default='')
+if RENDER_EXTERNAL_HOSTNAME:
+    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
+    CSRF_TRUSTED_ORIGINS.append(f'https://{RENDER_EXTERNAL_HOSTNAME}')
+
+# Fail fast in production if the security-critical SECRET_KEY was never changed.
+if not DEBUG and SECRET_KEY == 'django-insecure-change-me-in-production':
+    raise RuntimeError(
+        'SECRET_KEY must be set to a unique, secret value when DEBUG=False. '
+        'Set it in the environment / .env file.'
+    )
 
 # Base URL for success/cancel redirects
 SITE_URL = config('SITE_URL', default='http://localhost:8000')
@@ -42,6 +60,11 @@ CELERY_BEAT_SCHEDULE = {
     'reconcile-pending-payments': {
         'task': 'bookings.tasks.reconcile_pending_payments',
         'schedule': crontab(minute='*/10'),
+    },
+    # Keep weather fresh for active routes (free Open-Meteo provider).
+    'refresh-weather': {
+        'task': 'bookings.tasks.refresh_weather',
+        'schedule': crontab(minute='*/20'),
     },
 }
 
@@ -63,6 +86,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',  # Serve static files in production
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -99,25 +123,35 @@ TEMPLATES = [
 ]
 
 # Database
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': config('DB_NAME', default='fiji_ferry_db'),
-        'USER': config('DB_USER', default='root'),
-        'PASSWORD': config('DB_PASSWORD', default='group10'),
-        'HOST': config('DB_HOST', default='localhost'),
-        'PORT': config('DB_PORT', default='3306'),
-        'OPTIONS': {
-            'sql_mode': 'traditional',
-            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
-        },
-        'CONN_MAX_AGE': 600 if not DEBUG else 0,
-        'POOL': {
-            'MAX_OVERFLOW': 10,
-            'POOL_SIZE': 5,
-        } if not DEBUG else None,
+# In production (e.g. Render) a single DATABASE_URL is provided — typically
+# Postgres. Locally we fall back to the discrete MySQL settings so existing
+# dev environments keep working unchanged.
+DATABASE_URL = config('DATABASE_URL', default='')
+if DATABASE_URL:
+    import dj_database_url
+    DATABASES = {
+        'default': dj_database_url.parse(
+            DATABASE_URL,
+            conn_max_age=600,
+            ssl_require=config('DB_SSL_REQUIRE', default=not DEBUG, cast=bool),
+        )
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.mysql',
+            'NAME': config('DB_NAME', default='fiji_ferry_db'),
+            'USER': config('DB_USER', default='root'),
+            'PASSWORD': config('DB_PASSWORD', default='group10'),
+            'HOST': config('DB_HOST', default='localhost'),
+            'PORT': config('DB_PORT', default='3306'),
+            'OPTIONS': {
+                'sql_mode': 'traditional',
+                'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+            },
+            'CONN_MAX_AGE': 600 if not DEBUG else 0,
+        }
+    }
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -137,7 +171,7 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [BASE_DIR / 'static']
-STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.ManifestStaticFilesStorage' if not DEBUG else 'django.contrib.staticfiles.storage.StaticFilesStorage'
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage' if not DEBUG else 'django.contrib.staticfiles.storage.StaticFilesStorage'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
@@ -153,7 +187,6 @@ AUTHENTICATION_BACKENDS = [
 ]
 
 # Email configuration
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = config('EMAIL_HOST', default='smtp.gmail.com')
 EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
 EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
@@ -162,12 +195,29 @@ EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
 DEFAULT_FROM_EMAIL = config('EMAIL_HOST_USER', default='admin@fijiferry.com')
 ADMIN_EMAIL = config('ADMIN_EMAIL', default='admin@fijiferry.com')
 
+# Pick the email backend:
+#   * If SMTP credentials are configured, send real email over SMTP.
+#   * Otherwise fall back to the console backend so OTP / password-reset codes
+#     are printed to the server console — the whole flow works end-to-end in
+#     development with zero setup. Override with EMAIL_BACKEND in the env.
+_default_email_backend = (
+    'django.core.mail.backends.smtp.EmailBackend'
+    if EMAIL_HOST_USER and EMAIL_HOST_PASSWORD
+    else 'django.core.mail.backends.console.EmailBackend'
+)
+EMAIL_BACKEND = config('EMAIL_BACKEND', default=_default_email_backend)
+
+# Single Redis URL drives channels, cache, and Celery. On Render the managed
+# Key-Value (Redis) instance injects REDIS_URL; locally it defaults to the
+# bundled local server.
+REDIS_URL = config('REDIS_URL', default='redis://127.0.0.1:6379/0')
+
 # Channel Layers Configuration
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [config("REDIS_WS_URL", default="redis://127.0.0.1:6379/0")],
+            "hosts": [config("REDIS_WS_URL", default=REDIS_URL)],
             "symmetric_encryption_keys": [SECRET_KEY],
             "capacity": 1000,
             "expiry": 20,
@@ -187,7 +237,7 @@ CHANNEL_LAYERS = {
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": config('REDIS_CACHE_URL', default='redis://127.0.0.1:6379/1'),
+        "LOCATION": config('REDIS_CACHE_URL', default=REDIS_URL),
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
             "SOCKET_CONNECT_TIMEOUT": 5,
@@ -204,8 +254,8 @@ CACHES = {
 }
 
 # Celery Configuration
-CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://localhost:6379/0')
-CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default='redis://localhost:6379/0')
+CELERY_BROKER_URL = config('CELERY_BROKER_URL', default=REDIS_URL)
+CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default=REDIS_URL)
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
@@ -257,14 +307,12 @@ X_FRAME_OPTIONS = 'SAMEORIGIN'
 SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
 
 # CORS configuration - ENHANCED FOR WEBSOCKETS
-CORS_ALLOWED_ORIGINS = [
-    'http://localhost:8000',
-    'http://127.0.0.1:8000',
-    'https://localhost',
-    'https://127.0.0.1',
-    'https://dq2rwn-ip-45-117-242-240.tunnelmole.net',
-    'https://jlcnng-ip-45-117-242-240.tunnelmole.net',
-]
+# CORS origins default to the trusted origins; extend via env for tunnels/CDNs.
+CORS_ALLOWED_ORIGINS = list(dict.fromkeys(
+    CSRF_TRUSTED_ORIGINS + [
+        o.strip() for o in config('CORS_ALLOWED_ORIGINS', default='').split(',') if o.strip()
+    ]
+))
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_HEADERS = [
     'accept',
@@ -404,11 +452,36 @@ JAZZMIN_SETTINGS = {
     "site_logo_classes": "img-circle img-thumbnail",  # Subtle border effect
     "site_icon": "apple-touch-icon.png",  # Replace with your favicon
 
-    # Search Configuration (Disabled)
-    "search_model": None,  # Disable global search bar
+    # Global search bar — a single box keyed on Bookings (Jazzmin renders one
+    # search box per model, so keep this to one to avoid a cluttered header).
+    "search_model": ["bookings.Booking"],
 
     # User Avatar
     "user_avatar": None,
+
+    # Logical sidebar ordering — surface day-to-day operational models first,
+    # reference/config models last, so the menu matches how staff actually work.
+    "order_with_respect_to": [
+        "bookings",
+        "bookings.Booking",
+        "bookings.Schedule",
+        "bookings.Payment",
+        "bookings.Ticket",
+        "bookings.Cargo",
+        "bookings.Ferry",
+        "bookings.Route",
+        "bookings.Port",
+        "bookings.WeatherCondition",
+        "bookings.MaintenanceLog",
+        "accounts",
+        "auth",
+    ],
+
+    # Quick links in the user (top-right) dropdown.
+    "usermenu_links": [
+        {"name": "Agent Monitoring", "url": "/admin/agents/", "icon": "fas fa-robot"},
+        {"name": "Live Dashboard", "url": "/admin/", "icon": "fas fa-chart-line"},
+    ],
 
     # Top Menu Links
     "topmenu_links": [
@@ -440,12 +513,12 @@ JAZZMIN_SETTINGS = {
             "class": "btn btn-success-custom topmenu-item",
             "permissions": ["bookings.view_maintenancelog"],
         },
-        # Add real-time dashboard link
+        # Agent monitoring dashboard
         {
-            "name": "Real-time",
-            "url": "/admin/realtime-data/",
-            "icon": "fas fa-chart-line",
-            "class": "btn btn-warning topmenu-item",
+            "name": "Agents",
+            "url": "/admin/agents/",
+            "icon": "fas fa-robot",
+            "class": "btn btn-info-custom topmenu-item",
             "permissions": ["auth.view_user"],
             "new_window": False,
         },
@@ -551,9 +624,11 @@ STRIPE_SECRET_KEY = config('STRIPE_SECRET_KEY', default='')
 STRIPE_PUBLISHABLE_KEY = config('STRIPE_PUBLISHABLE_KEY', default='')
 STRIPE_WEBHOOK_SECRET = config('STRIPE_WEBHOOK_SECRET', default='')
 
-# Weather API Keys
-WEATHER_API_KEY = config('WEATHER_API_KEY', default='083b420b5fbc4b248a810906252508')
-OPENWEATHERMAP_API_KEY = config('OPENWEATHERMAP_API_KEY', default='2ed7bcece5c9d7a7498be98276d933a9')
+# Weather API Keys — supplied via environment, never hardcoded.
+# (The default weather provider is the key-free Open-Meteo service, so these
+#  are optional unless you switch to a paid provider.)
+WEATHER_API_KEY = config('WEATHER_API_KEY', default='')
+OPENWEATHERMAP_API_KEY = config('OPENWEATHERMAP_API_KEY', default='')
 
 # Server status monitor (in-process daemon bound to the server lifecycle)
 SERVER_MONITOR_ENABLED = config('SERVER_MONITOR_ENABLED', default=True, cast=bool)

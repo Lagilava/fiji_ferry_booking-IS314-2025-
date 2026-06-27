@@ -1,0 +1,175 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block title %}Departure Manifest — {{ site_header }}{% endblock %}
+
+{% block extrahead %}
+<style>
+.manifest-select { max-width: 540px; margin-bottom: 1.5rem; display: flex; gap: .75rem; }
+.manifest-select select { flex: 1; padding: .5rem .75rem; border: 1px solid #d1d5db; border-radius: 8px; font-size: .875rem; }
+.manifest-select button { padding: .5rem 1.1rem; background: #10b981; color: #fff; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; }
+.manifest-title-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
+.manifest-title-row h1 { margin: 0; }
+.manifest-header { background: #0f172a; color: #fff; border-radius: 14px; padding: 1.25rem 1.5rem; margin-bottom: 1.25rem; display: flex; flex-wrap: wrap; gap: 1.25rem; align-items: center; }
+.manifest-header h2 { margin: 0; font-size: 1.15rem; font-weight: 700; flex: 1; }
+.mh-meta { color: #94a3b8; font-size: .85rem; margin-top: .25rem; }
+.mh-stat { text-align: center; }
+.mh-stat__val { font-size: 1.5rem; font-weight: 800; color: #10b981; }
+.mh-stat__lbl { font-size: .72rem; color: #94a3b8; text-transform: uppercase; letter-spacing: .5px; }
+.alert-bar { border-radius: 10px; padding: .65rem 1rem; margin-bottom: 1rem; font-size: .83rem; font-weight: 600; }
+.alert-bar--amber { background: #fef3c7; border: 1px solid #f59e0b; color: #92400e; }
+.alert-bar--red   { background: #fee2e2; border: 1px solid #ef4444; color: #991b1b; }
+.manifest-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+.manifest-table th { background: #f8fafc; font-weight: 700; text-align: left; padding: .55rem .85rem; border-bottom: 2px solid #e5e7eb; white-space: nowrap; }
+.manifest-table td { padding: .55rem .85rem; border-bottom: 1px solid #f3f4f6; vertical-align: top; }
+.manifest-table tr:hover td { background: #f8fafc; }
+.td-seq { color: #9ca3af; }
+.td-booking-id { font-weight: 700; }
+.td-booking-date { color: #9ca3af; font-size: .72rem; }
+.td-pax-summary { color: #9ca3af; }
+.td-contact { font-size: .77rem; }
+.td-pax-count { font-weight: 700; text-align: center; }
+.td-addons { font-size: .77rem; }
+.td-tickets { font-size: .77rem; }
+.tag { display: inline-block; padding: .15rem .5rem; border-radius: 999px; font-size: .7rem; font-weight: 700; }
+.tag-red    { background: #fee2e2; color: #991b1b; }
+.tag-amber  { background: #fef3c7; color: #92400e; }
+.tag-green  { background: #d1fae5; color: #065f46; }
+.tag-blue   { background: #dbeafe; color: #1d4ed8; }
+.tag-purple { background: #ede9fe; color: #5b21b6; }
+.print-btn { float: right; padding: .45rem 1rem; background: #374151; color: #fff; border: none; border-radius: 8px; font-size: .8rem; cursor: pointer; font-weight: 700; }
+.manifest-empty { color: #6b7280; padding: 1.5rem 0; }
+.manifest-placeholder { color: #6b7280; }
+@media print {
+  .manifest-select, .print-btn, #header, .breadcrumbs { display: none !important; }
+  .manifest-table { font-size: .75rem; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="content-main" class="tool-page" data-live-refresh data-live-selector="#manifest-live" data-live-poll="25000">
+  {% include "admin/_tool_header.html" with icon="📋" subtitle="Printable passenger boarding list per departure. Updates live as bookings are confirmed or cancelled." %}
+  <div class="manifest-title-row">
+    {% if schedule %}
+    <button type="button" class="print-btn" onclick="window.print()">🖨️ Print</button>
+    {% endif %}
+  </div>
+
+  <form method="get" class="manifest-select">
+    <label for="manifest-schedule-select" class="sr-only">Select departure</label>
+    <select id="manifest-schedule-select" name="schedule_id">
+      <option value="">— Select a departure —</option>
+      {% for s in schedules %}
+      <option value="{{ s.id }}" {% if schedule and schedule.id == s.id %}selected{% endif %}>
+        {{ s.departure_time|date:"M d, H:i" }} — {{ s.route.departure_port.name }} → {{ s.route.destination_port.name }} ({{ s.ferry.name }})
+      </option>
+      {% endfor %}
+    </select>
+    <button type="submit">Load</button>
+  </form>
+
+  <div id="manifest-live">
+  {% if schedule %}
+  <div class="manifest-header">
+    <div>
+      <h2>{{ schedule.route.departure_port.name }} → {{ schedule.route.destination_port.name }}</h2>
+      <div class="mh-meta">
+        {{ schedule.ferry.name }} · {{ schedule.departure_time|date:"l, F j Y at H:i" }} · Status: {{ schedule.status|title }}
+      </div>
+    </div>
+    <div class="mh-stat"><div class="mh-stat__val">{{ total_pax }}</div><div class="mh-stat__lbl">Passengers</div></div>
+    <div class="mh-stat"><div class="mh-stat__val">{{ bookings|length }}</div><div class="mh-stat__lbl">Bookings</div></div>
+    <div class="mh-stat"><div class="mh-stat__val">{{ total_vehicles }}</div><div class="mh-stat__lbl">Vehicles</div></div>
+    <div class="mh-stat"><div class="mh-stat__val">{{ total_cargo }}</div><div class="mh-stat__lbl">Cargo</div></div>
+    <div class="mh-stat"><div class="mh-stat__val">{{ schedule.available_seats }}</div><div class="mh-stat__lbl">Seats Left</div></div>
+  </div>
+
+  {% if unaccompanied_minors %}
+  <div class="alert-bar alert-bar--amber">⚠️ {{ unaccompanied_minors|length }} unaccompanied minor booking{{ unaccompanied_minors|length|pluralize }} — requires guardian verification before boarding.</div>
+  {% endif %}
+  {% if emergency_bookings %}
+  <div class="alert-bar alert-bar--red">🚨 {{ emergency_bookings|length }} emergency booking{{ emergency_bookings|length|pluralize }} — expedite boarding and notify crew.</div>
+  {% endif %}
+
+  {% if bookings %}
+  <table class="manifest-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Booking</th>
+        <th>Passenger(s)</th>
+        <th>Contact</th>
+        <th>Pax</th>
+        <th>Add-ons</th>
+        <th>Flags</th>
+        <th>Tickets</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for b in bookings %}
+    <tr>
+      <td class="td-seq">{{ forloop.counter }}</td>
+      <td>
+        <a href="{% url 'custom_admin:bookings_booking_change' b.pk %}" class="td-booking-id">#{{ b.id }}</a>
+        <div class="td-booking-date">{{ b.booking_date|date:"M d" }}</div>
+      </td>
+      <td>
+        {% for p in b.passengers.all %}
+          <div>{{ p.first_name }} {{ p.last_name }}
+            <span class="tag {% if p.passenger_type == 'adult' %}tag-blue{% elif p.passenger_type == 'child' %}tag-amber{% else %}tag-green{% endif %}">
+              {{ p.passenger_type }}
+            </span>
+            {% if p.verification_status == 'pending' %}<span class="tag tag-amber">doc pending</span>{% endif %}
+            {% if p.verification_status == 'rejected' %}<span class="tag tag-red">doc rejected</span>{% endif %}
+          </div>
+        {% empty %}
+          <span class="td-pax-summary">{{ b.passenger_adults }}A {{ b.passenger_children }}C {{ b.passenger_infants }}I</span>
+        {% endfor %}
+      </td>
+      <td class="td-contact">
+        {% if b.user %}{{ b.user.email }}{% else %}{{ b.guest_email|default:"—" }}{% endif %}
+      </td>
+      <td class="td-pax-count">
+        {{ b.passenger_adults|add:b.passenger_children|add:b.passenger_infants }}
+      </td>
+      <td class="td-addons">
+        {% for a in b.add_ons.all %}
+          <div>{{ a.add_on_type|title }} ×{{ a.quantity }}</div>
+        {% endfor %}
+        {% for v in b.vehicles.all %}
+          <div>🚗 {{ v.vehicle_type }}</div>
+        {% endfor %}
+        {% for c in b.cargo.all %}
+          <div>📦 {{ c.cargo_type }} {{ c.weight_kg }}kg</div>
+        {% endfor %}
+      </td>
+      <td>
+        {% if b.is_emergency %}<span class="tag tag-red">Emergency</span>{% endif %}
+        {% if b.is_unaccompanied_minor %}<span class="tag tag-red">Unac. Minor</span>{% endif %}
+        {% if b.is_group_booking %}<span class="tag tag-purple">Group</span>{% endif %}
+      </td>
+      <td class="td-tickets">
+        {% for t in b.tickets.all %}
+          <div>
+            <span class="tag {% if t.ticket_status == 'active' %}tag-green{% elif t.ticket_status == 'used' %}tag-blue{% else %}tag-red{% endif %}">
+              {{ t.ticket_status }}
+            </span>
+          </div>
+        {% empty %}—{% endfor %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="manifest-empty">No confirmed bookings for this departure.</p>
+  {% endif %}
+
+  {% else %}
+    <p class="manifest-placeholder">Select a departure above to load its passenger manifest.</p>
+  {% endif %}
+  </div><!-- /#manifest-live -->
+</div>
+<script src="{% static 'js/admin_live_refresh.js' %}" defer></script>
+{% endblock %}

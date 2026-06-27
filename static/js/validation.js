@@ -23,6 +23,8 @@
         lastNameRequired: 'Last name is required',
         ageRequired: 'Age is required',
         ageInvalid: 'Age must be between 2-120 years',
+        ageInvalidAdult: 'Adults must be 18 years or older',
+        ageInvalidChild: 'Children must be between 2-17 years old',
         dobRequired: 'Date of birth is required for infants',
         dobInvalid: 'Infant must be under 2 years old',
         idDocumentRequired: 'Valid ID document is required',
@@ -31,6 +33,7 @@
         // Step 3
         vehicleTypeRequired: 'Vehicle type is required',
         vehicleDimensionsInvalid: 'Dimensions must be in format LxWxH (e.g., 480x180x150)',
+        vehicleLicenseRequired: 'License plate is required for vehicles',
         cargoTypeRequired: 'Cargo type is required',
         cargoWeightInvalid: 'Cargo weight must be greater than 0kg',
 
@@ -786,7 +789,8 @@
                 }
 
                 passengerTypes.forEach(type => {
-                    const count = parseInt(formData.get(`${type}s`) || 0);
+                    const pluralKey = type === 'child' ? 'children' : `${type}s`;
+                    const count = parseInt(formData.get(pluralKey) || 0);
                     for (let i = 0; i < count; i++) {
 
                         // ---- names -------------------------------------------------
@@ -801,7 +805,10 @@
                         if (type !== 'infant') {
                             const age = formData.get(`${type}_age_${i}`);
                             if (!age || !validateAge(type, age)) {
-                                errors.push({ field: `${type}_age_${i}`, message: ERROR_MESSAGES.ageInvalid });
+                                const ageMsg = type === 'adult' ? ERROR_MESSAGES.ageInvalidAdult
+                                             : type === 'child' ? ERROR_MESSAGES.ageInvalidChild
+                                             : ERROR_MESSAGES.ageInvalid;
+                                errors.push({ field: `${type}_age_${i}`, message: ageMsg });
                             }
                         } else {
                             const dob = formData.get(`infant_dob_${i}`);
@@ -812,25 +819,16 @@
                             }
                         }
 
-                        // ---- DOCUMENT (CRITICAL CHANGE) ---------------------------
-                        const docKey = `${type}_id_document_${i}`;
-                        const val = formData.get(docKey);
-                        const hasFile = val instanceof File ? (val.size > 0 && !!val.name) : !!val;
-
+                        // ---- DOCUMENT (required for adults and children) ----------
                         if (type !== 'infant') {
-                            // Adults & Children MUST have a non-empty file
+                            const docKey = `${type}_id_document_${i}`;
+                            const val = formData.get(docKey);
+                            const hasFile = val instanceof File ? (val.size > 0 && !!val.name) : !!val;
                             if (!hasFile) {
+                                const who = type === 'adult' ? 'Adult' : 'Child';
                                 errors.push({
-                                    field: `${type}_id_document_${i}`,   // UI field name (matches template)
-                                    message: ERROR_MESSAGES.idDocumentRequired
-                                });
-                            }
-                        } else {
-                            // Infants MUST NOT have a file
-                            if (val instanceof File && val.size > 0) {
-                                errors.push({
-                                    field: `${type}_id_document_${i}`,
-                                    message: 'Infants must not upload documents'
+                                    field: docKey,
+                                    message: `${who} #${i + 1}: Please upload a passport or driver's license (required for boarding)`
                                 });
                             }
                         }
@@ -849,6 +847,12 @@
                     if (!formData.get('vehicle_type')) {
                         errors.push({ field: 'vehicle_type', message: ERROR_MESSAGES.vehicleTypeRequired });
                     }
+                    // License plate is mandatory so crew can identify the vehicle.
+                    if (!(formData.get('vehicle_license_plate') || '').trim()) {
+                        errors.push({ field: 'vehicle_license_plate', message: ERROR_MESSAGES.vehicleLicenseRequired });
+                    }
+                    // Dimensions are optional (they only add a small volume surcharge);
+                    // validate format only when provided.
                     const dims = formData.get('vehicle_dimensions');
                     if (dims && !validateDimensions(dims)) {
                         errors.push({ field: 'vehicle_dimensions', message: ERROR_MESSAGES.vehicleDimensionsInvalid });

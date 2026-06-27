@@ -171,9 +171,13 @@ class Schedule(models.Model):
 
 
 class Booking(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
+    # Preserve financial/booking records if the customer account is deleted:
+    # keep the booking (and its guest_email/payments) but null the user link.
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     guest_email = models.EmailField(null=True, blank=True)
-    schedule = models.ForeignKey('Schedule', on_delete=models.CASCADE)
+    # Never let deleting a Schedule silently wipe paid bookings + payment history.
+    # Operators must cancel/relocate bookings first (admin gets a ProtectedError).
+    schedule = models.ForeignKey('Schedule', on_delete=models.PROTECT)
     booking_date = models.DateTimeField(auto_now_add=True)
     passenger_adults = models.PositiveIntegerField(validators=[MinValueValidator(0)])
     passenger_children = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0)])

@@ -37,6 +37,10 @@
         <span class="error-message" id="password-error"></span>
       </div>
 
+      <p class="forgot-link">
+        <a href="{% url 'accounts:password_reset' %}" class="link-hover">Forgot your password?</a>
+      </p>
+
       <button type="submit" class="auth-button">
         <i class="fas fa-sign-in-alt"></i> Login
       </button>
@@ -218,6 +222,13 @@ input:not(:placeholder-shown) + label {
   transition: opacity 0.4s ease;
 }
 .messages.show { opacity: 1; }
+
+/* === Forgot password === */
+.forgot-link {
+  text-align: right;
+  margin: -14px 0 22px;
+  font-size: 0.85rem;
+}
 
 /* === Links === */
 .register-link, .home-link {

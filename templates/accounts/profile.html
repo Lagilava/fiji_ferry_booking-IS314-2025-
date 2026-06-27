@@ -1,0 +1,979 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Profile Settings · Fiji Ferry{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ═══════════════════════════════════════════════════
+   PROFILE PAGE
+═══════════════════════════════════════════════════ */
+
+.profile-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 1rem 5rem;
+}
+
+/* ── Hero banner ── */
+.profile-hero {
+  background: var(--gradient-primary);
+  border-radius: 28px;
+  padding: 2.5rem 2.5rem 4.5rem;
+  margin-bottom: -3.5rem;
+  position: relative;
+  overflow: hidden;
+}
+.profile-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.04'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+.profile-hero__content {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 1.5rem;
+}
+.profile-hero__text h1 {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.9rem;
+  font-weight: 700;
+  color: #fff;
+  margin: 0 0 0.3rem;
+  line-height: 1.2;
+}
+.profile-hero__text p {
+  font-size: 0.88rem;
+  color: rgba(255,255,255,0.75);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.profile-hero__text p .sep { opacity: 0.4; }
+
+/* ── Avatar ── */
+.profile-avatar {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.18);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  border: 3px solid rgba(255,255,255,0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  font-weight: 800;
+  color: #fff;
+  flex-shrink: 0;
+  letter-spacing: -1px;
+}
+
+/* ── Stat cards ── */
+.profile-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.9rem;
+  padding: 0 0.25rem;
+  margin-bottom: 1.75rem;
+}
+@media (max-width: 540px) {
+  .profile-stats { grid-template-columns: 1fr 1fr; }
+}
+.stat-card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 1.25rem 1.4rem;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.06);
+  position: relative;
+  overflow: hidden;
+}
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--gradient-primary);
+  border-radius: 20px 20px 0 0;
+}
+.stat-card__value {
+  font-size: 2rem;
+  font-weight: 900;
+  color: var(--text-primary);
+  line-height: 1;
+  margin-bottom: 0.3rem;
+}
+.stat-card__label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.stat-card__icon {
+  position: absolute;
+  bottom: 0.9rem;
+  right: 1rem;
+  font-size: 2rem;
+  color: var(--primary);
+  opacity: 0.08;
+}
+
+/* ── Tab bar – pill style ── */
+.profile-tabs {
+  display: flex;
+  gap: 0.35rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 0.35rem;
+  margin-bottom: 1.5rem;
+}
+.profile-tab {
+  flex: 1;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  border-radius: 10px;
+  transition: background 0.18s, color 0.18s, box-shadow 0.18s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+}
+.profile-tab:hover { color: var(--text-primary); }
+.profile-tab.is-active {
+  background: var(--bg-primary);
+  color: var(--primary);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+@media (max-width: 480px) {
+  .profile-tab span { display: none; }
+}
+
+/* ── Panels ── */
+.profile-panel { display: none; animation: fadeUp 0.18s ease; }
+.profile-panel.is-active { display: block; }
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Cards ── */
+.pcard {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 2rem 2rem 1.75rem;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.06);
+}
+.pcard + .pcard,
+.pcard + .danger-zone { margin-top: 1.1rem; }
+.pcard__header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.6rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.pcard__icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--primary-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary-dark);
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+.pcard__title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+  line-height: 1.2;
+}
+.pcard__subtitle {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin: 0.1rem 0 0;
+}
+
+/* ── Form grid ── */
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.1rem 1.25rem;
+}
+.form-grid .span-2 { grid-column: span 2; }
+@media (max-width: 560px) {
+  .form-grid { grid-template-columns: 1fr; }
+  .form-grid .span-2 { grid-column: span 1; }
+}
+
+.form-field { display: flex; flex-direction: column; gap: 0.4rem; }
+.form-field label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.form-field .input-wrap {
+  position: relative;
+}
+.form-field .input-icon {
+  position: absolute;
+  left: 0.9rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  pointer-events: none;
+  transition: color 0.2s;
+}
+.form-field input {
+  width: 100%;
+  padding: 0.78rem 1rem 0.78rem 2.4rem;
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  font-family: inherit;
+  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+  box-sizing: border-box;
+}
+.form-field input:focus {
+  outline: none;
+  border-color: var(--primary);
+  background: var(--bg-primary);
+  box-shadow: 0 0 0 4px rgba(16,185,129,0.1);
+}
+.form-field input:focus ~ .input-icon,
+.form-field .input-wrap:focus-within .input-icon {
+  color: var(--primary);
+}
+.form-field input.is-error { border-color: var(--error); }
+.form-field input.is-error:focus { box-shadow: 0 0 0 4px rgba(239,68,68,0.1); }
+
+/* no-icon inputs */
+.form-field input.no-icon { padding-left: 1rem; }
+
+.field-error {
+  font-size: 0.75rem;
+  color: var(--error);
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-weight: 600;
+}
+
+/* ── Show/hide password toggle ── */
+.pw-toggle {
+  position: absolute;
+  right: 0.85rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  padding: 0.25rem;
+  line-height: 1;
+  transition: color 0.15s;
+}
+.pw-toggle:hover { color: var(--text-primary); }
+
+/* ── Password strength ── */
+.pw-strength-wrap { margin-top: 0.5rem; }
+.pw-strength-track {
+  height: 5px;
+  border-radius: 3px;
+  background: var(--border);
+  overflow: hidden;
+}
+.pw-strength-bar {
+  height: 100%;
+  width: 0;
+  border-radius: 3px;
+  transition: width 0.35s cubic-bezier(.4,0,.2,1), background 0.35s;
+}
+.pw-strength-meta {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.3rem;
+}
+.pw-strength-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.pw-hints {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+.pw-hint {
+  font-size: 0.7rem;
+  padding: 0.18rem 0.5rem;
+  border-radius: 100px;
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.pw-hint.met {
+  background: #d1fae5;
+  color: #065f46;
+  border-color: #6ee7b7;
+}
+[data-theme="dark"] .pw-hint.met {
+  background: #064e3b;
+  color: #6ee7b7;
+  border-color: #065f46;
+}
+
+/* ── Buttons ── */
+.btn-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.75rem;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+  font-family: inherit;
+}
+.btn-save:hover {
+  background: var(--primary-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(16,185,129,0.28);
+}
+.btn-save:active { transform: translateY(0); }
+.btn-save:disabled { opacity: 0.6; pointer-events: none; }
+.btn-save--link { text-decoration: none; }
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 1rem;
+  margin-top: 1.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.form-actions__note {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+/* ── Toast ── */
+.profile-toast {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.9rem 1.2rem;
+  border-radius: 14px;
+  margin-bottom: 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  animation: slideDown 0.3s ease;
+}
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.toast-success {
+  background: #d1fae5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+.toast-error {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+}
+[data-theme="dark"] .toast-success { background: #064e3b; color: #6ee7b7; border-color: #065f46; }
+[data-theme="dark"] .toast-error   { background: #450a0a; color: #fca5a5; border-color: #7f1d1d; }
+
+/* ── Booking rows ── */
+.booking-list { display: flex; flex-direction: column; gap: 0.75rem; }
+.booking-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-secondary);
+  transition: border-color 0.15s, box-shadow 0.15s;
+  text-decoration: none;
+}
+.booking-card:hover {
+  border-color: var(--primary);
+  box-shadow: 0 4px 16px rgba(16,185,129,0.08);
+}
+.booking-card__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot-confirmed { background: #10b981; }
+.dot-pending   { background: #f59e0b; }
+.dot-cancelled { background: #94a3b8; }
+.booking-card__route {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 0;
+}
+.booking-card__meta {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  margin-top: 0.15rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.booking-badge {
+  font-size: 0.69rem;
+  font-weight: 700;
+  padding: 0.22rem 0.6rem;
+  border-radius: 100px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  flex-shrink: 0;
+}
+.badge-confirmed { background: #d1fae5; color: #065f46; }
+.badge-pending   { background: #fef3c7; color: #92400e; }
+.badge-cancelled { background: #f1f5f9; color: #64748b; }
+[data-theme="dark"] .badge-confirmed { background: #064e3b; color: #6ee7b7; }
+[data-theme="dark"] .badge-pending   { background: #451a03; color: #fcd34d; }
+[data-theme="dark"] .badge-cancelled { background: #1e293b; color: #94a3b8; }
+
+.booking-card__arrow {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  flex-shrink: 0;
+  transition: color 0.15s, transform 0.15s;
+}
+.booking-card:hover .booking-card__arrow {
+  color: var(--primary);
+  transform: translateX(2px);
+}
+
+/* ── Empty state ── */
+.empty-state {
+  text-align: center;
+  padding: 3rem 1rem;
+}
+.empty-state__icon {
+  font-size: 3rem;
+  opacity: 0.15;
+  margin-bottom: 1rem;
+}
+.empty-state p {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin: 0 0 1.25rem;
+}
+
+/* ── Danger zone ── */
+.danger-zone {
+  border: 1.5px solid #fecaca;
+  border-radius: 20px;
+  padding: 1.5rem 2rem;
+  background: var(--bg-primary);
+}
+[data-theme="dark"] .danger-zone { border-color: #7f1d1d; }
+.danger-zone__header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #dc2626;
+  margin-bottom: 0.5rem;
+}
+[data-theme="dark"] .danger-zone__header { color: #f87171; }
+.danger-zone p {
+  font-size: 0.84rem;
+  color: var(--text-muted);
+  margin: 0 0 1.1rem;
+}
+.btn-signout {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.2rem;
+  background: transparent;
+  color: #dc2626;
+  border: 1.5px solid #fca5a5;
+  border-radius: 10px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.18s, color 0.18s, border-color 0.18s;
+  font-family: inherit;
+}
+.btn-signout:hover {
+  background: #dc2626;
+  color: #fff;
+  border-color: #dc2626;
+}
+
+/* ── View-all link ── */
+.view-all-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--secondary);
+  text-decoration: none;
+  transition: gap 0.15s;
+}
+.view-all-link:hover { gap: 0.65rem; }
+
+.stat-card--status .stat-card__value {
+  font-size: 1.1rem;
+  padding-top: 0.45rem;
+}
+.link-secondary {
+  color: var(--secondary);
+  text-decoration: none;
+  font-weight: 600;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="profile-page">
+
+  <!-- ── Toast messages ── -->
+  {% for msg in messages %}
+    <div class="profile-toast {% if 'error' in msg.tags %}toast-error{% else %}toast-success{% endif %}">
+      <i class="fas fa-{% if 'error' in msg.tags %}exclamation-circle{% else %}check-circle{% endif %}"></i>
+      {{ msg }}
+    </div>
+  {% endfor %}
+
+  <!-- ── Hero banner ── -->
+  <div class="profile-hero" data-aos="fade-down">
+    <div class="profile-hero__content">
+      <div class="profile-avatar">
+        {{ user.first_name|first|upper }}{{ user.last_name|first|upper }}
+      </div>
+      <div class="profile-hero__text">
+        <h1>{{ user.get_full_name|default:user.username }}</h1>
+        <p>
+          <i class="fas fa-at"></i> {{ user.username }}
+          <span class="sep">·</span>
+          <i class="fas fa-envelope"></i> {{ user.email }}
+          {% if user.phone_number %}
+            <span class="sep">·</span>
+            <i class="fas fa-phone"></i> {{ user.phone_number }}
+          {% endif %}
+          <span class="sep">·</span>
+          <i class="fas fa-calendar-alt"></i> Member since {{ user.created_at|date:"F Y" }}
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Stat cards (overlap hero) ── -->
+  <div class="profile-stats" data-aos="fade-up" data-aos-delay="60">
+    <div class="stat-card">
+      <div class="stat-card__value">{{ total_bookings }}</div>
+      <div class="stat-card__label">Total trips</div>
+      <i class="fas fa-ship stat-card__icon"></i>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card__value">{{ confirmed_bookings }}</div>
+      <div class="stat-card__label">Confirmed</div>
+      <i class="fas fa-check-circle stat-card__icon"></i>
+    </div>
+    <div class="stat-card stat-card--status">
+      <div class="stat-card__value">Active</div>
+      <div class="stat-card__label">Account status</div>
+      <i class="fas fa-shield-alt stat-card__icon"></i>
+    </div>
+  </div>
+
+  <!-- ── Pill tabs ── -->
+  <div class="profile-tabs" role="tablist" data-aos="fade-up" data-aos-delay="100">
+    <button class="profile-tab {% if active_tab == 'profile' %}is-active{% endif %}"
+            data-tab="profile" role="tab">
+      <i class="fas fa-user"></i> <span>Personal Info</span>
+    </button>
+    <button class="profile-tab {% if active_tab == 'security' %}is-active{% endif %}"
+            data-tab="security" role="tab">
+      <i class="fas fa-lock"></i> <span>Security</span>
+    </button>
+    <button class="profile-tab {% if active_tab == 'activity' %}is-active{% endif %}"
+            data-tab="activity" role="tab">
+      <i class="fas fa-history"></i> <span>Trips</span>
+    </button>
+  </div>
+
+  <!-- ══════════════════════════════
+       PANEL: Personal Info
+  ══════════════════════════════ -->
+  <div class="profile-panel {% if active_tab == 'profile' %}is-active{% endif %}" id="panel-profile">
+    <div class="pcard" data-aos="fade-up">
+      <div class="pcard__header">
+        <div class="pcard__icon"><i class="fas fa-id-card"></i></div>
+        <div>
+          <div class="pcard__title">Personal information</div>
+          <div class="pcard__subtitle">Update your name, username, email and contact details.</div>
+        </div>
+      </div>
+
+      <form method="post" novalidate id="profile-form">
+        {% csrf_token %}
+        <input type="hidden" name="form_type" value="profile">
+        <div class="form-grid">
+
+          <div class="form-field">
+            <label for="{{ profile_form.first_name.id_for_label }}">First name</label>
+            <div class="input-wrap">
+              <i class="fas fa-user input-icon"></i>
+              {{ profile_form.first_name }}
+            </div>
+            {% if profile_form.first_name.errors %}
+              <span class="field-error"><i class="fas fa-exclamation-circle"></i>{{ profile_form.first_name.errors.0 }}</span>
+            {% endif %}
+          </div>
+
+          <div class="form-field">
+            <label for="{{ profile_form.last_name.id_for_label }}">Last name</label>
+            <div class="input-wrap">
+              <i class="fas fa-user input-icon"></i>
+              {{ profile_form.last_name }}
+            </div>
+            {% if profile_form.last_name.errors %}
+              <span class="field-error"><i class="fas fa-exclamation-circle"></i>{{ profile_form.last_name.errors.0 }}</span>
+            {% endif %}
+          </div>
+
+          <div class="form-field">
+            <label for="{{ profile_form.username.id_for_label }}">Username</label>
+            <div class="input-wrap">
+              <i class="fas fa-at input-icon"></i>
+              {{ profile_form.username }}
+            </div>
+            {% if profile_form.username.errors %}
+              <span class="field-error"><i class="fas fa-exclamation-circle"></i>{{ profile_form.username.errors.0 }}</span>
+            {% endif %}
+          </div>
+
+          <div class="form-field">
+            <label for="{{ profile_form.phone_number.id_for_label }}">Phone number</label>
+            <div class="input-wrap">
+              <i class="fas fa-phone input-icon"></i>
+              {{ profile_form.phone_number }}
+            </div>
+            {% if profile_form.phone_number.errors %}
+              <span class="field-error"><i class="fas fa-exclamation-circle"></i>{{ profile_form.phone_number.errors.0 }}</span>
+            {% endif %}
+          </div>
+
+          <div class="form-field span-2">
+            <label for="{{ profile_form.email.id_for_label }}">Email address</label>
+            <div class="input-wrap">
+              <i class="fas fa-envelope input-icon"></i>
+              {{ profile_form.email }}
+            </div>
+            {% if profile_form.email.errors %}
+              <span class="field-error"><i class="fas fa-exclamation-circle"></i>{{ profile_form.email.errors.0 }}</span>
+            {% endif %}
+          </div>
+
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn-save" id="profile-save-btn">
+            <i class="fas fa-save"></i> Save changes
+          </button>
+          <span class="form-actions__note"><i class="fas fa-info-circle"></i> Takes effect immediately</span>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════
+       PANEL: Security
+  ══════════════════════════════ -->
+  <div class="profile-panel {% if active_tab == 'security' %}is-active{% endif %}" id="panel-security">
+    <div class="pcard" data-aos="fade-up">
+      <div class="pcard__header">
+        <div class="pcard__icon"><i class="fas fa-key"></i></div>
+        <div>
+          <div class="pcard__title">Change password</div>
+          <div class="pcard__subtitle">Choose a strong password you don't use elsewhere.</div>
+        </div>
+      </div>
+
+      <form method="post" novalidate id="password-form">
+        {% csrf_token %}
+        <input type="hidden" name="form_type" value="password">
+        <div class="form-grid">
+
+          <div class="form-field span-2">
+            <label for="{{ password_form.old_password.id_for_label }}">Current password</label>
+            <div class="input-wrap">
+              <i class="fas fa-lock input-icon"></i>
+              {{ password_form.old_password }}
+              <button type="button" class="pw-toggle" data-target="{{ password_form.old_password.id_for_label }}" tabindex="-1">
+                <i class="fas fa-eye"></i>
+              </button>
+            </div>
+            {% if password_form.old_password.errors %}
+              <span class="field-error"><i class="fas fa-exclamation-circle"></i>{{ password_form.old_password.errors.0 }}</span>
+            {% endif %}
+          </div>
+
+          <div class="form-field">
+            <label for="{{ password_form.new_password1.id_for_label }}">New password</label>
+            <div class="input-wrap">
+              <i class="fas fa-lock input-icon"></i>
+              {{ password_form.new_password1 }}
+              <button type="button" class="pw-toggle" data-target="{{ password_form.new_password1.id_for_label }}" tabindex="-1">
+                <i class="fas fa-eye"></i>
+              </button>
+            </div>
+            <div class="pw-strength-wrap">
+              <div class="pw-strength-track"><div class="pw-strength-bar" id="pw-bar"></div></div>
+              <div class="pw-strength-meta">
+                <span class="pw-strength-label" id="pw-label"></span>
+              </div>
+              <div class="pw-hints">
+                <span class="pw-hint" id="hint-len"><i class="fas fa-check"></i> 8+ chars</span>
+                <span class="pw-hint" id="hint-upper"><i class="fas fa-check"></i> Uppercase</span>
+                <span class="pw-hint" id="hint-num"><i class="fas fa-check"></i> Number</span>
+                <span class="pw-hint" id="hint-sym"><i class="fas fa-check"></i> Symbol</span>
+              </div>
+            </div>
+            {% if password_form.new_password1.errors %}
+              <span class="field-error"><i class="fas fa-exclamation-circle"></i>{{ password_form.new_password1.errors.0 }}</span>
+            {% endif %}
+          </div>
+
+          <div class="form-field">
+            <label for="{{ password_form.new_password2.id_for_label }}">Confirm new password</label>
+            <div class="input-wrap">
+              <i class="fas fa-lock input-icon"></i>
+              {{ password_form.new_password2 }}
+              <button type="button" class="pw-toggle" data-target="{{ password_form.new_password2.id_for_label }}" tabindex="-1">
+                <i class="fas fa-eye"></i>
+              </button>
+            </div>
+            {% if password_form.new_password2.errors %}
+              <span class="field-error"><i class="fas fa-exclamation-circle"></i>{{ password_form.new_password2.errors.0 }}</span>
+            {% endif %}
+          </div>
+
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn-save">
+            <i class="fas fa-lock"></i> Update password
+          </button>
+          <a href="{% url 'accounts:password_reset' %}" class="form-actions__note link-secondary">
+            Forgot current password?
+          </a>
+        </div>
+      </form>
+    </div>
+
+    <div class="danger-zone" data-aos="fade-up" data-aos-delay="60">
+      <div class="danger-zone__header">
+        <i class="fas fa-exclamation-triangle"></i> Session
+      </div>
+      <p>Signing out will end your current session. You can sign back in any time.</p>
+      <a href="{% url 'accounts:logout' %}" class="btn-signout">
+        <i class="fas fa-sign-out-alt"></i> Sign out
+      </a>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════
+       PANEL: Trips
+  ══════════════════════════════ -->
+  <div class="profile-panel {% if active_tab == 'activity' %}is-active{% endif %}" id="panel-activity">
+    <div class="pcard" data-aos="fade-up">
+      <div class="pcard__header">
+        <div class="pcard__icon"><i class="fas fa-route"></i></div>
+        <div>
+          <div class="pcard__title">Recent trips</div>
+          <div class="pcard__subtitle">Your last {{ recent_bookings|length }} booking{{ recent_bookings|length|pluralize }}</div>
+        </div>
+      </div>
+
+      {% if recent_bookings %}
+        <div class="booking-list">
+          {% for booking in recent_bookings %}
+            <a href="{% url 'bookings:view_tickets' booking.id %}" class="booking-card">
+              <div class="booking-card__dot dot-{{ booking.status }}"></div>
+              <div style="flex:1; min-width:0;">
+                <div class="booking-card__route">
+                  {{ booking.schedule.route.departure_port.name }} → {{ booking.schedule.route.destination_port.name }}
+                </div>
+                <div class="booking-card__meta">
+                  {{ booking.schedule.departure_time|date:"D d M Y, H:i" }}
+                  · {{ booking.schedule.ferry.name }}
+                  · {{ booking.passenger_adults|add:booking.passenger_children|add:booking.passenger_infants }} passenger{{ booking.passenger_adults|add:booking.passenger_children|add:booking.passenger_infants|pluralize }}
+                </div>
+              </div>
+              <span class="booking-badge badge-{{ booking.status }}">{{ booking.status }}</span>
+              <i class="fas fa-chevron-right booking-card__arrow"></i>
+            </a>
+          {% endfor %}
+        </div>
+
+        {% if total_bookings > 5 %}
+          <a href="{% url 'bookings:booking_history' %}" class="view-all-link">
+            View all {{ total_bookings }} bookings <i class="fas fa-arrow-right"></i>
+          </a>
+        {% endif %}
+
+      {% else %}
+        <div class="empty-state">
+          <div class="empty-state__icon"><i class="fas fa-ship"></i></div>
+          <p>You haven't made any bookings yet.</p>
+          <a href="{% url 'bookings:book_ticket' %}" class="btn-save btn-save--link">
+            <i class="fas fa-plus"></i> Book a ferry
+          </a>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ── Tab switching ── */
+  document.querySelectorAll('.profile-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.profile-tab').forEach(t => {
+        t.classList.remove('is-active');
+        t.setAttribute('aria-selected', 'false');
+      });
+      document.querySelectorAll('.profile-panel').forEach(p => p.classList.remove('is-active'));
+      tab.classList.add('is-active');
+      tab.setAttribute('aria-selected', 'true');
+      document.getElementById('panel-' + tab.dataset.tab).classList.add('is-active');
+    });
+  });
+
+  /* ── Show/hide password toggles ── */
+  document.querySelectorAll('.pw-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const input = document.getElementById(btn.dataset.target);
+      if (!input) return;
+      const isText = input.type === 'text';
+      input.type = isText ? 'password' : 'text';
+      btn.querySelector('i').className = isText ? 'fas fa-eye' : 'fas fa-eye-slash';
+    });
+  });
+
+  /* ── Password strength ── */
+  const newPwId = '{{ password_form.new_password1.id_for_label }}';
+  const newPwInput = document.getElementById(newPwId);
+  const bar   = document.getElementById('pw-bar');
+  const label = document.getElementById('pw-label');
+  const hints = {
+    len:   document.getElementById('hint-len'),
+    upper: document.getElementById('hint-upper'),
+    num:   document.getElementById('hint-num'),
+    sym:   document.getElementById('hint-sym'),
+  };
+
+  if (newPwInput) {
+    newPwInput.addEventListener('input', function () {
+      const v = this.value;
+      const checks = {
+        len:   v.length >= 8,
+        upper: /[A-Z]/.test(v),
+        num:   /[0-9]/.test(v),
+        sym:   /[^A-Za-z0-9]/.test(v),
+      };
+      Object.entries(checks).forEach(([k, met]) => {
+        if (hints[k]) hints[k].classList.toggle('met', met);
+      });
+      const score = Object.values(checks).filter(Boolean).length;
+      const levels = [
+        { w: '0%',   bg: 'transparent', text: '' },
+        { w: '25%',  bg: '#ef4444',     text: 'Weak' },
+        { w: '50%',  bg: '#f59e0b',     text: 'Fair' },
+        { w: '75%',  bg: '#3b82f6',     text: 'Good' },
+        { w: '100%', bg: '#10b981',     text: 'Strong' },
+      ];
+      const lvl = v.length === 0 ? levels[0] : levels[Math.min(score, 4)];
+      bar.style.width      = lvl.w;
+      bar.style.background = lvl.bg;
+      label.textContent    = lvl.text;
+      label.style.color    = lvl.bg === 'transparent' ? 'var(--text-muted)' : lvl.bg;
+    });
+  }
+
+  /* ── Save button loading state ── */
+  document.querySelectorAll('form').forEach(form => {
+    form.addEventListener('submit', function () {
+      const btn = this.querySelector('button[type="submit"]');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
+      }
+    });
+  });
+
+  /* ── Mark error inputs ── */
+  document.querySelectorAll('.field-error').forEach(err => {
+    const field = err.closest('.form-field');
+    if (field) {
+      const input = field.querySelector('input');
+      if (input) input.classList.add('is-error');
+    }
+  });
+
+})();
+</script>
+{% endblock %}

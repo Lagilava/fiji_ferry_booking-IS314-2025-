@@ -3,95 +3,414 @@
 
 {% block title %}Privacy Policy - Fiji Ferry Booking{% endblock %}
 
+{% block extra_css %}
+<style>
+  /* ============================================================
+     PRIVACY PAGE – Modern, dark‑mode ready
+     ============================================================ */
+  .privacy-page {
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    min-height: 100vh;
+    padding: 5rem 1.5rem;
+  }
+
+  [data-theme="dark"] .privacy-page {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  }
+
+  .privacy-container {
+    max-width: 880px;
+    margin: 0 auto;
+  }
+
+  /* ---- Hero ---- */
+  .privacy-hero {
+    text-align: center;
+    margin-bottom: 3.5rem;
+  }
+
+  .privacy-hero h1 {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: 3.2rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-bottom: 0.75rem;
+    color: #0f172a;
+  }
+
+  [data-theme="dark"] .privacy-hero h1 {
+    color: #f1f5f9;
+  }
+
+  .privacy-hero h1 .highlight {
+    background: linear-gradient(135deg, #14b8a6, #10b981);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .privacy-hero p {
+    font-size: 1.1rem;
+    color: #475569;
+    max-width: 600px;
+    margin: 0 auto;
+    line-height: 1.7;
+  }
+
+  [data-theme="dark"] .privacy-hero p {
+    color: #94a3b8;
+  }
+
+  /* ---- Card ---- */
+  .privacy-card {
+    background: #ffffff;
+    border-radius: 24px;
+    padding: 2.5rem 2.8rem;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
+    border: 1px solid rgba(0, 0, 0, 0.04);
+    transition: background 0.3s, border-color 0.3s, box-shadow 0.3s;
+  }
+
+  [data-theme="dark"] .privacy-card {
+    background: #1e293b;
+    border-color: rgba(255, 255, 255, 0.06);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  }
+
+  /* ---- Section articles ---- */
+  .privacy-section {
+    padding: 1.2rem 0 1.2rem 1.8rem;
+    border-left: 4px solid #14b8a6;
+    border-radius: 0 8px 8px 0;
+    transition: background 0.2s, border-color 0.2s;
+    margin-bottom: 1.5rem;
+  }
+
+  .privacy-section:last-child {
+    margin-bottom: 0;
+  }
+
+  .privacy-section:nth-child(even) {
+    border-left-color: #10b981;
+  }
+
+  .privacy-section:hover {
+    background: #f8fafc;
+  }
+
+  [data-theme="dark"] .privacy-section:hover {
+    background: #0f172a;
+  }
+
+  .privacy-section h3 {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin-bottom: 0.5rem;
+  }
+
+  [data-theme="dark"] .privacy-section h3 {
+    color: #f1f5f9;
+  }
+
+  .privacy-section h3 .section-icon {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    color: #14b8a6;
+  }
+
+  .privacy-section:nth-child(even) h3 .section-icon {
+    color: #10b981;
+  }
+
+  [data-theme="dark"] .privacy-section h3 .section-icon {
+    color: #2dd4bf;
+  }
+
+  .privacy-section p,
+  .privacy-section li {
+    color: #334155;
+    line-height: 1.7;
+    font-size: 0.98rem;
+  }
+
+  [data-theme="dark"] .privacy-section p,
+  [data-theme="dark"] .privacy-section li {
+    color: #cbd5e1;
+  }
+
+  .privacy-section ul {
+    list-style: none;
+    padding: 0;
+    margin-top: 0.3rem;
+  }
+
+  .privacy-section ul li {
+    position: relative;
+    padding-left: 1.6rem;
+    margin-bottom: 0.3rem;
+  }
+
+  .privacy-section ul li::before {
+    content: "›";
+    position: absolute;
+    left: 0;
+    color: #14b8a6;
+    font-weight: 700;
+    font-size: 1.2rem;
+    line-height: 1.6;
+  }
+
+  .privacy-section:nth-child(even) ul li::before {
+    color: #10b981;
+  }
+
+  [data-theme="dark"] .privacy-section ul li::before {
+    color: #2dd4bf;
+  }
+
+  .privacy-section a {
+    color: #14b8a6;
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.2s;
+  }
+
+  .privacy-section a:hover {
+    color: #0d9488;
+    text-decoration: underline;
+  }
+
+  [data-theme="dark"] .privacy-section a {
+    color: #2dd4bf;
+  }
+
+  [data-theme="dark"] .privacy-section a:hover {
+    color: #5eead4;
+  }
+
+  /* ---- CTA button ---- */
+  .privacy-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.7rem 2.2rem;
+    background: linear-gradient(135deg, #14b8a6, #10b981);
+    color: #fff;
+    font-weight: 600;
+    font-size: 1rem;
+    border-radius: 60px;
+    text-decoration: none;
+    transition: all 0.25s ease;
+    box-shadow: 0 4px 14px rgba(20, 184, 166, 0.25);
+    border: none;
+    cursor: pointer;
+  }
+
+  .privacy-cta:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 28px rgba(20, 184, 166, 0.35);
+  }
+
+  [data-theme="dark"] .privacy-cta {
+    box-shadow: 0 4px 14px rgba(20, 184, 166, 0.2);
+  }
+
+  [data-theme="dark"] .privacy-cta:hover {
+    box-shadow: 0 8px 28px rgba(20, 184, 166, 0.3);
+  }
+
+  /* ---- Responsive ---- */
+  @media (max-width: 768px) {
+    .privacy-page {
+      padding: 3rem 1rem;
+    }
+    .privacy-hero h1 {
+      font-size: 2.4rem;
+    }
+    .privacy-card {
+      padding: 1.8rem 1.2rem;
+    }
+    .privacy-section {
+      padding-left: 1rem;
+    }
+    .privacy-section h3 {
+      font-size: 1.2rem;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .privacy-hero h1 {
+      font-size: 2rem;
+    }
+    .privacy-card {
+      padding: 1.2rem 1rem;
+    }
+    .privacy-section {
+      padding-left: 0.8rem;
+    }
+    .privacy-cta {
+      width: 100%;
+      justify-content: center;
+    }
+  }
+
+  /* ---- Fade-in animation ---- */
+  .privacy-fade-in {
+    animation: fadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    opacity: 0;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+</style>
+{% endblock %}
+
 {% block content %}
-<section class="container mx-auto px-4 sm:px-6 lg:px-8 py-12" data-aos="fade-up">
-    <h2 class="text-3xl font-bold text-center mb-8" style="font-family: 'Playfair Display', serif; color: var(--text-color);">
-        Privacy Policy
-    </h2>
+<div class="privacy-page">
+  <div class="privacy-container privacy-fade-in">
 
-    <div class="max-w-3xl mx-auto bg-[var(--card-bg)] p-8 rounded-lg shadow-lg space-y-6">
+    <!-- Hero -->
+    <header class="privacy-hero">
+      <h1>
+        Privacy <span class="highlight">Policy</span>
+      </h1>
+      <p>
+        At <strong>Fiji Ferry Booking</strong>, your privacy is important. This Privacy Policy explains
+        how we collect, use, and protect your personal information when you use our services.
+      </p>
+    </header>
 
-        <!-- Introduction -->
-        <div>
-            <p class="text-[var(--text-color)]">
-                At <strong>Fiji Ferry Booking</strong>, your privacy is important. This Privacy Policy explains how we collect, use, and protect your personal information when you use our services.
-            </p>
-        </div>
+    <!-- Card -->
+    <section class="privacy-card">
 
-        <!-- 1. Information We Collect -->
-        <div>
-            <h3 class="text-xl font-semibold mb-2 text-[var(--text-color)]">1. Information We Collect</h3>
-            <p class="text-[var(--text-color)] mb-2">We may collect the following information:</p>
-            <ul class="list-disc list-inside text-[var(--text-color)] space-y-1">
-                <li>Personal details (name, email, phone number)</li>
-                <li>Booking details (selected schedule, passengers, services, cargo)</li>
-                <li>Payment information (processed securely via Stripe)</li>
-                <li>Device and usage information (IP address, browser, activity on site)</li>
-            </ul>
-        </div>
+      <!-- 1. Information We Collect -->
+      <div class="privacy-section">
+        <h3>
+          <svg class="section-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M19 21v-2a4 4 0 00-4-4H9a4 4 0 00-4 4v2" />
+            <circle cx="12" cy="7" r="4" />
+          </svg>
+          1. Information We Collect
+        </h3>
+        <p>We may collect the following information:</p>
+        <ul>
+          <li>Personal details (name, email, phone number)</li>
+          <li>Booking details (selected schedule, passengers, services, cargo)</li>
+          <li>Payment information (processed securely via Stripe)</li>
+          <li>Device and usage information (IP address, browser, activity on site)</li>
+        </ul>
+      </div>
 
-        <!-- 2. How We Use Your Information -->
-        <div>
-            <h3 class="text-xl font-semibold mb-2 text-[var(--text-color)]">2. How We Use Your Information</h3>
-            <ul class="list-disc list-inside text-[var(--text-color)] space-y-1">
-                <li>To process ferry bookings and payments</li>
-                <li>To send confirmations, receipts, and schedule updates</li>
-                <li>To communicate important service announcements</li>
-                <li>To improve our services and website experience</li>
-            </ul>
-        </div>
+      <!-- 2. How We Use Your Information -->
+      <div class="privacy-section">
+        <h3>
+          <svg class="section-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+          </svg>
+          2. How We Use Your Information
+        </h3>
+        <ul>
+          <li>To process ferry bookings and payments</li>
+          <li>To send confirmations, receipts, and schedule updates</li>
+          <li>To communicate important service announcements</li>
+          <li>To improve our services and website experience</li>
+        </ul>
+      </div>
 
-        <!-- 3. Sharing and Disclosure -->
-        <div>
-            <h3 class="text-xl font-semibold mb-2 text-[var(--text-color)]">3. Sharing and Disclosure</h3>
-            <p class="text-[var(--text-color)] mb-2">
-                We do not sell or rent your personal information. Your information may be shared only with:
-            </p>
-            <ul class="list-disc list-inside text-[var(--text-color)] space-y-1">
-                <li>Service providers who help us operate the booking platform</li>
-                <li>Legal authorities if required by law</li>
-            </ul>
-        </div>
+      <!-- 3. Sharing and Disclosure -->
+      <div class="privacy-section">
+        <h3>
+          <svg class="section-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+          </svg>
+          3. Sharing and Disclosure
+        </h3>
+        <p>
+          We do not sell or rent your personal information. Your information may be shared only with:
+        </p>
+        <ul>
+          <li>Service providers who help us operate the booking platform</li>
+          <li>Legal authorities if required by law</li>
+        </ul>
+      </div>
 
-        <!-- 4. Data Security -->
-        <div>
-            <h3 class="text-xl font-semibold mb-2 text-[var(--text-color)]">4. Data Security</h3>
-            <p class="text-[var(--text-color)]">
-                We use industry-standard security measures, including HTTPS and encryption, to protect your data. Payment information is processed securely via Stripe. However, no online service can guarantee 100% security.
-            </p>
-        </div>
+      <!-- 4. Data Security -->
+      <div class="privacy-section">
+        <h3>
+          <svg class="section-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+          4. Data Security
+        </h3>
+        <p>
+          We use industry-standard security measures, including HTTPS and encryption, to protect your data.
+          Payment information is processed securely via Stripe. However, no online service can guarantee
+          100% security.
+        </p>
+      </div>
 
-        <!-- 5. Your Rights -->
-        <div>
-            <h3 class="text-xl font-semibold mb-2 text-[var(--text-color)]">5. Your Rights</h3>
-            <p class="text-[var(--text-color)] mb-2">You have the right to:</p>
-            <ul class="list-disc list-inside text-[var(--text-color)] space-y-1">
-                <li>Access the personal information we hold about you</li>
-                <li>Request correction or deletion of your information</li>
-                <li>Withdraw consent where applicable</li>
-            </ul>
-        </div>
+      <!-- 5. Your Rights -->
+      <div class="privacy-section">
+        <h3>
+          <svg class="section-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+          5. Your Rights
+        </h3>
+        <p>You have the right to:</p>
+        <ul>
+          <li>Access the personal information we hold about you</li>
+          <li>Request correction or deletion of your information</li>
+          <li>Withdraw consent where applicable</li>
+        </ul>
+      </div>
 
-        <!-- 6. Contact Us -->
-        <div>
-            <h3 class="text-xl font-semibold mb-2 text-[var(--text-color)]">6. Contact Us</h3>
-            <p class="text-[var(--text-color)]">
-                If you have questions about this Privacy Policy or how your data is handled, please contact us at
-                <a href="mailto:support@ferrysystem.com" class="text-[var(--link-color)] hover:text-[var(--link-hover)]">support@ferrysystem.com</a>.
-            </p>
-        </div>
+      <!-- 6. Contact Us -->
+      <div class="privacy-section">
+        <h3>
+          <svg class="section-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          </svg>
+          6. Contact Us
+        </h3>
+        <p>
+          If you have questions about this Privacy Policy or how your data is handled, please contact us at
+          <a href="mailto:support@ferrysystem.com">support@ferrysystem.com</a>.
+        </p>
+      </div>
 
-        <!-- 7. Policy Updates -->
-        <div>
-            <h3 class="text-xl font-semibold mb-2 text-[var(--text-color)]">7. Policy Updates</h3>
-            <p class="text-[var(--text-color)]">
-                We may update this Privacy Policy from time to time. Updates will be posted on this page with the revision date.
-            </p>
-        </div>
+      <!-- 7. Policy Updates -->
+      <div class="privacy-section">
+        <h3>
+          <svg class="section-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          7. Policy Updates
+        </h3>
+        <p>
+          We may update this Privacy Policy from time to time. Updates will be posted on this page with
+          the revision date.
+        </p>
+      </div>
+
+    </section>
+
+    <!-- CTA -->
+    <div class="text-center mt-12">
+      <a href="{% url 'home' %}" class="privacy-cta">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+        Back to Home
+      </a>
     </div>
 
-    <div class="text-center mt-6">
-        <a href="{% url 'home' %}" class="text-[var(--link-color)] hover:text-[var(--link-hover)] font-semibold" aria-label="Back to home">← Back to Home</a>
-    </div>
-</section>
+  </div>
+</div>
 {% endblock %}

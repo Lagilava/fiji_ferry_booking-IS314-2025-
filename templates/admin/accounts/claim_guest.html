@@ -1,0 +1,109 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrastyle %}{{ block.super }}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<style>
+.cl-wrap { max-width: 820px; margin: 0 auto; padding: 1.5rem 1rem 4rem; font-family: Inter, sans-serif; }
+.cl-back { display: inline-flex; align-items: center; gap: .4rem; color: #3b82f6; text-decoration: none;
+           font-size: .85rem; font-weight: 600; margin-bottom: 1.25rem; }
+.cl-back:hover { text-decoration: underline; }
+.cl-title { font-size: 1.4rem; font-weight: 800; margin: 0 0 .25rem; }
+.cl-sub { color: #6b7280; font-size: .875rem; margin: 0 0 2rem; }
+
+.cl-card {
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 16px;
+  padding: 1.5rem; box-shadow: 0 2px 12px rgba(0,0,0,.05); margin-bottom: 1.5rem;
+}
+.cl-card h3 { font-size: .9rem; font-weight: 700; margin: 0 0 1rem; }
+
+.bk-row {
+  display: flex; align-items: center; gap: 1rem; padding: .8rem 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+.bk-row:last-child { border-bottom: none; }
+.bk-row input[type=checkbox] { width: 18px; height: 18px; accent-color: #10b981; flex-shrink: 0; }
+.bk-info { flex: 1; }
+.bk-route { font-weight: 700; font-size: .9rem; }
+.bk-meta  { font-size: .75rem; color: #6b7280; margin-top: .15rem; }
+
+.status-badge { padding: .18rem .55rem; border-radius: 100px; font-size: .68rem; font-weight: 700; text-transform: uppercase; }
+.badge-confirmed { background: #d1fae5; color: #065f46; }
+.badge-pending   { background: #fef3c7; color: #92400e; }
+.badge-cancelled { background: #f1f5f9; color: #64748b; }
+
+.btn-claim {
+  display: inline-flex; align-items: center; gap: .4rem;
+  padding: .7rem 1.5rem; background: #10b981; color: #fff;
+  border: none; border-radius: 10px; font-size: .9rem; font-weight: 700;
+  cursor: pointer; font-family: inherit; transition: background .15s;
+}
+.btn-claim:hover { background: #059669; }
+.select-all-row { display: flex; align-items: center; gap: .5rem; margin-bottom: .75rem; font-size: .85rem; color: #6b7280; }
+
+.empty { text-align: center; padding: 2rem; color: #9ca3af; font-size: .875rem; }
+.empty i { font-size: 2rem; opacity: .2; display: block; margin-bottom: .5rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="cl-wrap">
+  <a class="cl-back" href="{% url 'custom_admin:accounts_user_change' user_obj.pk %}">
+    <i class="fas fa-arrow-left"></i> Back to {{ user_obj.email }}
+  </a>
+  <h1 class="cl-title"><i class="fas fa-link" style="color:#10b981;"></i> Claim Guest Bookings</h1>
+  <p class="cl-sub">
+    These bookings were made as a guest using <strong>{{ user_obj.email }}</strong>.
+    Select the ones to link to this registered account.
+  </p>
+
+  {% if guest_bookings %}
+  <form method="post">
+    {% csrf_token %}
+    <div class="cl-card">
+      <h3><i class="fas fa-ticket-alt"></i> {{ guest_bookings|length }} guest booking(s) found</h3>
+      <div class="select-all-row">
+        <input type="checkbox" id="select-all">
+        <label for="select-all">Select all</label>
+      </div>
+      {% for b in guest_bookings %}
+      <div class="bk-row">
+        <input type="checkbox" name="booking_ids" value="{{ b.id }}" id="bk-{{ b.id }}">
+        <div class="bk-info">
+          <div class="bk-route">
+            #{{ b.id }} —
+            {% if b.schedule %}
+              {{ b.schedule.route.departure_port.name }} → {{ b.schedule.route.destination_port.name }}
+            {% else %}Unknown route{% endif %}
+          </div>
+          <div class="bk-meta">
+            {% if b.schedule %}{{ b.schedule.departure_time|date:"d M Y H:i" }} · {% endif %}
+            F${{ b.total_price|floatformat:2 }}
+            · {{ b.passenger_adults }} adult{% if b.passenger_adults != 1 %}s{% endif %}
+          </div>
+        </div>
+        <span class="status-badge badge-{{ b.status }}">{{ b.status }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    <button type="submit" class="btn-claim">
+      <i class="fas fa-link"></i> Claim selected bookings
+    </button>
+  </form>
+  {% else %}
+  <div class="cl-card">
+    <div class="empty">
+      <i class="fas fa-search"></i>
+      No guest bookings found for <strong>{{ user_obj.email }}</strong>.
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+document.getElementById('select-all')?.addEventListener('change', function () {
+  document.querySelectorAll('input[name="booking_ids"]').forEach(cb => cb.checked = this.checked);
+});
+</script>
+{% endblock %}

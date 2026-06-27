@@ -14,6 +14,11 @@ urlpatterns = [
     path('view_ticket/<str:qr_token>/', views.view_ticket, name='view_ticket'),
     path('book/', views.book_ticket, name='book_ticket'),
     path('process_payment/<int:booking_id>/', views.process_payment, name='process_payment'),
+    path('api/create_mock_checkout/', views.create_mock_checkout, name='api_create_mock_checkout'),
+    path('mock_pay/<int:booking_id>/', views.mock_payment, name='mock_payment'),
+    path('mock_pay/<int:booking_id>/back/', views.cancel_mock_and_rebook, name='cancel_mock_and_rebook'),
+    path('departures/', views.live_departures, name='live_departures'),
+    path('destinations/', views.destinations, name='destinations'),
     path('success/', views.payment_success, name='success'),
     path('cancel/', views.payment_cancel, name='cancel'),
     path('cancel/<int:booking_id>/', views.cancel_booking, name='cancel_legacy'),
@@ -42,4 +47,5 @@ urlpatterns = [
     path('api/availability/', views.availability_api, name='availability_api'),
     path("api/send_otp/", views.api_send_otp, name="api_send_otp"),
     path("api/verify_otp/", views.api_verify_otp, name="api_verify_otp"),
+    path("api/assistant/", views.assistant_api, name="assistant"),
 ]

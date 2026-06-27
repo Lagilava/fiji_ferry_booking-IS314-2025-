@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 90">
+  <!-- BSP Financial Group brand colours: dark teal/green -->
+  <rect width="280" height="90" rx="6" fill="#006a4e"/>
+  <!-- Stylised wave/arc above text (BSP brand mark element) -->
+  <path d="M30 38 Q70 18 110 38 Q150 58 190 38 Q230 18 260 30"
+        stroke="#ffffff" stroke-width="5" fill="none" stroke-linecap="round" opacity="0.85"/>
+  <!-- BSP lettering -->
+  <text x="140" y="72"
+        font-family="Arial Black, Arial, Helvetica, sans-serif"
+        font-size="36" font-weight="900"
+        fill="#ffffff" text-anchor="middle" letter-spacing="4">BSP</text>
+</svg>

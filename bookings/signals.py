@@ -1,7 +1,7 @@
 # bookings/signals.py
 from datetime import timedelta
 
-from django.db.models.signals import post_save, post_delete
+from django.db.models.signals import post_save, post_delete, pre_save
 from django.dispatch import receiver
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
@@ -140,6 +140,78 @@ def notify_failed_payment(sender, instance, created, **kwargs):
                     'timestamp': timezone.now().isoformat()
                 }
             )
+
+# ---------------------------------------------------------------------------
+# Maintenance ↔ Schedule coupling
+#
+# Operational rule (per senior dev): while a ferry has an *open* maintenance log
+# (completed_at is null), every upcoming schedule for that ferry on/after the
+# maintenance date must be 'delayed'. When the maintenance is marked complete,
+# the ferry's upcoming schedules return to 'scheduled' (unless another open
+# maintenance log still covers them).
+# ---------------------------------------------------------------------------
+def _ferry_has_open_maintenance(ferry_id, on_date, exclude_pk=None):
+    qs = MaintenanceLog.objects.filter(
+        ferry_id=ferry_id,
+        completed_at__isnull=True,
+        maintenance_date__lte=on_date,
+    )
+    if exclude_pk is not None:
+        qs = qs.exclude(pk=exclude_pk)
+    return qs.exists()
+
+
+@receiver(pre_save, sender=Schedule)
+def delay_schedule_if_ferry_under_maintenance(sender, instance, **kwargs):
+    """Force new/updated upcoming schedules to 'delayed' if their ferry is under
+    maintenance covering the departure date. Runs pre_save (no recursion)."""
+    try:
+        if (instance.status == 'scheduled'
+                and instance.ferry_id
+                and instance.departure_time
+                and instance.departure_time >= timezone.now()
+                and _ferry_has_open_maintenance(instance.ferry_id, instance.departure_time.date())):
+            instance.status = 'delayed'
+            logger.info("Schedule %s set to delayed: ferry %s under maintenance",
+                        getattr(instance, 'id', 'new'), instance.ferry_id)
+    except Exception as e:  # never block a save on this convenience rule
+        logger.error("delay_schedule_if_ferry_under_maintenance failed: %s", e)
+
+
+@receiver(post_save, sender=MaintenanceLog)
+def sync_schedules_with_maintenance(sender, instance, **kwargs):
+    """Delay a ferry's upcoming schedules while maintenance is open; restore them
+    once it is completed."""
+    try:
+        now = timezone.now()
+        upcoming = Schedule.objects.filter(ferry_id=instance.ferry_id, departure_time__gte=now)
+
+        if instance.completed_at is None:
+            # Maintenance open → delay affected upcoming schedules.
+            affected = upcoming.filter(
+                departure_time__date__gte=instance.maintenance_date,
+                status='scheduled',
+            )
+            count = affected.update(status='delayed')
+            if count:
+                logger.info("Delayed %s schedule(s) for ferry %s due to maintenance %s",
+                            count, instance.ferry_id, instance.pk)
+        else:
+            # Maintenance complete → restore upcoming delayed schedules, unless
+            # another still-open maintenance log covers the date.
+            restored = 0
+            for sched in upcoming.filter(status='delayed'):
+                if not _ferry_has_open_maintenance(
+                        instance.ferry_id, sched.departure_time.date(), exclude_pk=None):
+                    sched.status = 'scheduled'
+                    sched.save(update_fields=['status', 'last_updated'])
+                    restored += 1
+            if restored:
+                logger.info("Restored %s schedule(s) for ferry %s after maintenance %s completed",
+                            restored, instance.ferry_id, instance.pk)
+    except Exception as e:
+        logger.error("sync_schedules_with_maintenance failed: %s", e)
+
 
 @receiver(post_save, sender=Schedule)
 def notify_schedule_alert(sender, instance, **kwargs):

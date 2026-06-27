@@ -249,58 +249,11 @@ def get_weather_conditions(request):
             weather_data['warning'] = 'High chance of rain, please prepare accordingly.'
 
     else:
-        # Fetch from Weather API
-        try:
-            response = requests.get(
-                'https://api.weatherapi.com/v1/current.json',
-                params={
-                    'key': settings.WEATHER_API_KEY,
-                    'q': f"{port.lat},{port.lng}",  # Fixed 'lng' to 'lon' assuming model field
-                    'aqi': 'no'
-                },
-                timeout=5
-            )
-            response.raise_for_status()
-            data = response.json()
-
-            temperature = data['current']['temp_c']
-            wind_speed = data['current']['wind_kph']
-            condition = data['current']['condition']['text']
-            precipitation_probability = data['current'].get('precip_mm', 0) * 100
-
-            # Create or update WeatherCondition
-            weather, _ = WeatherCondition.objects.update_or_create(
-                route=route,
-                port=port,
-                defaults={
-                    'temperature': temperature,
-                    'wind_speed': wind_speed,
-                    'precipitation_probability': precipitation_probability,
-                    'condition': condition,
-                    'expires_at': now + datetime.timedelta(minutes=30),
-                    'updated_at': now
-                }
-            )
-
-            weather_data = {
-                'route_id': route.id,
-                'port': port.name,
-                'temperature': temperature,
-                'wind_speed': wind_speed,
-                'precipitation_probability': precipitation_probability,
-                'condition': condition,
-                'updated_at': now.isoformat(),
-                'expires_at': (now + datetime.timedelta(minutes=30)).isoformat(),
-                'warning': None
-            }
-            # Generate warning based on conditions
-            if wind_speed > 30:
-                weather_data['warning'] = 'Strong winds expected, potential delays.'
-            elif precipitation_probability > 50:
-                weather_data['warning'] = 'High chance of rain, please prepare accordingly.'
-
-        except requests.RequestException as e:
-            logger.error(f"WeatherAPI error for {port.name}: {str(e)}")
+        # Fetch fresh conditions from the free, key-less Open-Meteo provider
+        # (with WeatherAPI as a configured fallback). See bookings/weather/provider.py.
+        from bookings.weather.provider import fetch_and_store_weather
+        weather_data = fetch_and_store_weather(route)
+        if weather_data is None:
             weather_data = {
                 'route_id': route.id,
                 'port': port.name,
@@ -384,7 +337,7 @@ def routes_api(request):
 
 @login_required
 def profile(request):
-    return render(request, "bookings/profile.html")
+    return redirect('accounts:profile')
 
 
 def terms_of_service(request):
@@ -675,7 +628,8 @@ def booking_history(request):
 
     return render(request, 'bookings/history.html', {
         'bookings': bookings,
-        'cutoff_time': timezone.now() + datetime.timedelta(hours=6),
+        # Modifications close 24h before departure (cancellation has its own window).
+        'cutoff_time': timezone.now() + datetime.timedelta(hours=24),
         'is_guest': not request.user.is_authenticated
     })
 
@@ -761,8 +715,33 @@ def get_schedule_updates(request):
         } for s in paged
     ]
 
+    # Optional: precise live status for a specific set of schedule IDs the client
+    # is already showing (e.g. the booking Step-1 dropdown). Unlike `schedules`
+    # above — which only lists bookable departures — this reports the real state
+    # of each requested schedule (scheduled / delayed / cancelled / departed /
+    # sold out) so the UI can disable it with an accurate reason instead of just
+    # making it vanish. Keeps the customer from advancing on a stale choice.
+    statuses = {}
+    raw_status_ids = (request.GET.get('status_ids') or '').strip()
+    if raw_status_ids:
+        wanted = [int(x) for x in raw_status_ids.split(',') if x.strip().isdigit()][:60]
+        if wanted:
+            for s in Schedule.objects.filter(id__in=wanted).only(
+                'id', 'status', 'available_seats', 'departure_time'
+            ):
+                departed = s.departure_time <= now
+                statuses[str(s.id)] = {
+                    'status': s.status,
+                    'available_seats': s.available_seats,
+                    'departed': departed,
+                    'bookable': (s.status == 'scheduled'
+                                 and s.available_seats > 0
+                                 and not departed),
+                }
+
     return JsonResponse({
         'schedules': data,
+        'statuses': statuses,
         'total': total,
         'offset': offset,
         'limit': limit,
@@ -791,37 +770,38 @@ def validate_step(request):
         is_authenticated = bool(getattr(request.user, 'is_authenticated', False))
 
         # ---- schedule check (no ORM hit for non-digit) ----
+        # NOTE: this must NOT be cached. A schedule the customer selected can be
+        # delayed / cancelled / sold out by an operator at any moment; the Step-1
+        # gate has to reflect that live so nobody advances toward payment on a
+        # schedule that is no longer bookable. The query is a single indexed
+        # lookup, so running it fresh on each step transition is cheap.
         if not schedule_id.isdigit():
             errors.append({'field': 'schedule_id', 'message': 'Please select a valid ferry schedule.'})
         else:
-            cache_key = f'schedule_exists_{schedule_id}'
-            schedule_exists = cache.get(cache_key)
+            schedule = (
+                Schedule.objects
+                .filter(id=int(schedule_id), status='scheduled', departure_time__gt=timezone.now())
+                .only('id', 'available_seats')
+                .first()
+            )
+            if not schedule:
+                errors.append({
+                    'field': 'schedule_id',
+                    'message': ('This ferry schedule is no longer available — it may have just '
+                                'been delayed, cancelled, or departed. Please choose another.'),
+                })
+            else:
+                adults   = safe_int(request.POST.get('adults', '0'))
+                children = safe_int(request.POST.get('children', '0'))
+                infants  = safe_int(request.POST.get('infants', '0'))
+                total    = max(0, adults) + max(0, children) + max(0, infants)
 
-            if schedule_exists is None:
-                schedule = (
-                    Schedule.objects
-                    .filter(id=int(schedule_id), status='scheduled', departure_time__gt=timezone.now())
-                    .only('id', 'available_seats')
-                    .first()
-                )
-                schedule_exists = bool(schedule)
-                cache.set(cache_key, schedule_exists, timeout=3600)
-
-                if schedule_exists:
-                    adults   = safe_int(request.POST.get('adults', '0'))
-                    children = safe_int(request.POST.get('children', '0'))
-                    infants  = safe_int(request.POST.get('infants', '0'))
-                    total    = max(0, adults) + max(0, children) + max(0, infants)
-
-                    # Only enforce seats when counts are provided (>0)
-                    if total > 0 and total > schedule.available_seats:
-                        errors.append({
-                            'field': 'schedule_id',
-                            'message': f'Not enough seats available ({schedule.available_seats} remaining).'
-                        })
-
-            if not schedule_exists:
-                errors.append({'field': 'schedule_id', 'message': 'Please select a valid ferry schedule.'})
+                # Only enforce seats when counts are provided (>0)
+                if total > 0 and total > schedule.available_seats:
+                    errors.append({
+                        'field': 'schedule_id',
+                        'message': f'Not enough seats available ({schedule.available_seats} remaining).'
+                    })
 
         # ---- guest email / OTP verification ----
         if not is_authenticated:
@@ -943,70 +923,84 @@ def _validate_id_document(f):
         raise ValidationError("ID document content does not match an allowed file type (PDF/JPG/PNG).")
 
 
-@require_POST
-@require_guest_otp
-@csrf_protect
-def create_checkout_session(request):
-    """Create Stripe checkout session for ferry booking, including passengers, cargo, vehicles, and addons"""
-    errors = []
+class BookingError(Exception):
+    """A validation failure while assembling a booking from the request.
 
+    Carries the same (field, message, status) contract the checkout endpoints
+    return as JSON, so both the Stripe and mock-payment entry points surface
+    identical errors to the client.
+    """
+    def __init__(self, field, message, status=400):
+        self.field = field
+        self.message = message
+        self.status = status
+        super().__init__(message)
+
+
+def _assemble_booking(request):
+    """Build a pending Booking (passengers, cargo, vehicle, add-ons) from the POST.
+
+    Shared by the Stripe checkout and the Fiji mock-payment checkout so seat
+    reservation, pricing, and persistence have a single source of truth. Seats are
+    reserved atomically (CON-1) before the booking is created; on ANY failure after
+    reservation the seats are released and the partial booking deleted, then the
+    error is re-raised. Raises ``BookingError`` for validation failures.
+
+    Returns a dict: {booking, schedule, total_price, total_passengers, customer_email, guest_email}.
+    """
+    schedule_id = request.POST.get('schedule_id')
+    adults = safe_int(request.POST.get('adults', 0))
+    children = safe_int(request.POST.get('children', 0))
+    infants = safe_int(request.POST.get('infants', 0))
+    guest_email = request.POST.get('guest_email', '').strip()
+
+    add_cargo = request.POST.get('add_cargo') in ['true', 'on']
+    cargo_type = request.POST.get('cargo_type', '')
+    weight_kg = safe_float(request.POST.get('cargo_weight_kg', 0))
+    cargo_license_plate = request.POST.get('cargo_license_plate', '')
+    cargo_dimensions = request.POST.get('cargo_dimensions_cm', '') if add_cargo else ''
+
+    add_vehicle = request.POST.get('add_vehicle') in ['true', 'on']
+    vehicle_type = request.POST.get('vehicle_type', '')
+    vehicle_dimensions = request.POST.get('vehicle_dimensions', '')
+    vehicle_license_plate = request.POST.get('vehicle_license_plate', '').strip()
+
+    # License plate is mandatory for vehicles (crew identification). Dimensions
+    # are optional. Validate before reserving seats so we fail fast.
+    if add_vehicle:
+        if not vehicle_type:
+            raise BookingError('vehicle_type', 'Vehicle type is required')
+        if not vehicle_license_plate:
+            raise BookingError('vehicle_license_plate', 'License plate is required for vehicles')
+
+    # --- Addons ---
+    addons = []
+    for addon_type in dict(AddOn.ADD_ON_TYPE_CHOICES).keys():
+        quantity = safe_int(request.POST.get(f'{addon_type}_quantity', 0))
+        if quantity > 0:
+            addons.append({'type': addon_type, 'quantity': quantity})
+
+    total_passengers = adults + children + infants
+    if not schedule_id or total_passengers == 0:
+        raise BookingError('general', 'Invalid booking data')
+
+    schedule = get_object_or_404(Schedule, id=schedule_id, status='scheduled')
+
+    # CON-1: reserve seats atomically via the service layer (row-locked).
+    with transaction.atomic():
+        if not services.reserve_seats(schedule.pk, total_passengers):
+            locked = Schedule.objects.get(pk=schedule.pk)
+            raise BookingError('schedule_id', f'Only {locked.available_seats} seats available')
+    schedule.refresh_from_db()
+
+    # --- Validate email ---
+    customer_email = request.user.email if request.user.is_authenticated else guest_email
+    if not customer_email or not re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', customer_email):
+        services.release_seats(schedule.pk, total_passengers)
+        raise BookingError('email', 'Valid email required')
+
+    booking = None
     try:
-        # LOG-3: idempotent checkout. A client-supplied token dedups double-submits
-        # and network retries so we never create duplicate bookings/charges.
-        idem_raw = (request.POST.get('idempotency_key') or '').strip()
-        idem_key = re.sub(r'[^A-Za-z0-9\-]', '', idem_raw)[:64] if idem_raw else ''
-        if idem_key:
-            cached_session = cache.get(f"checkout_idem:{idem_key}")
-            if cached_session:
-                return JsonResponse({'sessionId': cached_session})
-            # Serialize concurrent duplicate submits for the same token.
-            if not cache.add(f"checkout_idem_lock:{idem_key}", 1, 120):
-                return JsonResponse({'success': False, 'errors': [{'field': 'general', 'message': 'A checkout for this request is already being processed. Please wait.'}]}, status=409)
-
-        # --- Extract booking data ---
-        schedule_id = request.POST.get('schedule_id')
-        adults = safe_int(request.POST.get('adults', 0))
-        children = safe_int(request.POST.get('children', 0))
-        infants = safe_int(request.POST.get('infants', 0))
-        guest_email = request.POST.get('guest_email', '').strip()
-
-        add_cargo = request.POST.get('add_cargo') in ['true', 'on']
-        cargo_type = request.POST.get('cargo_type', '')
-        weight_kg = safe_float(request.POST.get('cargo_weight_kg', 0))
-        cargo_license_plate = request.POST.get('cargo_license_plate', '')
-        cargo_dimensions = request.POST.get('cargo_dimensions_cm', '') if add_cargo else ''
-
-        add_vehicle = request.POST.get('add_vehicle') in ['true', 'on']
-        vehicle_type = request.POST.get('vehicle_type', '')
-        vehicle_dimensions = request.POST.get('vehicle_dimensions', '')
-        vehicle_license_plate = request.POST.get('vehicle_license_plate', '')
-
-        # --- Addons ---
-        addons = []
-        for addon_type in dict(AddOn.ADD_ON_TYPE_CHOICES).keys():
-            quantity = safe_int(request.POST.get(f'{addon_type}_quantity', 0))
-            if quantity > 0:
-                addons.append({'type': addon_type, 'quantity': quantity})
-
-        total_passengers = adults + children + infants
-        if not schedule_id or total_passengers == 0:
-            return JsonResponse({'success': False, 'errors': [{'field': 'general', 'message': 'Invalid booking data'}]}, status=400)
-
-        schedule = get_object_or_404(Schedule, id=schedule_id, status='scheduled')
-
-        # CON-1: reserve seats atomically via the service layer (row-locked).
-        with transaction.atomic():
-            if not services.reserve_seats(schedule.pk, total_passengers):
-                locked = Schedule.objects.get(pk=schedule.pk)
-                return JsonResponse({'success': False, 'errors': [{'field': 'schedule_id', 'message': f'Only {locked.available_seats} seats available'}]}, status=400)
-        schedule.refresh_from_db()
-        seats_reserved = True
-
-        # --- Validate email ---
-        customer_email = request.user.email if request.user.is_authenticated else guest_email
-        if not customer_email or not re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', customer_email):
-            return JsonResponse({'success': False, 'errors': [{'field': 'email', 'message': 'Valid email required'}]}, status=400)
-
         # --- Calculate total price ---
         total_price = calculate_total_price(
             adults, children, infants, schedule, add_cargo, cargo_type, weight_kg, addons,
@@ -1103,8 +1097,65 @@ def create_checkout_session(request):
                 quantity=addon['quantity'],
                 price=calculate_addon_price(addon['type'], addon['quantity'])
             )
+    except Exception:
+        # Roll back seats + partial booking, then let the caller report the error.
+        if booking is not None:
+            booking.delete()
+        services.release_seats(schedule.pk, total_passengers)
+        raise
+
+    return {
+        'booking': booking,
+        'schedule': schedule,
+        'total_price': total_price,
+        'total_passengers': total_passengers,
+        'customer_email': customer_email,
+        'guest_email': guest_email,
+    }
+
+
+@require_POST
+@require_guest_otp
+@csrf_protect
+def create_checkout_session(request):
+    """Create Stripe checkout session for ferry booking, including passengers, cargo, vehicles, and addons"""
+    errors = []
+
+    try:
+        # LOG-3: idempotent checkout. A client-supplied token dedups double-submits
+        # and network retries so we never create duplicate bookings/charges.
+        idem_raw = (request.POST.get('idempotency_key') or '').strip()
+        idem_key = re.sub(r'[^A-Za-z0-9\-]', '', idem_raw)[:64] if idem_raw else ''
+        if idem_key:
+            cached_session = cache.get(f"checkout_idem:{idem_key}")
+            if cached_session:
+                return JsonResponse({'sessionId': cached_session})
+            # Serialize concurrent duplicate submits for the same token.
+            if not cache.add(f"checkout_idem_lock:{idem_key}", 1, 120):
+                return JsonResponse({'success': False, 'errors': [{'field': 'general', 'message': 'A checkout for this request is already being processed. Please wait.'}]}, status=409)
+
+        bundle = _assemble_booking(request)
+        booking = bundle['booking']
+        schedule = bundle['schedule']
+        total_price = bundle['total_price']
+        total_passengers = bundle['total_passengers']
+        customer_email = bundle['customer_email']
+        guest_email = bundle['guest_email']
+        seats_reserved = True
 
         # CON-1: seats were already reserved atomically above (no second decrement here).
+
+        # --- Local payment branch (ANZ Fiji / BSP / M-PAiSA / MyCash) ---
+        # book.js already handles a returned ``url`` key by doing window.location.assign.
+        payment_method = (request.POST.get('payment_method') or 'stripe').strip().lower()
+        if payment_method in services.MOCK_PAYMENT_PROVIDERS:
+            request.session['booking_id'] = booking.id
+            if booking.guest_email and not request.user.is_authenticated:
+                request.session['guest_email'] = booking.guest_email
+            mock_url = reverse('bookings:mock_payment', args=[booking.id]) + f'?method={payment_method}'
+            if idem_key:
+                cache.set(f"checkout_idem:{idem_key}", f"local:{booking.id}", 3600)
+            return JsonResponse({'url': request.build_absolute_uri(mock_url)})
 
         # --- Create Stripe session ---
         # LOG-3: idempotency_key prevents duplicate Stripe sessions/charges if this
@@ -1139,6 +1190,9 @@ def create_checkout_session(request):
 
         return JsonResponse({'sessionId': session.id})
 
+    except BookingError as be:
+        # Validation failure from _assemble_booking (seats/booking already cleaned up there).
+        return JsonResponse({'success': False, 'errors': [{'field': be.field, 'message': be.message}]}, status=be.status)
     except Exception as e:
         logger.exception(f"Checkout error: {e}")
         # Cleanup on error: delete the booking and atomically release the seats
@@ -1149,6 +1203,124 @@ def create_checkout_session(request):
         if locals().get('seats_reserved') and 'schedule' in locals():
             services.release_seats(schedule.pk, total_passengers)
         return JsonResponse({'success': False, 'errors': [{'field': 'general', 'message': str(e)}]}, status=400)
+
+
+@require_POST
+@require_guest_otp
+@csrf_protect
+def create_mock_checkout(request):
+    """Create a pending booking and hand off to a Fiji-local mock payment gateway.
+
+    Same booking assembly as the Stripe path (shared ``_assemble_booking``), but
+    instead of a Stripe session it returns a ``url`` to the mock payment page for
+    the chosen provider. book.js already redirects on a returned ``url``.
+    """
+    provider = (request.POST.get('payment_method') or '').strip().lower()
+    if provider not in services.MOCK_PAYMENT_PROVIDERS:
+        return JsonResponse({'success': False, 'errors': [{'field': 'payment_method', 'message': 'Please choose a valid payment method.'}]}, status=400)
+
+    try:
+        bundle = _assemble_booking(request)
+        booking = bundle['booking']
+
+        # Remember context so the mock payment + success pages can authorize a guest.
+        request.session['booking_id'] = booking.id
+        if bundle['guest_email'] and not request.user.is_authenticated:
+            request.session['guest_email'] = bundle['guest_email']
+
+        url = reverse('bookings:mock_payment', args=[booking.id]) + f'?method={provider}'
+        return JsonResponse({'url': request.build_absolute_uri(url)})
+
+    except BookingError as be:
+        return JsonResponse({'success': False, 'errors': [{'field': be.field, 'message': be.message}]}, status=be.status)
+    except Exception as e:
+        logger.exception(f"Mock checkout error: {e}")
+        return JsonResponse({'success': False, 'errors': [{'field': 'general', 'message': str(e)}]}, status=400)
+
+
+def _authorize_booking_access(request, booking):
+    """True if the current requester (user or verified guest) may act on booking."""
+    if request.user.is_authenticated:
+        return request.user.is_staff or booking.user_id == request.user.id
+    if booking.guest_email and request.session.get('guest_email') == booking.guest_email:
+        return True
+    # Fallback: the booking we just created is pinned in the session.
+    return request.session.get('booking_id') == booking.id
+
+
+def mock_payment(request, booking_id):
+    """Genuine-looking mock gateway for Fiji-local rails (ANZ/BSP/M-PAiSA/MyCash/Card).
+
+    GET renders the provider-specific payment screen. POST accepts ANY input
+    (this is a demo gateway — no real charge), confirms the booking through the
+    service layer exactly like Stripe, and redirects to the shared success page.
+    """
+    booking = get_object_or_404(Booking, id=booking_id)
+
+    if not _authorize_booking_access(request, booking):
+        return HttpResponseForbidden("You are not authorized to pay for this booking.")
+
+    provider = (request.GET.get('method') or request.POST.get('method') or 'card').strip().lower()
+    if provider not in services.MOCK_PAYMENT_PROVIDERS:
+        provider = 'card'
+    provider_label = services.MOCK_PAYMENT_PROVIDERS[provider]
+
+    if booking.status == 'cancelled':
+        messages.error(request, "This booking is no longer valid.")
+        return redirect('bookings:booking_history')
+
+    if request.method == 'POST':
+        # Demo gateway: accept any input. Generate a unique, human-readable reference.
+        reference = f"mock_{provider}_{uuid.uuid4().hex[:16]}"
+        try:
+            services.confirm_mock_payment(
+                booking.id,
+                provider=provider,
+                reference=reference,
+                amount=booking.total_price,
+            )
+        except Exception as e:
+            logger.exception(f"Mock payment confirm failed for booking {booking_id}: {e}")
+            messages.error(request, "We could not confirm your payment. Please try again or contact support.")
+            return redirect('bookings:mock_payment', booking_id=booking.id)
+
+        # Pin the reference so payment_success can resolve + authorize like Stripe.
+        request.session['booking_id'] = booking.id
+        request.session['stripe_session_id'] = reference
+        if booking.guest_email and not request.user.is_authenticated:
+            request.session['guest_email'] = booking.guest_email
+
+        return redirect(reverse('bookings:success') + f'?session_id={reference}')
+
+    return render(request, 'bookings/mock_payment.html', {
+        'booking': booking,
+        'provider': provider,
+        'provider_label': provider_label,
+        'amount': booking.total_price,
+    })
+
+
+@login_required_allow_anonymous
+def cancel_mock_and_rebook(request, booking_id):
+    """Cancel a pending mock-payment booking and return to the booking flow.
+
+    Called when the user clicks "← Back" on the mock payment page.
+    Restores seats so they can re-book the same schedule.
+    """
+    booking = get_object_or_404(Booking, id=booking_id)
+    if not _authorize_booking_access(request, booking):
+        return HttpResponseForbidden("You are not authorized to cancel this booking.")
+    schedule_id = booking.schedule_id
+    if booking.status == 'pending':
+        with transaction.atomic():
+            booking.schedule.available_seats += (
+                booking.passenger_adults + booking.passenger_children + booking.passenger_infants
+            )
+            booking.schedule.save(update_fields=['available_seats'])
+            booking.status = 'cancelled'
+            booking.save(update_fields=['status'])
+        request.session.pop('booking_id', None)
+    return redirect(f"{reverse('bookings:book_ticket')}?schedule_id={schedule_id}")
 
 
 @csrf_exempt
@@ -1331,6 +1503,11 @@ def book_ticket(request):
             return render(request, 'bookings/schedule_list.html', context)
 
         # === MODE 2: BOOKING FORM (schedule_id present) ===
+        # If a schedule was pre-selected (e.g. clicked "Book" from homepage),
+        # jump straight to Step 2 so the user doesn't have to click Next.
+        if schedule_id and step == 1 and available_schedules.exists():
+            step = 2
+
         # Initialize form data
         form_data = {
             'step': step,
@@ -1433,6 +1610,11 @@ def book_ticket(request):
                 messages.error(request, "Selected schedule is not available.")
                 summary = None
 
+        # Resolve the pre-selected schedule object for the confirmation card
+        preselected_schedule = None
+        if schedule_id and available_schedules.exists():
+            preselected_schedule = available_schedules.first()
+
         return render(request, 'bookings/book.html', {
             'bookings': available_schedules,
             'user': request.user,
@@ -1440,7 +1622,8 @@ def book_ticket(request):
             'debug': settings.DEBUG,
             'stripe_publishable_key': settings.STRIPE_PUBLISHABLE_KEY,
             'summary': summary,
-            'add_ons': add_ons
+            'add_ons': add_ons,
+            'preselected_schedule': preselected_schedule,
         })
 
     # === POST HANDLING (unchanged) ===
@@ -2134,14 +2317,24 @@ def payment_success(request):
         return f"FJD {d:,.2f}"
 
     try:
-        # SEC-2: dev-mode payment bypass removed — payment is always verified via Stripe.
-        if True:
+        # === 5. VERIFY PAYMENT ===
+        # Fiji-local mock gateways confirm the booking before redirecting here, so
+        # there is no Stripe session to verify — we only require that the booking
+        # actually reached 'confirmed' through the service layer.
+        if session_id and str(session_id).startswith('mock_'):
+            if booking.status != 'confirmed':
+                logger.warning(f"Mock payment not confirmed for booking {booking_id}")
+                messages.error(request, "Payment is not completed yet. Please try again or contact support.")
+                return redirect('bookings:booking_history')
+            logger.info(f"Mock payment confirmed for booking {booking.id}")
+        # SEC-2: dev-mode payment bypass removed — Stripe payment is always verified.
+        else:
             if not session_id:
                 logger.error(f"No valid session_id found for booking {booking_id}")
                 messages.error(request, "Invalid payment session. Please try again or contact support.")
                 return redirect('bookings:booking_history')
 
-            # === 5. VERIFY STRIPE SESSION ===
+            # === VERIFY STRIPE SESSION ===
             session = stripe.checkout.Session.retrieve(session_id, expand=['payment_intent'])
             if not session.payment_intent:
                 logger.error(f"No payment_intent found for session {session_id}, booking {booking_id}")
@@ -2558,67 +2751,6 @@ def payment_cancel(request):
 
 
 @require_POST
-def cancel_booking(request, booking_id):
-    booking = get_object_or_404(Booking, id=booking_id)
-
-    # Authorization
-    if request.user.is_authenticated:
-        if booking.user != request.user:
-            return JsonResponse({'error': 'Unauthorized'}, status=403)
-    else:
-        if booking.guest_email != request.session.get('guest_email'):
-            return JsonResponse({'error': 'Unauthorized'}, status=403)
-
-    if booking.status == 'cancelled':
-        return JsonResponse({'error': 'Booking already cancelled'}, status=400)
-
-    if booking.schedule.departure_time <= timezone.now() + datetime.timedelta(hours=6):
-        return JsonResponse({'error': 'Cannot cancel within 6 hours of departure'}, status=400)
-
-    try:
-        with transaction.atomic():
-            # Get payment to retrieve exact amount paid
-            payment = Payment.objects.filter(booking=booking, payment_status='completed').first()
-            if not payment or not payment.payment_intent_id:
-                return JsonResponse({'error': 'No payment found'}, status=400)
-
-            # Use EXACT amount from Stripe (in cents)
-            session = stripe.checkout.Session.retrieve(
-                payment.session_id or booking.stripe_session_id,
-                expand=['payment_intent']
-            )
-            if not session.payment_intent:
-                return JsonResponse({'error': 'Payment intent not found'}, status=400)
-
-            amount_paid_cents = session.payment_intent.amount_received  # Exact amount in cents
-
-            # Create refund using EXACT amount
-            refund = stripe.Refund.create(
-                payment_intent=session.payment_intent.id,
-                amount=amount_paid_cents  # ← Critical: use exact amount
-            )
-
-            # Update booking & payment
-            booking.status = 'cancelled'
-            booking.save()
-
-            payment.payment_status = 'refunded'
-            payment.refund_id = refund.id
-            payment.save()
-
-            logger.info(f"Booking {booking.id} cancelled and refunded {amount_paid_cents} cents")
-
-        return JsonResponse({'message': 'Booking cancelled and refunded successfully'})
-
-    except stripe.error.StripeError as e:
-        logger.error(f"Refund error for booking {booking.id}: {e}")
-        return JsonResponse({'error': str(e.user_message or 'Refund failed')}, status=400)
-    except Exception as e:
-        logger.error(f"Unexpected error cancelling booking {booking.id}: {e}")
-        return JsonResponse({'error': 'An unexpected error occurred'}, status=500)
-
-
-@require_POST
 @csrf_exempt
 def stripe_webhook(request):
     payload = request.body
@@ -2829,8 +2961,8 @@ def modify_booking(request, booking_id):
     booking = get_object_or_404(Booking, id=booking_id, user=request.user)
     now = timezone.now()
 
-    if booking.status != 'confirmed' or booking.schedule.departure_time <= now + datetime.timedelta(hours=6):
-        messages.error(request, "This booking cannot be modified.")
+    if booking.status != 'confirmed' or booking.schedule.departure_time <= now + datetime.timedelta(hours=24):
+        messages.error(request, "Bookings can't be modified within 24 hours of departure.")
         return redirect('bookings:booking_history')
 
     form = ModifyBookingForm(request.POST or None, instance=booking)
@@ -2850,7 +2982,7 @@ def modify_booking(request, booking_id):
             new_adults, new_children, new_infants, new_schedule,
             booking.cargo.exists(), booking.cargo.first().cargo_type if booking.cargo.exists() else None,
             booking.cargo.first().weight_kg if booking.cargo.exists() else 0,
-            [{'type': addon.add_on_type, 'quantity': addon.quantity} for addon in booking.addons.all()]
+            [{'type': addon.add_on_type, 'quantity': addon.quantity} for addon in booking.add_ons.all()]
         )
 
         # CON-1/LOG-4: move seats atomically under a row lock to prevent
@@ -2911,7 +3043,7 @@ def modify_booking(request, booking_id):
     return render(request, 'bookings/modify_booking.html', {
         'form': form,
         'booking': booking,
-        'cutoff_time': now + datetime.timedelta(hours=6)
+        'cutoff_time': now + datetime.timedelta(hours=24)
     })
 
 
@@ -3000,85 +3132,140 @@ def download_ticket(request, ticket_id):
 @require_GET
 @staff_member_required
 def weather_forecast_view(request):
-    """Fetch weather forecasts for all ports using OpenWeatherMap API."""
+    """Weather forecast dashboard for all ports."""
+    from bookings.admin import admin_site
     api_key = settings.OPENWEATHERMAP_API_KEY
-    ports = Port.objects.values('lat', 'lng', 'name')
+    ports = list(Port.objects.values('lat', 'lng', 'name'))
     forecasts = []
+    error = None
     cache_key = 'weather_forecasts_all_ports'
-    cached_forecasts = cache.get(cache_key)
+    cached = cache.get(cache_key)
 
-    if cached_forecasts:
-        logger.info("Returning cached weather forecasts")
-        return JsonResponse({'forecasts': cached_forecasts})
+    if cached:
+        forecasts = cached
+    else:
+        try:
+            for port in ports:
+                url = (
+                    f"https://api.openweathermap.org/data/2.5/forecast"
+                    f"?lat={port['lat']}&lon={port['lng']}&appid={api_key}&units=metric"
+                )
+                resp = requests.get(url, timeout=5)
+                resp.raise_for_status()
+                data = resp.json()
+                if data.get('list'):
+                    forecasts.append({
+                        'port': port['name'],
+                        'forecast': [
+                            {
+                                'datetime': item['dt_txt'],
+                                'temperature': round(float(item['main']['temp']), 1),
+                                'feels_like': round(float(item['main'].get('feels_like', item['main']['temp'])), 1),
+                                'humidity': item['main'].get('humidity'),
+                                'condition': item['weather'][0]['description'].title(),
+                                'icon': item['weather'][0]['icon'],
+                                'wind_speed': round(float(item['wind']['speed']) * 3.6, 1),
+                                'wind_deg': item['wind'].get('deg', 0),
+                                'precipitation_probability': round(float(item.get('pop', 0)) * 100),
+                            }
+                            for item in data['list'][:8]
+                        ]
+                    })
+            cache.set(cache_key, forecasts, timeout=1800)
+        except requests.RequestException as e:
+            logger.error(f"OpenWeatherMap API error: {e}")
+            error = "Could not reach OpenWeatherMap API. Showing cached data if available."
 
-    try:
-        for port in ports:
-            url = f"https://api.openweathermap.org/data/2.5/forecast?lat={port['lat']}&lon={port['lng']}&appid={api_key}&units=metric"
-            response = requests.get(url, timeout=5)
-            response.raise_for_status()
-            data = response.json()
-            if data.get('list'):
-                forecasts.append({
-                    'port': port['name'],
-                    'forecast': [
-                        {
-                            'datetime': item['dt_txt'],
-                            'temperature': float(item['main']['temp']),
-                            'condition': item['weather'][0]['description'],
-                            'wind_speed': float(item['wind']['speed']) * 3.6,  # Convert m/s to km/h
-                            'precipitation_probability': float(item.get('pop', 0)) * 100
-                        } for item in data['list'][:8]  # Next 24 hours (3-hour intervals)
-                    ]
-                })
-        cache.set(cache_key, forecasts, timeout=1800)  # Cache for 30 minutes
-        logger.info(f"Weather forecasts fetched for {len(ports)} ports")
-        return JsonResponse({'forecasts': forecasts})
-    except requests.RequestException as e:
-        logger.error(f"OpenWeatherMap API error: {str(e)}")
-        return JsonResponse({'error': 'Failed to fetch weather forecasts'}, status=500)
+    # Also pull from local WeatherCondition rows as fallback
+    from bookings.models import WeatherCondition
+    local_conditions = list(
+        WeatherCondition.objects.select_related('port', 'route')
+        .order_by('port__name', '-updated_at')
+        .values('port__name', 'condition', 'temperature', 'wind_speed',
+                'precipitation_probability', 'updated_at', 'expires_at')[:40]
+    )
+
+    context = {
+        **admin_site.each_context(request),
+        'title': 'Weather Forecast',
+        'forecasts': forecasts,
+        'local_conditions': local_conditions,
+        'error': error,
+        'port_count': len(ports),
+    }
+    return render(request, 'admin/bookings/weather_forecast.html', context)
 
 
 @require_GET
 @staff_member_required
 def stripe_insights_view(request):
-    """Fetch recent Stripe transactions and disputes."""
+    """Stripe payments dashboard — recent charges, disputes, and local payment summary."""
+    from bookings.admin import admin_site
     stripe.api_key = settings.STRIPE_SECRET_KEY
     cache_key = 'stripe_insights'
-    cached_insights = cache.get(cache_key)
+    cached = cache.get(cache_key)
+    recent_charges, disputes, stripe_error = [], [], None
 
-    if cached_insights:
-        logger.info("Returning cached Stripe insights")
-        return JsonResponse(cached_insights)
-
-    try:
-        charges = stripe.Charge.list(limit=5)
-        disputes = stripe.Dispute.list(limit=3)
-        insights = {
-            'recent_charges': [
+    if cached:
+        recent_charges = cached.get('recent_charges', [])
+        disputes = cached.get('disputes', [])
+    else:
+        try:
+            charges_resp = stripe.Charge.list(limit=25)
+            disputes_resp = stripe.Dispute.list(limit=10)
+            recent_charges = [
                 {
                     'id': c.id,
                     'amount': float(c.amount / 100),
+                    'currency': c.currency.upper(),
                     'status': c.status,
-                    'created': datetime.datetime.fromtimestamp(c.created).isoformat(),
-                    'description': c.description or f"Booking #{c.metadata.get('booking_id', 'N/A')}"
-                } for c in charges.data
-            ],
-            'disputes': [
+                    'created': datetime.datetime.fromtimestamp(c.created).strftime('%b %d, %Y %H:%M'),
+                    'description': c.description or f"Booking #{c.metadata.get('booking_id', 'N/A')}",
+                    'receipt_url': c.receipt_url,
+                    'refunded': c.refunded,
+                    'amount_refunded': float(c.amount_refunded / 100),
+                }
+                for c in charges_resp.data
+            ]
+            disputes = [
                 {
                     'id': d.id,
                     'amount': float(d.amount / 100),
+                    'currency': d.currency.upper(),
                     'status': d.status,
-                    'reason': d.reason,
-                    'created': datetime.datetime.fromtimestamp(d.created).isoformat()
-                } for d in disputes.data
+                    'reason': d.reason.replace('_', ' ').title(),
+                    'created': datetime.datetime.fromtimestamp(d.created).strftime('%b %d, %Y %H:%M'),
+                }
+                for d in disputes_resp.data
             ]
-        }
-        cache.set(cache_key, insights, timeout=300)  # Cache for 5 minutes
-        logger.info("Stripe insights fetched successfully")
-        return JsonResponse(insights)
-    except stripe.error.StripeError as e:
-        logger.error(f"Stripe API error: {str(e)}")
-        return JsonResponse({'error': 'Failed to fetch Stripe insights'}, status=500)
+            cache.set(cache_key, {'recent_charges': recent_charges, 'disputes': disputes}, timeout=300)
+        except stripe.error.StripeError as e:
+            logger.error(f"Stripe API error: {e}")
+            stripe_error = str(e)
+
+    # Local payment summary from DB
+    from django.db.models import Sum, Count
+    from bookings.models import Payment
+    payment_summary = Payment.objects.values('payment_status').annotate(
+        count=Count('id'), total=Sum('amount')
+    ).order_by('payment_status')
+
+    failed_payments = Payment.objects.filter(
+        payment_status='failed'
+    ).select_related('booking__user').order_by('-payment_date')[:15]
+
+    context = {
+        **admin_site.each_context(request),
+        'title': 'Stripe & Payment Insights',
+        'recent_charges': recent_charges,
+        'disputes': disputes,
+        'stripe_error': stripe_error,
+        'payment_summary': list(payment_summary),
+        'failed_payments': failed_payments,
+        'total_revenue': Payment.objects.filter(payment_status='completed').aggregate(t=Sum('amount'))['t'] or 0,
+        'total_refunded': abs(Payment.objects.filter(payment_status='refunded').aggregate(t=Sum('amount'))['t'] or 0),
+    }
+    return render(request, 'admin/bookings/stripe_insights.html', context)
 
 
 @require_POST
@@ -3234,3 +3421,323 @@ def api_verify_otp(request):
 
     request.session.modified = True
     return JsonResponse({"success": True})
+
+
+# ---------------------------------------------------------------------------
+# Live Departures board
+# ---------------------------------------------------------------------------
+@require_GET
+def live_departures(request):
+    now = timezone.now()
+
+    schedules_qs = Schedule.objects.filter(
+        departure_time__gt=now,
+    ).select_related(
+        'ferry', 'route__departure_port', 'route__destination_port'
+    ).order_by('departure_time')
+
+    route_filter = request.GET.get('route', '').strip()
+    status_filter = request.GET.get('status', '').strip()
+    date_filter = request.GET.get('date', '').strip()
+
+    if route_filter and route_filter.isdigit():
+        schedules_qs = schedules_qs.filter(route_id=int(route_filter))
+    if status_filter in ('scheduled', 'delayed', 'cancelled'):
+        schedules_qs = schedules_qs.filter(status=status_filter)
+    if date_filter:
+        try:
+            filter_date = datetime.datetime.strptime(date_filter, '%Y-%m-%d').date()
+            schedules_qs = schedules_qs.filter(departure_time__date=filter_date)
+        except ValueError:
+            pass
+
+    weather_map = {}
+    try:
+        for wc in WeatherCondition.objects.filter(expires_at__gt=now).select_related('route'):
+            if wc.route_id not in weather_map:
+                weather_map[wc.route_id] = {
+                    'condition': wc.condition or 'Clear',
+                    'temperature': float(wc.temperature) if wc.temperature else None,
+                    'wind_speed': float(wc.wind_speed) if wc.wind_speed else None,
+                }
+    except Exception as e:
+        logger.error("live_departures weather error: %s", e)
+
+    # Build flat list of dicts matching the template's expected keys
+    departures = []
+    for sched in schedules_qs[:60]:
+        seats = sched.available_seats
+        cap = sched.ferry.capacity or 1
+        pct = (seats / cap) * 100
+        seats_label = 'Sold out' if seats == 0 else ('Limited' if pct <= 20 else 'Available')
+        wc = weather_map.get(sched.route_id)
+        duration = sched.route.estimated_duration
+        departures.append({
+            'id': sched.id,
+            'from': sched.route.departure_port.name,
+            'to': sched.route.destination_port.name,
+            'departure_time': sched.departure_time,
+            'ferry': sched.ferry.name,
+            'duration_min': int(duration.total_seconds() / 60) if duration else None,
+            'condition': wc['condition'] if wc else None,
+            'temperature': wc['temperature'] if wc else None,
+            'wind_speed': wc['wind_speed'] if wc else None,
+            'seats': seats,
+            'seats_label': seats_label,
+            'base_fare': sched.route.base_fare,
+            'status': sched.status,
+            'route_id': sched.route_id,
+        })
+
+    total = Schedule.objects.filter(departure_time__gt=now).count()
+    active_ferries = Schedule.objects.filter(
+        status='scheduled', departure_time__gt=now
+    ).values('ferry').distinct().count()
+    route_count = Route.objects.filter(
+        bookings__status='scheduled', bookings__departure_time__gt=now
+    ).distinct().count()
+
+    all_routes = Route.objects.select_related('departure_port', 'destination_port').all()
+
+    return render(request, 'bookings/live_departures.html', {
+        'departures': departures,
+        'total': total,
+        'active_ferries': active_ferries,
+        'route_count': route_count,
+        'routes': all_routes,
+        'route_filter': route_filter,
+        'status_filter': status_filter,
+        'date_filter': date_filter,
+        'on_time': Schedule.objects.filter(status='scheduled', departure_time__gt=now).count(),
+        'delayed': Schedule.objects.filter(status='delayed', departure_time__gt=now).count(),
+        'now': now,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Destinations showcase
+# ---------------------------------------------------------------------------
+@require_GET
+def destinations(request):
+    now = timezone.now()
+
+    PORT_IMAGES = {
+        'Nadi': 'https://images.unsplash.com/photo-1519046904884-53103b34b206?auto=format&fit=crop&w=800&q=80',
+        'Suva': 'https://images.unsplash.com/photo-1473042904451-00171c69419d?auto=format&fit=crop&w=800&q=80',
+        'Denarau': 'https://images.unsplash.com/photo-1559827260-dc66d52bef19?auto=format&fit=crop&w=800&q=80',
+        'Yasawa': 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=800&q=80',
+        'Lautoka': 'https://images.unsplash.com/photo-1586348943529-beaae6c28db9?auto=format&fit=crop&w=800&q=80',
+        'Savusavu': 'https://images.unsplash.com/photo-1565073624497-7144969d5c8f?auto=format&fit=crop&w=800&q=80',
+        'Labasa': 'https://images.unsplash.com/photo-1570168007204-dfb528c6958f?auto=format&fit=crop&w=800&q=80',
+        'Levuka': 'https://images.unsplash.com/photo-1534430480872-3498386e7856?auto=format&fit=crop&w=800&q=80',
+        'Natovi': 'https://images.unsplash.com/photo-1559827260-dc66d52bef19?auto=format&fit=crop&w=800&q=80',
+    }
+    PORT_TAGLINES = {
+        'Nadi': 'Western gateway',
+        'Suva': 'Capital city',
+        'Denarau': 'Luxury marina',
+        'Yasawa': 'Island paradise',
+        'Lautoka': 'Sugar city',
+        'Savusavu': 'Hidden gem',
+        'Labasa': 'Northern town',
+        'Levuka': 'Historic capital',
+        'Natovi': 'Northern hub',
+    }
+    PORT_DESCRIPTIONS = {
+        'Nadi': "Fiji's vibrant western gateway — world-class resorts, duty-free shopping, and the international airport.",
+        'Suva': "The capital city: colonial architecture, the finest museums, and a lively harbour waterfront.",
+        'Denarau': "Luxury marina island — the launch pad for the dazzling Mamanuca and Yasawa archipelagos.",
+        'Yasawa': "Remote paradise: impossible blues, pristine reefs, and authentic village encounters.",
+        'Lautoka': "Fiji's sugar city — rich agricultural heritage and the northern gateway to the Yasawas.",
+        'Savusavu': "Hidden gem of Vanua Levu: hot springs, world-class pearl farms, and calm yachting waters.",
+        'Labasa': "The friendly market town of Vanua Levu, heart of Fiji's Indo-Fijian community.",
+        'Levuka': "Fiji's historic first capital and UNESCO World Heritage Site — step back in time.",
+        'Natovi': "Northern hub on Viti Levu connecting inter-island crossings to Ovalau and beyond.",
+    }
+
+    all_ports = list(Port.objects.all())
+
+    destinations_data = []
+    for port in all_ports:
+        next_dep = (
+            Schedule.objects.filter(
+                route__destination_port=port,
+                status='scheduled',
+                departure_time__gt=now,
+            ).order_by('departure_time').values_list('departure_time', flat=True).first()
+        )
+
+        min_fare = (
+            Route.objects.filter(destination_port=port)
+            .order_by('base_fare')
+            .values_list('base_fare', flat=True)
+            .first()
+        )
+
+        routes_to = list(
+            Route.objects.filter(destination_port=port)
+            .select_related('departure_port')
+            .order_by('base_fare')[:6]
+        )
+
+        key = port.name.split()[0]
+        destinations_data.append({
+            'name': port.name,
+            'image': PORT_IMAGES.get(port.name, PORT_IMAGES.get(key,
+                'https://images.unsplash.com/photo-1559827260-dc66d52bef19?auto=format&fit=crop&w=800&q=80')),
+            'tagline': PORT_TAGLINES.get(port.name, PORT_TAGLINES.get(key, 'Fiji destination')),
+            'blurb': PORT_DESCRIPTIONS.get(port.name, PORT_DESCRIPTIONS.get(key,
+                'A beautiful Fijian destination accessible by ferry.')),
+            'min_fare': min_fare,
+            'route_count': len(routes_to),
+            'next_departure': next_dep,
+            'from_ports': [r.departure_port.name for r in routes_to],
+        })
+
+    destinations_data.sort(key=lambda d: (d['next_departure'] is None, d['next_departure'] or now))
+
+    return render(request, 'bookings/destinations.html', {
+        'destinations': destinations_data,
+        'total_ports': len(destinations_data),
+        'active_routes': Route.objects.filter(
+            bookings__status='scheduled',
+            bookings__departure_time__gt=now,
+        ).distinct().count(),
+    })
+
+
+# ---------------------------------------------------------------------------
+# Local payment gateway (ANZ Fiji / BSP / M-PAiSA / MyCash)
+# ---------------------------------------------------------------------------
+@login_required_allow_anonymous
+def local_payment_page(request, booking_id):
+    booking = get_object_or_404(Booking, id=booking_id)
+
+    if request.user.is_authenticated:
+        if not (request.user.is_staff or booking.user_id == request.user.id):
+            return HttpResponseForbidden("Not authorised.")
+    else:
+        if booking.guest_email != request.session.get('guest_email'):
+            return HttpResponseForbidden("Not authorised.")
+
+    if booking.status == 'confirmed':
+        return redirect(
+            reverse('bookings:local_payment_success') + f'?local_booking_id={booking.id}'
+        )
+    if booking.status == 'cancelled':
+        messages.error(request, "This booking has been cancelled.")
+        return redirect('bookings:booking_history')
+
+    payment_method = request.session.get(f'local_pm_{booking_id}', 'anz')
+
+    return render(request, 'bookings/local_payment.html', {
+        'booking': booking,
+        'payment_method': payment_method,
+        'providers': services.MOCK_PAYMENT_PROVIDERS,
+    })
+
+
+@require_POST
+@login_required_allow_anonymous
+def local_payment_confirm(request, booking_id):
+    import secrets as _sec
+    booking = get_object_or_404(Booking, id=booking_id)
+
+    if request.user.is_authenticated:
+        if not (request.user.is_staff or booking.user_id == request.user.id):
+            return HttpResponseForbidden("Not authorised.")
+    else:
+        if booking.guest_email != request.session.get('guest_email'):
+            return HttpResponseForbidden("Not authorised.")
+
+    if booking.status == 'confirmed':
+        return redirect('bookings:local_payment_success')
+    if booking.status == 'cancelled':
+        messages.error(request, "This booking has been cancelled.")
+        return redirect('bookings:booking_history')
+
+    provider = request.POST.get('payment_method', 'anz').strip().lower()
+    if provider not in services.MOCK_PAYMENT_PROVIDERS:
+        messages.error(request, "Unknown payment method.")
+        return redirect('bookings:local_payment_page', booking_id=booking_id)
+
+    reference = f"LOC-{provider.upper()}-{booking.id}-{_sec.token_hex(5).upper()}"
+
+    try:
+        services.confirm_mock_payment(
+            booking.id,
+            provider=provider,
+            reference=reference,
+            amount=booking.total_price,
+        )
+    except Exception as e:
+        logger.error("local_payment_confirm booking %s: %s", booking_id, e)
+        messages.error(request, "Payment processing failed. Please try again.")
+        return redirect('bookings:local_payment_page', booking_id=booking_id)
+
+    request.session['booking_id'] = booking.id
+    request.session['local_payment_confirmed'] = True
+    request.session['local_payment_reference'] = reference
+
+    return redirect('bookings:local_payment_success')
+
+
+@login_required_allow_anonymous
+def local_payment_success(request):
+    booking_id = request.session.get('booking_id') or request.GET.get('local_booking_id')
+    if not booking_id:
+        messages.error(request, "No booking found.")
+        return redirect('bookings:booking_history')
+
+    try:
+        booking = Booking.objects.get(id=booking_id)
+    except Booking.DoesNotExist:
+        messages.error(request, "Booking not found.")
+        return redirect('bookings:booking_history')
+
+    if request.user.is_authenticated:
+        if not (request.user.is_staff or booking.user_id == request.user.id):
+            return HttpResponseForbidden("Not authorised.")
+
+    if booking.status != 'confirmed':
+        messages.error(request, "Payment could not be verified.")
+        return redirect('bookings:booking_history')
+
+    request.session.pop('local_payment_confirmed', None)
+    request.session.pop('local_payment_reference', None)
+
+    tickets = list(booking.tickets.all())
+    payment = booking.payments.filter(payment_status='completed').first()
+
+    return render(request, 'bookings/local_payment_success.html', {
+        'booking': booking,
+        'tickets': tickets,
+        'payment': payment,
+    })
+
+
+@require_POST
+@csrf_protect
+def assistant_api(request):
+    """Rule-based help assistant endpoint for the public site chat widget.
+
+    Accepts JSON ``{"message": "..."}`` and returns a structured reply with
+    quick-reply suggestions. Offline and dependency-free — see bookings/chatbot.py.
+    """
+    from . import chatbot
+
+    try:
+        payload = json.loads(request.body or "{}")
+    except (ValueError, TypeError):
+        payload = {}
+    message = (payload.get("message") or "").strip()
+    if len(message) > 500:
+        message = message[:500]
+
+    # Per-session conversation memory: lets the bot remember the last intent and
+    # any pending follow-up (e.g. "which route?") across messages. Deterministic
+    # and offline — just a small JSON-safe dict on the session.
+    context = request.session.get("chat_context") or {}
+    result = chatbot.answer(message, user=request.user, context=context)
+    request.session["chat_context"] = result.pop("context", {})
+    return JsonResponse(result)

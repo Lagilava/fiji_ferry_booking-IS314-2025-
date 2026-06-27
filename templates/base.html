@@ -121,6 +121,29 @@
         box-sizing: border-box;
     }
 
+    /* Global mobile safety net — applies to every page that extends base.html:
+       stop horizontal overflow, keep media/tables fluid, give tables a
+       horizontal-scroll affordance instead of breaking the layout. */
+    body {
+        overflow-x: hidden;
+    }
+    img, video, canvas, svg, iframe {
+        max-width: 100%;
+        height: auto;
+    }
+    table {
+        max-width: 100%;
+    }
+    .table-responsive {
+        overflow-x: auto;
+    }
+    /* Comfortable tap targets on touch devices (WCAG 2.5.5). */
+    @media (hover: none) and (pointer: coarse) {
+        button, .btn, .nav-link, a.action-btn, input[type="submit"] {
+            min-height: 44px;
+        }
+    }
+
 
     /* 🌐 ENHANCED NAVBAR */
     .navbar {
@@ -129,30 +152,40 @@
         left: 0;
         right: 0;
         z-index: 1000;
-        background: var(--gradient-navbar);
-        backdrop-filter: blur(20px);
-        -webkit-backdrop-filter: blur(20px);
-        border-bottom: 1px solid var(--border);
-        box-shadow: var(--shadow-sm);
-        padding: 0.75rem 2rem;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        background: linear-gradient(120deg, rgba(255,255,255,0.82) 0%, rgba(236,254,255,0.78) 55%, rgba(34,174,194,0.14) 100%);
+        backdrop-filter: blur(18px) saturate(140%);
+        -webkit-backdrop-filter: blur(18px) saturate(140%);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.5);
+        box-shadow: 0 1px 0 rgba(255,255,255,0.6) inset, 0 6px 24px -10px rgba(15, 23, 42, 0.25);
+        padding: 0.7rem 2rem;
+        transition: background 0.3s ease, box-shadow 0.3s ease, padding 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    /* Thin brand-gradient accent line along the bottom edge. */
+    .navbar::after {
+        content: '';
+        position: absolute;
+        left: 0; right: 0; bottom: 0;
+        height: 2px;
+        background: linear-gradient(90deg, var(--primary) 0%, var(--secondary) 50%, var(--accent) 100%);
+        opacity: 0.55;
     }
 
     /* Dark mode navbar */
     [data-theme="dark"] .navbar {
-        background: rgba(0, 0, 0, 0.95);
-        border-bottom-color: var(--border);
+        background: linear-gradient(120deg, rgba(10, 15, 28, 0.82) 0%, rgba(2, 24, 43, 0.8) 100%);
+        border-bottom-color: rgba(255, 255, 255, 0.06);
+        box-shadow: 0 6px 24px -10px rgba(0, 0, 0, 0.6);
     }
 
     /* Navbar scrolled state */
     .navbar.scrolled {
-        background: var(--gradient-navbar);
-        box-shadow: var(--shadow-md);
-        padding: 0.5rem 2rem;
+        background: linear-gradient(120deg, rgba(255,255,255,0.94) 0%, rgba(236,254,255,0.9) 100%);
+        box-shadow: 0 8px 30px -12px rgba(15, 23, 42, 0.35);
+        padding: 0.45rem 2rem;
     }
 
     [data-theme="dark"] .navbar.scrolled {
-        background: rgba(0, 0, 0, 0.98);
+        background: linear-gradient(120deg, rgba(6, 10, 20, 0.96) 0%, rgba(2, 24, 43, 0.94) 100%);
     }
 
     .navbar-container {
@@ -477,14 +510,23 @@
         transform: rotate(-45deg) translate(7px, -6px);
     }
 
+    /* Mobile menu is hidden by default; only shown via the drawer on mobile. */
+    .mobile-menu { display: none; }
+    .mobile-menu-backdrop[hidden] { display: none; }
+
     /* Mobile Menu */
     @media (max-width: 768px) {
         .hamburger {
             display: flex;
         }
 
-        .navbar-nav,
-        .navbar-actions {
+        .mobile-menu {
+            display: block;
+        }
+
+        /* Hide the inline desktop links, but KEEP .navbar-actions visible —
+           it holds the theme toggle and hamburger that open the mobile menu. */
+        .navbar-nav {
             display: none;
         }
 
@@ -493,14 +535,27 @@
             top: 0;
             right: 0;
             width: 280px;
+            max-width: 85vw;
             height: 100vh;
             background: var(--bg-primary);
             transform: translateX(100%);
             transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             box-shadow: -4px 0 20px rgba(0, 0, 0, 0.1);
-            z-index: 1000;
+            z-index: 1100;
             padding: 5rem 1.5rem 2rem;
             overflow-y: auto;
+        }
+
+        .mobile-menu-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.5);
+            z-index: 1090;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .mobile-menu-backdrop.open {
+            opacity: 1;
         }
 
         [data-theme="dark"] .mobile-menu {
@@ -604,35 +659,27 @@
 
     /* 📌 ADVANCED FOOTER */
     .footer {
-        background: var(--gradient-navbar);
-        background-size: 200% 200%;
-        animation: gradientShift 15s ease infinite;
-        color: black;
+        background: linear-gradient(135deg, #0b1c38 0%, #0f3460 52%, #0e7490 100%);
+        background-size: 180% 180%;
+        animation: gradientShift 18s ease infinite;
+        color: #e2e8f0;
         position: relative;
         overflow: hidden;
         margin-top: 4rem;
     }
+    /* Soft radial glow in the corner for depth. */
+    .footer::after {
+        content: '';
+        position: absolute;
+        top: -40%; right: -10%;
+        width: 460px; height: 460px;
+        background: radial-gradient(circle, rgba(16,185,129,0.18) 0%, transparent 68%);
+        pointer-events: none;
+    }
 
     [data-theme="dark"] .footer {
-        background: linear-gradient(135deg, #001F3F 0%, #000000 100%);
-        color: var(--text-primary);
-    }
-
-    [data-theme="dark"] .footer-section h3 {
-        color: var(--text-primary);
-    }
-
-    [data-theme="dark"] .footer-section p,
-    [data-theme="dark"] .footer-section a {
+        background: linear-gradient(135deg, #02101f 0%, #001F3F 60%, #000000 100%);
         color: var(--text-secondary);
-    }
-
-    [data-theme="dark"] .footer-section a:hover {
-        color: var(--text-primary);
-    }
-
-    [data-theme="dark"] .footer-bottom p {
-        color: var(--text-muted);
     }
 
     @keyframes gradientShift {
@@ -640,18 +687,16 @@
         50% { background-position: 100% 50%; }
     }
 
+    /* Brand-gradient accent line along the top edge. */
     .footer::before {
         content: '';
         position: absolute;
         top: 0;
         left: 0;
         right: 0;
-        height: 2px;
-        background: rgba(255, 255, 255, 0.2);
-    }
-
-    [data-theme="dark"] .footer::before {
-        background: rgba(255, 255, 255, 0.1);
+        height: 3px;
+        background: linear-gradient(90deg, var(--primary) 0%, var(--secondary) 50%, var(--accent) 100%);
+        z-index: 2;
     }
 
     .footer-content {
@@ -674,12 +719,8 @@
         font-size: 1.25rem;
         font-weight: 600;
         margin-bottom: 1.5rem;
-        color: #000000;
+        color: #ffffff;
         position: relative;
-    }
-
-    [data-theme="dark"] .footer-section h3 {
-        color: var(--text-primary);
     }
 
     .footer-section h3::after {
@@ -687,35 +728,26 @@
         position: absolute;
         bottom: -0.5rem;
         left: 0;
-        width: 40px;
-        height: 2px;
-        background: black;
-        border-radius: 1px;
+        width: 44px;
+        height: 3px;
+        background: linear-gradient(90deg, var(--primary), var(--secondary));
+        border-radius: 2px;
     }
 
     .footer-section p,
     .footer-section a {
-        color: #000000;
+        color: rgba(226, 232, 240, 0.82);
         text-decoration: none;
         font-size: 0.95rem;
         line-height: 1.6;
-        transition: color 0.2s ease;
+        transition: color 0.2s ease, transform 0.2s ease;
         display: block;
         margin-bottom: 0.5rem;
     }
 
-    [data-theme="dark"] .footer-section p,
-    [data-theme="dark"] .footer-section a {
-        color: var(--text-secondary);
-    }
-
     .footer-section a:hover {
-        color: #000000;
+        color: #ffffff;
         transform: translateX(4px);
-    }
-
-    [data-theme="dark"] .footer-section a:hover {
-        color: var(--text-primary);
     }
 
     /* Social Links */
@@ -733,21 +765,20 @@
         height: 44px;
         border-radius: 50%;
         background: rgba(255, 255, 255, 0.1);
-        color: black;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        color: #ffffff;
         font-size: 1.1rem;
         transition: all 0.3s ease;
+        -webkit-backdrop-filter: blur(10px);
         backdrop-filter: blur(10px);
     }
 
-    [data-theme="dark"] .social-link {
-        background: rgba(255, 255, 255, 0.1);
-        color: var(--text-primary);
-    }
-
     .social-link:hover {
-        background: #000000;
-        transform: translateY(-3px) scale(1.1);
-        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+        background: var(--gradient-primary);
+        border-color: transparent;
+        color: #ffffff;
+        transform: translateY(-3px) scale(1.08);
+        box-shadow: 0 10px 24px -6px rgba(16, 185, 129, 0.5);
     }
 
     /* Newsletter */
@@ -786,28 +817,25 @@
 
     .newsletter-btn {
         padding: 0.75rem 1.5rem;
-        background: rgba(255, 255, 255, 0.2);
+        background: var(--gradient-primary);
         border: none;
         border-radius: 25px;
-        color: black;
-        font-weight: 500;
+        color: #ffffff;
+        font-weight: 600;
         cursor: pointer;
         transition: all 0.2s ease;
-        backdrop-filter: blur(10px);
-    }
-
-    [data-theme="dark"] .newsletter-btn {
-        color: var(--text-primary);
+        box-shadow: 0 6px 16px -6px rgba(16, 185, 129, 0.6);
     }
 
     .newsletter-btn:hover {
-        background: rgba(255, 255, 255, 0.3);
-        transform: translateY(-1px);
+        filter: brightness(1.08);
+        transform: translateY(-2px);
+        box-shadow: 0 10px 22px -6px rgba(16, 185, 129, 0.7);
     }
 
     /* Footer Bottom */
     .footer-bottom {
-        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        border-top: 1px solid rgba(255, 255, 255, 0.12);
         padding-top: 2rem;
         margin-top: 2rem;
         display: flex;
@@ -820,11 +848,7 @@
     .footer-bottom p {
         margin: 0;
         font-size: 0.9rem;
-        color: black;
-    }
-
-    [data-theme="dark"] .footer-bottom p {
-        color: var(--text-muted);
+        color: rgba(226, 232, 240, 0.7);
     }
 
     /* Messages & Alerts */
@@ -892,6 +916,123 @@
             opacity: 1;
             transform: translateX(-50%) translateY(0);
         }
+    }
+
+    /* =========================================================
+       UNIFIED TOAST NOTIFICATIONS (global, every page, PC+mobile)
+       ========================================================= */
+    .toast-region {
+        position: fixed;
+        top: 5.5rem;
+        right: 1rem;
+        z-index: 11000;
+        display: flex;
+        flex-direction: column;
+        gap: 0.6rem;
+        width: 360px;
+        max-width: calc(100vw - 2rem);
+        pointer-events: none;
+    }
+    .toast {
+        pointer-events: auto;
+        display: flex;
+        align-items: flex-start;
+        gap: 0.75rem;
+        padding: 0.9rem 1rem;
+        border-radius: 12px;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        border: 1px solid var(--border);
+        border-left: 4px solid var(--text-muted);
+        box-shadow: var(--shadow-lg);
+        transform: translateX(120%);
+        opacity: 0;
+        transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.35s ease;
+    }
+    .toast.show { transform: translateX(0); opacity: 1; }
+    .toast.hide { transform: translateX(120%); opacity: 0; }
+    .toast-icon { flex-shrink: 0; font-size: 1.1rem; line-height: 1.4; }
+    .toast-body { flex: 1; min-width: 0; }
+    .toast-title { font-weight: 700; font-size: 0.86rem; text-transform: capitalize; margin-bottom: 1px; }
+    .toast-text { font-size: 0.85rem; line-height: 1.45; word-wrap: break-word; color: var(--text-secondary); }
+    .toast-close {
+        flex-shrink: 0; background: none; border: none; cursor: pointer;
+        color: var(--text-muted); font-size: 0.95rem; padding: 2px 4px; border-radius: 6px;
+        transition: color 0.2s ease, background 0.2s ease;
+    }
+    .toast-close:hover { color: var(--text-primary); background: var(--bg-surface); }
+    .toast--success { border-left-color: var(--success); }
+    .toast--success .toast-icon { color: var(--success); }
+    .toast--error   { border-left-color: var(--error); }
+    .toast--error .toast-icon { color: var(--error); }
+    .toast--warning { border-left-color: var(--warning); }
+    .toast--warning .toast-icon { color: var(--warning); }
+    .toast--info    { border-left-color: var(--secondary); }
+    .toast--info .toast-icon { color: var(--secondary); }
+
+    /* Mobile: dock to the bottom, full width, slide up from below. */
+    @media (max-width: 640px) {
+        .toast-region {
+            top: auto;
+            bottom: 1rem;
+            left: 0.75rem;
+            right: 0.75rem;
+            width: auto;
+            max-width: none;
+        }
+        .toast { transform: translateY(140%); }
+        .toast.show { transform: translateY(0); }
+        .toast.hide { transform: translateY(140%); }
+    }
+
+    /* Header bell dropdown panel */
+    .notif-panel {
+        position: fixed;
+        top: 4.5rem;
+        right: 1rem;
+        width: 320px;
+        max-width: calc(100vw - 1.5rem);
+        max-height: 70vh;
+        overflow-y: auto;
+        background: var(--bg-primary);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        box-shadow: var(--shadow-xl);
+        z-index: 11050;
+        padding: 0.5rem;
+    }
+    .notif-panel-head {
+        font-weight: 700;
+        font-size: 0.85rem;
+        color: var(--text-primary);
+        padding: 0.5rem 0.6rem;
+        border-bottom: 1px solid var(--border);
+        margin-bottom: 0.35rem;
+    }
+    .notif-empty {
+        padding: 1.5rem 0.6rem;
+        text-align: center;
+        color: var(--text-secondary);
+        font-size: 0.88rem;
+    }
+    .notif-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.6rem;
+        padding: 0.55rem 0.6rem;
+        border-radius: 9px;
+        transition: background 0.15s ease;
+    }
+    .notif-item:hover { background: var(--bg-surface); }
+    .notif-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; background: var(--text-muted); }
+    .notif-item--success .notif-dot { background: var(--success); }
+    .notif-item--error .notif-dot { background: var(--error); }
+    .notif-item--warning .notif-dot { background: var(--warning); }
+    .notif-item--info .notif-dot { background: var(--secondary); }
+    .notif-msg { font-size: 0.85rem; color: var(--text-primary); line-height: 1.4; word-wrap: break-word; }
+    .notif-time { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
+    @media (max-width: 640px) {
+        .notif-panel { top: auto; bottom: 1rem; left: 0.75rem; right: 0.75rem; width: auto; }
     }
 
     /* Status Badges */
@@ -1182,6 +1323,17 @@
     {% block extra_css %}{% endblock %}
 </head>
 <body data-theme="light">
+    <!-- 🔔 GLOBAL TOAST REGION (unified notifications, all pages) -->
+    <div class="toast-region" id="toast-region" role="region" aria-label="Notifications" aria-live="polite"></div>
+
+    {% if messages %}
+    <script type="application/json" id="server-messages">[
+        {% for message in messages %}
+        {"text": "{{ message|escapejs }}", "type": "{{ message.tags|default:'info'|escapejs }}"}{% if not forloop.last %},{% endif %}
+        {% endfor %}
+    ]</script>
+    {% endif %}
+
     <!-- 🌐 ENHANCED NAVBAR -->
     <nav class="navbar" id="navbar">
         <div class="navbar-container">
@@ -1208,13 +1360,13 @@
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a href="#schedules-section" class="nav-link" onclick="scrollToSchedules()" data-nav-link>
+                    <a href="{% url 'bookings:live_departures' %}" class="nav-link {% if request.resolver_match.url_name == 'live_departures' %}active{% endif %}" data-nav-link>
                         <i class="fas fa-clock"></i>
                         <span>Live Departures</span>
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a href="#destinations" class="nav-link" data-nav-link>
+                    <a href="{% url 'bookings:destinations' %}" class="nav-link {% if request.resolver_match.url_name == 'destinations' %}active{% endif %}" data-nav-link>
                         <i class="fas fa-map-marked-alt"></i>
                         <span>Destinations</span>
                     </a>
@@ -1277,19 +1429,37 @@
         </div>
     </nav>
 
+    <!-- 📱 MOBILE MENU DRAWER -->
+    <div class="mobile-menu-backdrop" id="mobile-menu-backdrop" hidden></div>
+    <aside class="mobile-menu" id="mobile-menu" aria-hidden="true" aria-label="Mobile navigation">
+        <button type="button" class="mobile-menu-close" id="mobile-menu-close" aria-label="Close menu">
+            <i class="fas fa-times"></i>
+        </button>
+        <nav class="mobile-nav">
+            <a href="{% url 'home' %}" class="nav-link"><i class="fas fa-home"></i><span>Home</span></a>
+            <a href="{% url 'bookings:book_ticket' %}" class="nav-link"><i class="fas fa-ship"></i><span>Book Now</span></a>
+            <a href="{% url 'bookings:live_departures' %}" class="nav-link"><i class="fas fa-clock"></i><span>Live Departures</span></a>
+            <a href="{% url 'bookings:destinations' %}" class="nav-link"><i class="fas fa-map-marked-alt"></i><span>Destinations</span></a>
+            {% if user.is_authenticated %}
+                <a href="{% url 'bookings:booking_history' %}" class="nav-link"><i class="fas fa-ticket-alt"></i><span>My Bookings</span></a>
+                <a href="{% url 'bookings:profile' %}" class="nav-link"><i class="fas fa-user-cog"></i><span>Profile Settings</span></a>
+                <form method="post" action="{% url 'accounts:logout' %}" style="margin:0;">
+                    {% csrf_token %}
+                    <button type="submit" class="nav-link" style="width:100%;background:none;border:none;cursor:pointer;">
+                        <i class="fas fa-sign-out-alt"></i><span>Logout</span>
+                    </button>
+                </form>
+            {% else %}
+                <a href="{% url 'accounts:login' %}" class="nav-link"><i class="fas fa-sign-in-alt"></i><span>Login</span></a>
+                <a href="{% url 'accounts:register' %}" class="nav-link"><i class="fas fa-user-plus"></i><span>Get Started</span></a>
+            {% endif %}
+        </nav>
+    </aside>
+
     <!-- Main Content -->
     <main class="main-content" style="margin-top: 100px; theme-label">
         <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-8 ">
-            {% if messages %}
-                <div class="messages animate__animated animate__fadeIn" data-messages>
-                    {% for message in messages %}
-                        <div class="alert {% if message.tags %}{{ message.tags }}{% endif %} animate__animated animate__fadeInUp" data-alert>
-                            <i class="fas {% if message.tags == 'success' %}fa-check-circle {% elif message.tags == 'error' %}fa-exclamation-circle {% else %}fa-info-circle {% endif %}mr-2"></i>
-                            {{ message }}
-                        </div>
-                    {% endfor %}
-                </div>
-            {% endif %}
+            {% comment %}Django messages are surfaced through the unified toast system (see #server-messages JSON + Toast init in the base script).{% endcomment %}
             {% block content %}{% endblock %}
         </div>
     </main>
@@ -1394,20 +1564,159 @@
                 });
             }
 
+            // Mobile menu drawer
+            const hamburger = document.getElementById('hamburger-btn');
+            const mobileMenu = document.getElementById('mobile-menu');
+            const mobileBackdrop = document.getElementById('mobile-menu-backdrop');
+            const mobileClose = document.getElementById('mobile-menu-close');
+
+            function openMobileMenu() {
+                if (!mobileMenu) return;
+                mobileBackdrop.hidden = false;
+                // next frame so the opacity transition runs
+                requestAnimationFrame(() => mobileBackdrop.classList.add('open'));
+                mobileMenu.classList.add('open');
+                hamburger.classList.add('open');
+                hamburger.setAttribute('aria-expanded', 'true');
+                mobileMenu.setAttribute('aria-hidden', 'false');
+                document.body.style.overflow = 'hidden';
+            }
+            function closeMobileMenu() {
+                if (!mobileMenu) return;
+                mobileBackdrop.classList.remove('open');
+                mobileMenu.classList.remove('open');
+                hamburger.classList.remove('open');
+                hamburger.setAttribute('aria-expanded', 'false');
+                mobileMenu.setAttribute('aria-hidden', 'true');
+                document.body.style.overflow = '';
+                setTimeout(() => { mobileBackdrop.hidden = true; }, 300);
+            }
+
+            if (hamburger && mobileMenu) {
+                hamburger.addEventListener('click', () => {
+                    mobileMenu.classList.contains('open') ? closeMobileMenu() : openMobileMenu();
+                });
+                mobileClose && mobileClose.addEventListener('click', closeMobileMenu);
+                mobileBackdrop && mobileBackdrop.addEventListener('click', closeMobileMenu);
+                mobileMenu.querySelectorAll('a').forEach(a => a.addEventListener('click', closeMobileMenu));
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape' && mobileMenu.classList.contains('open')) closeMobileMenu();
+                });
+            }
+
+            // ============================================================
+            // UNIFIED TOAST SYSTEM  (window.Toast / window.notify)
+            // Available on every page; also feeds the header bell panel.
+            // ============================================================
+            (function () {
+                const region = document.getElementById('toast-region');
+                const ICONS = {
+                    success: '<i class="fas fa-check-circle"></i>',
+                    error:   '<i class="fas fa-exclamation-circle"></i>',
+                    warning: '<i class="fas fa-exclamation-triangle"></i>',
+                    info:    '<i class="fas fa-info-circle"></i>'
+                };
+                const historyList = [];
+                let unread = 0;
+
+                const esc = (s) => { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; };
+                const normType = (t) => { t = (t || 'info').toString().toLowerCase(); if (t === 'danger') t = 'error'; return ICONS[t] ? t : 'info'; };
+
+                const bell = document.getElementById('notifications-btn');
+                const badge = document.querySelector('[data-notification-badge]');
+                let panel = null;
+
+                function bumpUnread() {
+                    unread++;
+                    if (badge) { badge.textContent = unread > 9 ? '9+' : String(unread); badge.style.display = 'flex'; }
+                }
+                function clearUnread() { unread = 0; if (badge) badge.style.display = 'none'; }
+
+                function ensurePanel() {
+                    if (panel) return panel;
+                    panel = document.createElement('div');
+                    panel.id = 'notif-panel';
+                    panel.className = 'notif-panel';
+                    panel.hidden = true;
+                    document.body.appendChild(panel);
+                    return panel;
+                }
+                function renderBellPanel() {
+                    if (!bell) return;
+                    const p = ensurePanel();
+                    if (!historyList.length) {
+                        p.innerHTML = '<div class="notif-panel-head">Notifications</div><div class="notif-empty">You’re all caught up 🎉</div>';
+                        return;
+                    }
+                    p.innerHTML = '<div class="notif-panel-head">Notifications</div>' +
+                        historyList.map(h => '<div class="notif-item notif-item--' + h.type + '">' +
+                            '<span class="notif-dot"></span><div><div class="notif-msg">' + esc(h.message) +
+                            '</div><div class="notif-time">' + h.at.toLocaleTimeString() + '</div></div></div>').join('');
+                }
+
+                function show(message, type, opts) {
+                    type = normType(type); opts = opts || {};
+                    const duration = opts.duration != null ? opts.duration : 4500;
+                    if (region) {
+                        const el = document.createElement('div');
+                        el.className = 'toast toast--' + type;
+                        el.setAttribute('role', type === 'error' ? 'alert' : 'status');
+                        el.innerHTML =
+                            '<span class="toast-icon">' + ICONS[type] + '</span>' +
+                            '<div class="toast-body"><div class="toast-title">' + esc(opts.title || type) + '</div>' +
+                            '<div class="toast-text">' + esc(message) + '</div></div>' +
+                            '<button type="button" class="toast-close" aria-label="Dismiss">&times;</button>';
+                        region.appendChild(el);
+                        requestAnimationFrame(() => el.classList.add('show'));
+                        const close = () => { el.classList.add('hide'); el.classList.remove('show'); setTimeout(() => el.remove(), 350); };
+                        el.querySelector('.toast-close').addEventListener('click', close);
+                        let timer = duration > 0 ? setTimeout(close, duration) : null;
+                        el.addEventListener('mouseenter', () => { if (timer) clearTimeout(timer); });
+                        el.addEventListener('mouseleave', () => { if (duration > 0) timer = setTimeout(close, 1800); });
+                    }
+                    historyList.unshift({ message, type, at: new Date() });
+                    if (historyList.length > 20) historyList.pop();
+                    bumpUnread();
+                    renderBellPanel();
+                    return true;
+                }
+
+                window.Toast = {
+                    show: show,
+                    success: (m, o) => show(m, 'success', o),
+                    error:   (m, o) => show(m, 'error', o),
+                    warning: (m, o) => show(m, 'warning', o),
+                    info:    (m, o) => show(m, 'info', o)
+                };
+                window.notify = (m, t, o) => show(m, t, o);
+
+                if (bell) {
+                    renderBellPanel();
+                    bell.style.display = 'flex';
+                    bell.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const p = ensurePanel();
+                        p.hidden = !p.hidden;
+                        if (!p.hidden) clearUnread();
+                    });
+                    document.addEventListener('click', (e) => {
+                        if (panel && !panel.hidden && !panel.contains(e.target) && !bell.contains(e.target)) panel.hidden = true;
+                    });
+                }
+
+                // Surface server-rendered Django messages as toasts.
+                try {
+                    const raw = document.getElementById('server-messages');
+                    if (raw) JSON.parse(raw.textContent || '[]').forEach(m => show(m.text, m.type));
+                } catch (err) { console.warn('Toast: could not parse server messages', err); }
+            })();
+
             // Current year
             const currentYearEl = document.getElementById('current-year');
             if (currentYearEl) {
                 currentYearEl.textContent = new Date().getFullYear();
             }
 
-            // Messages auto-dismiss
-            const alerts = document.querySelectorAll('[data-alert]');
-            alerts.forEach(alert => {
-                setTimeout(() => {
-                    alert.style.opacity = '0';
-                    setTimeout(() => alert.remove(), 300);
-                }, 5000);
-            });
 
             // Expose scrollToSchedules for template compatibility
             window.scrollToSchedules = function() {
@@ -1438,6 +1747,9 @@
 
         })();
     </script>
+
+    <!-- 💬 Help assistant chat widget (rule-based, offline) -->
+    {% include "_chat_widget.html" %}
 
     {% block extra_js %}{% endblock %}
 </body>

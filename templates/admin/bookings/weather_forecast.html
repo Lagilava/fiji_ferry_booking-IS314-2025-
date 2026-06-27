@@ -1,0 +1,126 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}Weather Forecast — {{ site_header }}{% endblock %}
+
+{% block extrahead %}
+<style>
+.wf-intro { color: #6b7280; font-size: .875rem; margin-bottom: 1.5rem; }
+.wf-error { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 10px; padding: .75rem 1rem; font-size: .83rem; color: #92400e; font-weight: 600; margin-bottom: 1.25rem; }
+.wf-port-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 1.25rem; margin-bottom: 2rem; }
+.wf-port-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; overflow: hidden; }
+.wf-port-card__head { background: #0f172a; color: #fff; padding: .8rem 1.1rem; display: flex; align-items: center; justify-content: space-between; }
+.wf-port-card__name { font-weight: 700; font-size: .95rem; }
+.wf-port-card__body { padding: 0; }
+.wf-slot { display: flex; align-items: center; gap: .75rem; padding: .6rem 1rem; border-bottom: 1px solid #f3f4f6; font-size: .82rem; }
+.wf-slot:last-child { border-bottom: 0; }
+.wf-slot__time { min-width: 80px; color: #6b7280; font-size: .75rem; }
+.wf-slot__icon { font-size: 1.3rem; flex-shrink: 0; }
+.wf-slot__info { flex: 1; }
+.wf-slot__cond { font-weight: 600; color: #111; }
+.wf-slot__meta { color: #6b7280; font-size: .74rem; margin-top: .1rem; }
+.wf-slot__temp { font-weight: 800; font-size: 1rem; color: #0f172a; white-space: nowrap; }
+.rain-bar-wrap { width: 48px; background: #e5e7eb; border-radius: 4px; height: 6px; }
+.rain-bar { background: #3b82f6; border-radius: 4px; height: 6px; }
+
+.section-title { font-size: .95rem; font-weight: 700; margin: 1.5rem 0 .75rem; color: #374151; border-bottom: 2px solid #f3f4f6; padding-bottom: .4rem; }
+.local-table { width: 100%; border-collapse: collapse; font-size: .82rem; margin-bottom: 2rem; }
+.local-table th { background: #f8fafc; font-weight: 700; text-align: left; padding: .5rem .85rem; border-bottom: 2px solid #e5e7eb; }
+.local-table td { padding: .5rem .85rem; border-bottom: 1px solid #f3f4f6; }
+.local-table tr:hover td { background: #f8fafc; }
+.cond-tag { display: inline-block; padding: .15rem .55rem; border-radius: 999px; font-size: .72rem; font-weight: 700; background: #dbeafe; color: #1d4ed8; }
+.cond-tag--warn { background: #fef3c7; color: #92400e; }
+.cond-tag--danger { background: #fee2e2; color: #991b1b; }
+.wf-empty { color: #9ca3af; padding: 1.5rem; text-align: center; font-size: .85rem; }
+.refresh-note { font-size: .75rem; color: #9ca3af; margin-top: -.5rem; margin-bottom: 1.5rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="content-main" class="tool-page">
+  {% include "admin/_tool_header.html" with icon="🌤️" subtitle="Live 24-hour forecast for all ferry ports, refreshed every 30 minutes. Wind speeds in km/h." %}
+  {% if error %}<div class="wf-error">⚠️ {{ error }}</div>{% endif %}
+
+  {% if forecasts %}
+  <div class="wf-port-grid">
+    {% for pf in forecasts %}
+    <div class="wf-port-card">
+      <div class="wf-port-card__head">
+        <span class="wf-port-card__name">📍 {{ pf.port }}</span>
+        <span style="font-size:.75rem;color:#94a3b8;">Next 24 h</span>
+      </div>
+      <div class="wf-port-card__body">
+        {% for slot in pf.forecast %}
+        <div class="wf-slot">
+          <div class="wf-slot__time">{{ slot.datetime|slice:"11:16" }}</div>
+          <div class="wf-slot__icon">
+            {% with c=slot.condition|lower %}
+              {% if "rain" in c or "drizzle" in c %}🌧️
+              {% elif "thunder" in c or "storm" in c %}⛈️
+              {% elif "snow" in c %}❄️
+              {% elif "cloud" in c %}☁️
+              {% elif "mist" in c or "fog" in c or "haze" in c %}🌫️
+              {% else %}☀️
+              {% endif %}
+            {% endwith %}
+          </div>
+          <div class="wf-slot__info">
+            <div class="wf-slot__cond">{{ slot.condition }}</div>
+            <div class="wf-slot__meta">💨 {{ slot.wind_speed }} km/h &nbsp;·&nbsp; 💧 {{ slot.humidity }}%</div>
+          </div>
+          <div>
+            <div class="wf-slot__temp">{{ slot.temperature }}°C</div>
+            <div class="rain-bar-wrap" title="{{ slot.precipitation_probability }}% rain chance">
+              <div class="rain-bar" style="width:{{ slot.precipitation_probability }}%"></div>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  <p class="refresh-note">Data cached for 30 minutes. Sourced from OpenWeatherMap.</p>
+  {% else %}
+    <div class="wf-empty">No live forecast data available. Check the OpenWeatherMap API key in settings.</div>
+  {% endif %}
+
+  {% if local_conditions %}
+  <h2 class="section-title">📡 On-Route Conditions (from local monitoring)</h2>
+  <table class="local-table">
+    <thead>
+      <tr>
+        <th>Port</th>
+        <th>Condition</th>
+        <th>Temp (°C)</th>
+        <th>Wind (km/h)</th>
+        <th>Rain chance</th>
+        <th>Updated</th>
+        <th>Expires</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in local_conditions %}
+      <tr>
+        <td><strong>{{ row.port__name }}</strong></td>
+        <td>
+          <span class="cond-tag
+            {% with c=row.condition|lower %}
+              {% if "storm" in c or "thunder" in c or "hurricane" in c %}cond-tag--danger
+              {% elif "rain" in c or "rough" in c or "warning" in c %}cond-tag--warn
+              {% endif %}
+            {% endwith %}
+          ">{{ row.condition }}</span>
+        </td>
+        <td>{% if row.temperature %}{{ row.temperature|floatformat:1 }}{% else %}—{% endif %}</td>
+        <td>{% if row.wind_speed %}{{ row.wind_speed|floatformat:1 }}{% else %}—{% endif %}</td>
+        <td>{% if row.precipitation_probability %}{{ row.precipitation_probability|floatformat:0 }}%{% else %}—{% endif %}</td>
+        <td>{{ row.updated_at|date:"M d H:i" }}</td>
+        <td>{% if row.expires_at %}{{ row.expires_at|date:"M d H:i" }}{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endblock %}

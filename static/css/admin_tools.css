@@ -1,0 +1,135 @@
+/* ============================================================
+   admin_tools.css — shared look-and-feel for the custom admin
+   "quick action" tool pages (manifest, ops, rebook, weather,
+   stripe insights, agents, user support, …).
+
+   Goal: make every tool page share the same design language as
+   the main dashboard (index.html) — Inter typography, a gradient
+   hero header, rounded cards, and consistent buttons/badges —
+   instead of each page looking like a bare Django admin view.
+   ============================================================ */
+
+:root {
+  --tool-bg:        #f6f8fb;
+  --tool-card-bg:   #ffffff;
+  --tool-border:    rgba(15, 23, 42, .08);
+  --tool-text:      #0f172a;
+  --tool-text-soft: #64748b;
+  --tool-primary:   #2563eb;
+  --tool-radius:    16px;
+  --tool-shadow:    0 4px 20px rgba(15, 23, 42, .06);
+}
+
+/* Apply the dashboard font to the whole tool page. */
+.tool-page,
+.tool-page * {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.tool-page {
+  max-width: 1180px;
+  margin: 0 auto;
+  color: var(--tool-text);
+}
+
+/* ── Gradient hero header (mirrors the main dashboard header) ── */
+.tool-hero {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 1.1rem;
+  padding: 1.4rem 1.6rem;
+  margin-bottom: 1.5rem;
+  border-radius: var(--tool-radius);
+  background: linear-gradient(135deg, #0b1c38 0%, #1e3a8a 55%, #0891b2 100%);
+  color: #fff;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, .25);
+  overflow: hidden;
+}
+.tool-hero::after {
+  /* subtle wave sheen */
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(120% 140% at 100% 0%, rgba(255,255,255,.16) 0%, transparent 55%);
+  pointer-events: none;
+}
+.tool-hero__icon {
+  width: 54px; height: 54px;
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.6rem;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .14);
+  backdrop-filter: blur(6px);
+}
+.tool-hero__text { flex: 1; min-width: 0; }
+.tool-hero__title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -.02em;
+  color: #fff;
+  line-height: 1.15;
+}
+.tool-hero__subtitle {
+  margin-top: .25rem;
+  font-size: .86rem;
+  color: rgba(226, 232, 240, .9);
+}
+.tool-hero__back {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+  display: inline-flex; align-items: center; gap: .4rem;
+  padding: .5rem 1rem;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .16);
+  color: #fff !important;
+  font-size: .82rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background .15s ease;
+}
+.tool-hero__back:hover { background: rgba(255, 255, 255, .28); }
+
+@media (max-width: 640px) {
+  .tool-hero { flex-wrap: wrap; }
+  .tool-hero__back { order: 3; }
+}
+
+/* ── Generic surface card (opt-in for pages that want it) ── */
+.tool-surface {
+  background: var(--tool-card-bg);
+  border: 1px solid var(--tool-border);
+  border-radius: var(--tool-radius);
+  box-shadow: var(--tool-shadow);
+  padding: 1.25rem 1.4rem;
+  margin-bottom: 1.25rem;
+}
+
+/* ── Shared pill buttons matching the dashboard ── */
+.tool-btn {
+  display: inline-flex; align-items: center; gap: .45rem;
+  padding: .55rem 1.1rem;
+  border-radius: 10px;
+  border: none;
+  background: var(--tool-primary);
+  color: #fff;
+  font-weight: 700;
+  font-size: .85rem;
+  cursor: pointer;
+  text-decoration: none;
+  transition: filter .15s ease, transform .15s ease;
+}
+.tool-btn:hover { filter: brightness(1.08); transform: translateY(-1px); }
+.tool-btn--ghost {
+  background: rgba(37, 99, 235, .1);
+  color: var(--tool-primary);
+}
+
+/* Round the bare Django admin content panel on tool pages so the
+   hero header doesn't sit on a hard-edged white rectangle. */
+.tool-page #content-main,
+.tool-page.colMS #content { background: transparent; }

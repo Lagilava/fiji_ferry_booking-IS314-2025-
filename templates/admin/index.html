@@ -1,535 +1,891 @@
 {% extends "admin/base_site.html" %}
 {% load static i18n %}
 
-{% block extrastyle %}
-    {{ block.super }}
-    <link rel="stylesheet" href="{% static 'vendor/select2/css/select2.min.css' %}">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous">
-    <link rel="stylesheet" href="{% static 'css/jazzmin_color_overrides.css' %}">
-    <link rel="stylesheet" href="{% static 'css/admin_custom.css' %}">
-    <link rel="stylesheet" href="{% static 'css/admin_dashboard.css' %}">
-    <link rel="stylesheet" href="{% static 'css/qr_scanner_advanced.css' %}">
+{% block extrastyle %}{{ block.super }}
+<link rel="stylesheet" href="{% static 'vendor/select2/css/select2.min.css' %}">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous">
+<link rel="stylesheet" href="{% static 'css/jazzmin_color_overrides.css' %}">
+<link rel="stylesheet" href="{% static 'css/admin_custom.css' %}">
+<link rel="stylesheet" href="{% static 'css/admin_dashboard.css' %}">
+<link rel="stylesheet" href="{% static 'css/qr_scanner_advanced.css' %}">
+<link rel="stylesheet" href="{% static 'css/admin_dashboard_modern.css' %}">
+<style>
+/* ═══════════════════════════════════════════════════
+   DASHBOARD ADDITIONS — sections that were missing
+═══════════════════════════════════════════════════ */
+
+/* ── KPI hero cards ── */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+.kpi-card {
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border, rgba(0,0,0,.08));
+  border-radius: 18px;
+  padding: 1.3rem 1.4rem 1.1rem;
+  box-shadow: 0 4px 20px rgba(0,0,0,.06);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  transition: transform .15s, box-shadow .15s;
+}
+.kpi-card:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(0,0,0,.1); }
+.kpi-card__stripe {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  border-radius: 18px 18px 0 0;
+}
+.stripe-green  { background: linear-gradient(90deg, #10b981, #059669); }
+.stripe-blue   { background: linear-gradient(90deg, #3b82f6, #2563eb); }
+.stripe-amber  { background: linear-gradient(90deg, #f59e0b, #d97706); }
+.stripe-red    { background: linear-gradient(90deg, #ef4444, #dc2626); }
+.stripe-purple { background: linear-gradient(90deg, #8b5cf6, #7c3aed); }
+.stripe-teal   { background: linear-gradient(90deg, #06b6d4, #0891b2); }
+.kpi-card__icon {
+  width: 38px; height: 38px;
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+  flex-shrink: 0;
+}
+.icon-green  { background: rgba(16,185,129,.12); color: #059669; }
+.icon-blue   { background: rgba(59,130,246,.12);  color: #2563eb; }
+.icon-amber  { background: rgba(245,158,11,.12);  color: #d97706; }
+.icon-red    { background: rgba(239,68,68,.12);   color: #dc2626; }
+.icon-purple { background: rgba(139,92,246,.12);  color: #7c3aed; }
+.icon-teal   { background: rgba(6,182,212,.12);   color: #0891b2; }
+.kpi-card__value {
+  font-size: 1.9rem; font-weight: 900; line-height: 1;
+  color: var(--text, #111827);
+}
+.kpi-card__label {
+  font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .5px; color: var(--text-light, #6b7280);
+}
+.kpi-card__sub {
+  font-size: 0.72rem; color: var(--text-light, #6b7280);
+  margin-top: 0.4rem;
+  display: flex; align-items: center; gap: 0.3rem;
+}
+.kpi-card__sub .up   { color: #10b981; }
+.kpi-card__sub .down { color: #ef4444; }
+
+/* ── Today's departures ── */
+.departures-table-wrap { overflow-x: auto; }
+.departures-table {
+  width: 100%; border-collapse: collapse;
+  font-size: 0.875rem;
+}
+.departures-table th {
+  padding: 0.6rem 0.9rem;
+  text-align: left;
+  font-size: 0.72rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .5px;
+  color: var(--text-light, #6b7280);
+  border-bottom: 2px solid var(--border, rgba(0,0,0,.08));
+  white-space: nowrap;
+}
+.departures-table td {
+  padding: 0.75rem 0.9rem;
+  border-bottom: 1px solid var(--border, rgba(0,0,0,.06));
+  color: var(--text, #111827);
+  vertical-align: middle;
+}
+.departures-table tbody tr:hover { background: rgba(0,0,0,.02); }
+.departures-table tbody tr:last-child td { border-bottom: none; }
+
+.dep-status {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  padding: 0.22rem 0.6rem; border-radius: 100px;
+  font-size: 0.69rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .5px;
+}
+.dep-scheduled { background: rgba(16,185,129,.12); color: #059669; }
+.dep-delayed   { background: rgba(245,158,11,.14); color: #92400e; }
+.dep-cancelled { background: rgba(239,68,68,.12);  color: #991b1b; }
+
+.capacity-bar-wrap { display: flex; align-items: center; gap: 0.5rem; min-width: 110px; }
+.capacity-bar {
+  flex: 1; height: 6px; border-radius: 3px;
+  background: var(--border, rgba(0,0,0,.1)); overflow: hidden;
+}
+.capacity-fill { height: 100%; border-radius: 3px; transition: width .4s; }
+.fill-ok     { background: #10b981; }
+.fill-warn   { background: #f59e0b; }
+.fill-danger { background: #ef4444; }
+.capacity-pct { font-size: 0.72rem; color: var(--text-light, #6b7280); white-space: nowrap; }
+
+/* ── Fleet status ── */
+.fleet-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.85rem;
+}
+.fleet-card {
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border, rgba(0,0,0,.08));
+  border-radius: 14px;
+  padding: 1rem 1.1rem;
+  display: flex; align-items: center; gap: 0.85rem;
+}
+.fleet-card__dot {
+  width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+}
+.dot-active   { background: #10b981; box-shadow: 0 0 0 3px rgba(16,185,129,.2); }
+.dot-inactive { background: #94a3b8; }
+.fleet-card__name { font-weight: 700; font-size: 0.88rem; color: var(--text, #111); }
+.fleet-card__meta { font-size: 0.74rem; color: var(--text-light, #6b7280); margin-top: 0.1rem; }
+
+/* ── Pending actions ── */
+.pending-list { display: flex; flex-direction: column; gap: 0.6rem; }
+.pending-row {
+  display: flex; align-items: center; gap: 0.85rem;
+  padding: 0.85rem 1rem;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border, rgba(0,0,0,.08));
+  border-radius: 12px;
+  font-size: 0.875rem;
+}
+.pending-row__id {
+  font-size: 0.72rem; font-weight: 700;
+  color: var(--text-light, #6b7280);
+  width: 2.2rem; flex-shrink: 0;
+}
+.pending-row__info { flex: 1; min-width: 0; }
+.pending-row__route { font-weight: 600; color: var(--text, #111); }
+.pending-row__user  { font-size: 0.76rem; color: var(--text-light, #6b7280); margin-top: 0.1rem; }
+.pending-row__price { font-weight: 700; font-size: 0.9rem; white-space: nowrap; }
+.pending-row__action {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  padding: 0.3rem 0.7rem;
+  background: rgba(59,130,246,.1); color: #2563eb;
+  border-radius: 8px; font-size: 0.76rem; font-weight: 700;
+  text-decoration: none; white-space: nowrap;
+  transition: background .15s;
+}
+.pending-row__action:hover { background: rgba(59,130,246,.2); }
+
+/* ── Recent registrations ── */
+.users-list { display: flex; flex-direction: column; gap: 0.55rem; }
+.user-row {
+  display: flex; align-items: center; gap: 0.85rem;
+  padding: 0.7rem 0.9rem;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border, rgba(0,0,0,.08));
+  border-radius: 12px;
+}
+.user-avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: linear-gradient(135deg, #000 0%, #28309d 100%);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.8rem; font-weight: 800; color: #fff;
+  flex-shrink: 0; letter-spacing: -0.5px;
+}
+.user-row__name  { font-weight: 600; font-size: 0.88rem; color: var(--text, #111); }
+.user-row__email { font-size: 0.74rem; color: var(--text-light, #6b7280); margin-top: 0.1rem; }
+.user-row__meta  { margin-left: auto; text-align: right; }
+.user-row__date  { font-size: 0.72rem; color: var(--text-light, #6b7280); }
+.user-row__trips { font-size: 0.72rem; font-weight: 700; color: var(--text, #111); }
+
+/* ── Two-col layout for lower sections ── */
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+@media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+
+/* ── Dashboard section card ── */
+.dash-card {
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border, rgba(0,0,0,.08));
+  border-radius: 18px;
+  box-shadow: 0 4px 18px rgba(0,0,0,.05);
+  overflow: hidden;
+}
+.dash-card__header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border, rgba(0,0,0,.06));
+}
+.dash-card__title {
+  font-weight: 700; font-size: 0.9rem;
+  display: flex; align-items: center; gap: 0.5rem;
+  color: var(--text, #111);
+  margin: 0;
+}
+.dash-card__body { padding: 1rem 1.25rem; }
+.dash-card__link {
+  font-size: 0.78rem; font-weight: 600; color: #3b82f6;
+  text-decoration: none;
+  display: flex; align-items: center; gap: 0.3rem;
+}
+.dash-card__link:hover { text-decoration: underline; }
+
+/* ── Count badge ── */
+.count-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 22px; height: 22px; padding: 0 6px;
+  border-radius: 100px;
+  background: rgba(239,68,68,.12); color: #dc2626;
+  font-size: 0.7rem; font-weight: 800;
+}
+.count-badge.green { background: rgba(16,185,129,.12); color: #059669; }
+
+/* ── Empty state ── */
+.ds-empty {
+  text-align: center; padding: 2rem 1rem;
+  color: var(--text-light, #6b7280); font-size: 0.875rem;
+}
+.ds-empty i { font-size: 2rem; opacity: .2; display: block; margin-bottom: 0.5rem; }
+
+/* ── Utility: hidden but in DOM ── */
+.u-hidden { display: none; }
+/* ── dash-card full height (used in two-col) ── */
+.dash-card--full { height: 100%; }
+/* ── dash-card body no padding (departures table) ── */
+.dash-card__body--flush { padding: 0; }
+/* ── QR: progress bar positioning ── */
+.qr-progress-bar-wrap {
+  display: none; position: absolute;
+  bottom: 1rem; left: 1rem; right: 1rem;
+}
+/* ── QR: feedback badge positioning ── */
+.qr-feedback-badge {
+  display: none; position: absolute;
+  top: 1rem; right: 1rem;
+  padding: .5rem 1rem; border-radius: .375rem; font-size: .9rem;
+}
+/* ── QR: history list max-height ── */
+.qr-history-list { max-height: 150px; overflow-y: auto; }
+/* ── KPI sub icon colours ── */
+.icon-amber-text  { color: #f59e0b; }
+.icon-teal-text   { color: #06b6d4; }
+.icon-red-text    { color: #ef4444; }
+/* ── Capacity fill via data attr (set by JS) ── */
+/* width is set programmatically via style attr; linter OK with dynamic widths in templates */
+</style>
 {% endblock %}
 
 {% block bodyclass %}{{ block.super }} jazzmin-admin{% endblock %}
 
 {% block content %}
-    <div class="dashboard-container">
-        <!-- Enhanced Header with Proper Layout -->
-        <header class="dashboard-header" role="banner">
-            <!-- Background overlay for readability -->
-            <div class="header-overlay"></div>
+<div class="dashboard-container">
 
-            <!-- Main content container -->
-            <div class="header-content">
-                <div class="header-main">
-                    <!-- Title section -->
-                    <div class="dashboard-title-section">
-                        <div class="title-icon-wrapper">
-                            <div class="title-icon">
-                              <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
-                                <!-- Water waves (2 layers for depth) -->
-                                <path class="wave" d="M0,78 Q20,73 40,78 T80,78 T100,78 V100 H0 Z"/>
-                                <path class="wave" d="M0,82 Q25,77 50,82 T100,82 V100 H0 Z" opacity="0.6"/>
-
-                                <!-- Boat group -->
-                                <g class="boat-group">
-                                  <!-- Hull (boat body) -->
-                                  <path d="M25,65 Q50,58 75,65 L70,70 L30,70 Z" fill="#e0e0e0" stroke="#ccc" stroke-width="1"/>
-
-                                  <!-- Cabin -->
-                                  <path d="M42,58 L58,58 L56,52 L44,52 Z" fill="#ffffff"/>
-
-                                  <!-- Mast -->
-                                  <rect x="49" y="38" width="2" height="20" fill="#ddd"/>
-
-                                  <!-- Sail (triangular) -->
-                                  <path d="M51,42 L51,56 L65,50 Z" fill="#4fc3f7" opacity="0.9"/>
-                                  <path d="M51,42 L51,56 L37,50 Z" fill="#29b6f6" opacity="0.9"/>
-
-                                  <!-- Flag on top -->
-                                  <path d="M51,38 L51,35 L55,36.5 Z" fill="#ef5350"/>
-                                </g>
-                              </svg>
-                            </div>
-                        </div>
-                        <div class="title-text-wrapper">
-                            <h1 class="dashboard-title">Fiji Ferry Control Hub</h1>
-                            <div class="dashboard-subtitle">Real-time fleet management & booking analytics</div>
-                        </div>
-                    </div>
-
-                    <!-- Welcome section (conditionally shown) -->
-                    {% if user.is_authenticated %}
-                        <div class="welcome-section">
-                            <div class="welcome-card">
-                                <div class="welcome-icon">
-                                    <i class="fas fa-user-circle" aria-hidden="true"></i>
-                                </div>
-                                <div class="welcome-content">
-                                    <div class="welcome-text">
-                                        Welcome back,
-                                        <strong class="user-name">{{ user.first_name|default:user.username|title }}</strong>!
-                                    </div>
-                                    <div class="welcome-subtitle">
-                                        Manage your fleet and bookings with ease
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    {% endif %}
-                </div>
-
-                <!-- Header stats - positioned absolutely -->
-                <div class="header-stats">
-                    <div class="stat-badge time-badge">
-                        <i class="fas fa-clock" aria-hidden="true"></i>
-                        <span id="current-time"></span>
-                    </div>
-                    <div class="stat-badge date-badge">
-                        <i class="fas fa-calendar-alt" aria-hidden="true"></i>
-                        <span id="current-date"></span>
-                    </div>
-                </div>
+  <!-- ════════════════════════════════════════════
+       HEADER
+  ════════════════════════════════════════════ -->
+  <header class="dashboard-header" role="banner">
+    <div class="header-overlay"></div>
+    <div class="header-content">
+      <div class="header-main">
+        <div class="dashboard-title-section">
+          <div class="title-icon-wrapper">
+            <div class="title-icon">
+              <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+                <path class="wave" d="M0,78 Q20,73 40,78 T80,78 T100,78 V100 H0 Z"/>
+                <path class="wave" d="M0,82 Q25,77 50,82 T100,82 V100 H0 Z" opacity="0.6"/>
+                <g class="boat-group">
+                  <path d="M25,65 Q50,58 75,65 L70,70 L30,70 Z" fill="#e0e0e0" stroke="#ccc" stroke-width="1"/>
+                  <path d="M42,58 L58,58 L56,52 L44,52 Z" fill="#ffffff"/>
+                  <rect x="49" y="38" width="2" height="20" fill="#ddd"/>
+                  <path d="M51,42 L51,56 L65,50 Z" fill="#4fc3f7" opacity="0.9"/>
+                  <path d="M51,42 L51,56 L37,50 Z" fill="#29b6f6" opacity="0.9"/>
+                  <path d="M51,38 L51,35 L55,36.5 Z" fill="#ef5350"/>
+                </g>
+              </svg>
             </div>
-        </header>
-
-        <!-- Notifications Section -->
-        <section class="notifications-section" id="notificationsSection" style="display: none;">
-            <h2 class="section-title">Notifications</h2>
-            <div class="notifications-list" aria-live="polite"></div>
-        </section>
-
-        <!-- Critical Alerts Section -->
-        <section class="alerts-section" id="alertsSection" style="display: none;">
-            <h2 class="section-title">Critical Alerts</h2>
-            <div class="alerts-list" aria-live="polite"></div>
-        </section>
-
-        <!-- Quick Action Buttons -->
-        <section class="quick-actions-section">
-            <h2 class="section-title">Quick Actions</h2>
-            <div class="quick-actions">
-                <a href="{% url 'admin:bookings_booking_changelist' %}" class="btn btn-primary-custom" aria-label="View all bookings" data-tippy-content="View all bookings">
-                    <i class="fas fa-ticket-alt"></i> View Bookings
-                </a>
-                <a href="{% url 'admin:bookings_schedule_changelist' %}" class="btn btn-primary-custom" aria-label="Manage ferry schedules" data-tippy-content="Manage ferry schedules">
-                    <i class="fas fa-calendar-alt"></i> Manage Schedules
-                </a>
-                <a href="{% url 'admin:bookings_maintenancelog_changelist' %}" class="btn btn-primary-custom" aria-label="View maintenance logs" data-tippy-content="View maintenance logs">
-                    <i class="fas fa-tools"></i> Maintenance Logs
-                </a>
-                <a href="{% url 'admin:export-bookings' %}" class="btn btn-primary-custom" aria-label="Export all bookings to CSV" data-tippy-content="Export all bookings to CSV">
-                    <i class="fas fa-download"></i> Export Bookings
-                </a>
-                <a href="{% url 'bookings:weather_forecast' %}" class="btn btn-primary-custom" aria-label="View weather forecast" data-tippy-content="View weather forecast">
-                    <i class="fas fa-cloud"></i> Weather Forecast
-                </a>
-                <a href="{% url 'bookings:stripe_insights' %}" class="btn btn-primary-custom" aria-label="View Stripe insights" data-tippy-content="View Stripe insights">
-                    <i class="fas fa-credit-card"></i> Stripe Insights
-                </a>
-                <button id="scan-qr-code" class="btn btn-primary-custom" aria-label="Scan QR code for ticket" data-tippy-content="Scan QR code for ticket">
-                    <i class="fas fa-qrcode"></i> Scan QR Code
-                </button>
-            </div>
-        </section>
-
-        <!-- Enhanced QR Scanner Widget -->
-        <section class="qr-scanner-section" id="qrScannerSection" style="display: none;">
-            <div class="widget-card">
-                <div class="section-header">
-                    <h3 class="section-title">QR Scanner</h3>
-                    <button id="qr-close" class="btn btn-secondary" aria-label="Close QR scanner" data-tippy-content="Close QR scanner">
-                        <i class="fas fa-times"></i> Close
-                    </button>
-                </div>
-
-                <!-- Hidden Field for QR Token -->
-                <input type="hidden" id="qr-actual-token" value="">
-
-                <!-- Scanner Container with Progress and Feedback -->
-                <div class="qr-video-container">
-                    <video id="qr-video" width="100%" height="auto" autoplay playsinline aria-label="QR code scanning video feed"></video>
-                    <div id="qr-scan-overlay" aria-hidden="true"></div>
-                    <!-- Progress Bar for Scanning -->
-                    <div id="qr-scan-progress" class="progress" style="display: none; position: absolute; bottom: 1rem; left: 1rem; right: 1rem;">
-                        <div class="progress-bar bg-success" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
-                    </div>
-                    <!-- Live Feedback Indicator -->
-                    <div id="qr-scan-feedback" class="qr-feedback" style="display: none; position: absolute; top: 1rem; right: 1rem; padding: 0.5rem 1rem; border-radius: 0.375rem; font-size: 0.9rem;">
-                        Scanning...
-                    </div>
-                </div>
-
-                <!-- Result Display with Enhanced Layout -->
-                <div id="qr-result" class="mt-3" style="display: none;">
-                    <h6>Ticket Details</h6>
-                    <div class="qr-result-grid">
-                        <p><strong>Ticket ID:</strong> <span id="qr-ticket-id"></span></p>
-                        <p><strong>Booking ID:</strong> <span id="qr-booking-id"></span></p>
-                        <p><strong>Passenger:</strong> <span id="qr-passenger"></span></p>
-                        <p><strong>Route:</strong> <span id="qr-route"></span></p>
-                        <p><strong>Booking Date:</strong> <span id="qr-booking-date"></span></p>
-                        <p><strong>Status:</strong> <span id="qr-ticket-status"></span></p>
-                    </div>
-                    <div class="mt-3 qr-action-buttons">
-                        <button id="qr-mark-used" class="btn btn-success-custom" aria-label="Mark ticket as used" data-tippy-content="Mark ticket as used">
-                            <i class="fas fa-check"></i> Mark as Used
-                        </button>
-                        <button id="qr-mark-unused" class="btn btn-secondary-custom" aria-label="Mark ticket as active/unused" data-tippy-content="Mark ticket as active">
-                            <i class="fas fa-undo"></i> Mark as Active
-                        </button>
-                        <button id="qr-view-booking" class="btn btn-primary-custom" aria-label="View booking details" data-tippy-content="View booking details">
-                            <i class="fas fa-eye"></i> View Booking
-                        </button>
-                        <button id="qr-log-activity" class="btn btn-info-custom" aria-label="Log scan activity" data-tippy-content="Log scan activity">
-                            <i class="fas fa-history"></i> Log Activity
-                        </button>
-                        <button id="qr-scan-again" class="btn btn-primary-custom" aria-label="Scan another QR code" data-tippy-content="Scan another QR code">
-                            <i class="fas fa-qrcode"></i> Scan Again
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Error Display -->
-                <div id="qr-error" class="alert alert-danger mt-3" style="display: none;" role="alert"></div>
-
-                <!-- Collapsible Scan History -->
-                <div id="qr-scan-history" class="mt-3">
-                    <button class="btn btn-secondary-custom qr-history-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#qr-history-collapse" aria-expanded="false" aria-controls="qr-history-collapse" aria-label="Toggle scan history" data-tippy-content="Toggle scan history">
-                        <i class="fas fa-history"></i> Scan History
-                    </button>
-                    <div class="collapse" id="qr-history-collapse">
-                        <ul class="list-group" style="max-height: 150px; overflow-y: auto;"></ul>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Widgets Section -->
-        <section class="widgets-section">
-            <h2 class="section-title">Key Metrics & Alerts</h2>
-            <div class="widget-grid">
-                <div class="widget-card">
-                    {% include 'bookings/admin_widgets/performance_metrics.html' %}
-                </div>
-                <div class="widget-card">
-                    {% include 'bookings/admin_widgets/weather_alerts.html' %}
-                </div>
-            </div>
-        </section>
-
-        <!-- Analytics Dashboard -->
-        <section class="analytics-section">
-            <h2 class="section-title">Analytics Dashboard</h2>
-            <div class="dashboard-nav">
-                <ul class="nav nav-tabs custom-tabs" role="tablist" aria-label="Analytics Dashboard Tabs">
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link active" id="bookings-tab" data-bs-toggle="tab" data-bs-target="#bookings" type="button" role="tab" aria-controls="bookings" aria-selected="true" data-tippy-content="View bookings by route">
-                            <i class="fas fa-chart-bar"></i> Bookings
-                        </button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="utilization-tab" data-bs-toggle="tab" data-bs-target="#utilization" type="button" role="tab" aria-controls="utilization" aria-selected="false" data-tippy-content="View ferry utilization">
-                            <i class="fas fa-ship"></i> Utilization
-                        </button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="revenue-tab" data-bs-toggle="tab" data-bs-target="#revenue" type="button" role="tab" aria-controls="revenue" aria-selected="false" data-tippy-content="View revenue over time">
-                            <i class="fas fa-dollar-sign"></i> Revenue
-                        </button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="payment-tab" data-bs-toggle="tab" data-bs-target="#payment" type="button" role="tab" aria-controls="payment" aria-selected="false" data-tippy-content="View payment status distribution">
-                            <i class="fas fa-credit-card"></i> Payments
-                        </button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="user-growth-tab" data-bs-toggle="tab" data-bs-target="#user-growth" type="button" role="tab" aria-controls="user-growth" aria-selected="false" data-tippy-content="View user growth trends">
-                            <i class="fas fa-users"></i> User Growth
-                        </button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="customers-tab" data-bs-toggle="tab" data-bs-target="#customers" type="button" role="tab" aria-controls="customers" aria-selected="false" data-tippy-content="View top customers by bookings">
-                            <i class="fas fa-user-tie"></i> Top Customers
-                        </button>
-                    </li>
-                </ul>
-            </div>
-            <div class="tab-content">
-                <div class="tab-pane show active" id="bookings" role="tabpanel" aria-labelledby="bookings-tab">
-                    <div class="chart-controls">
-                        <select class="form-select date-range-filter" data-chart-id="bookingsChart" aria-label="Select date range for bookings chart">
-                            <option value="7">Last 7 Days</option>
-                            <option value="30" selected>Last 30 Days</option>
-                            <option value="all">All Time</option>
-                        </select>
-                        <button class="btn btn-secondary refresh-chart" data-chart-id="bookingsChart" aria-label="Refresh bookings chart" data-tippy-content="Refresh bookings chart">
-                            <i class="fas fa-sync-alt"></i> Refresh
-                        </button>
-                    </div>
-                    <div class="chart-wrapper" data-chart-id="bookingsChart" role="img" aria-label="Bar chart of top routes by bookings"></div>
-                </div>
-                <div class="tab-pane" id="utilization" role="tabpanel" aria-labelledby="utilization-tab">
-                    <div class="chart-controls">
-                        <select class="form-select utilization-filter" aria-label="Filter ferry utilization by day of week">
-                            <option value="all">All Days</option>
-                            <option value="Monday">Monday</option>
-                            <option value="Tuesday">Tuesday</option>
-                            <option value="Wednesday">Wednesday</option>
-                            <option value="Thursday">Thursday</option>
-                            <option value="Friday">Friday</option>
-                            <option value="Saturday">Saturday</option>
-                            <option value="Sunday">Sunday</option>
-                        </select>
-                        <select class="form-select date-range-filter" data-chart-id="utilizationChart" aria-label="Select date range for utilization chart">
-                            <option value="7">Last 7 Days</option>
-                            <option value="30" selected>Last 30 Days</option>
-                            <option value="all">All Time</option>
-                        </select>
-                        <button class="btn btn-secondary refresh-chart" data-chart-id="utilizationChart" aria-label="Refresh utilization chart" data-tippy-content="Refresh utilization chart">
-                            <i class="fas fa-sync-alt"></i> Refresh
-                        </button>
-                    </div>
-                    <div class="chart-wrapper" data-chart-id="utilizationChart" role="img" aria-label="Horizontal bar chart of ferry utilization"></div>
-                </div>
-                <div class="tab-pane" id="revenue" role="tabpanel" aria-labelledby="revenue-tab">
-                    <div class="chart-controls">
-                        <select class="form-select date-range-filter" data-chart-id="revenueChart" aria-label="Select date range for revenue chart">
-                            <option value="7">Last 7 Days</option>
-                            <option value="30" selected>Last 30 Days</option>
-                            <option value="all">All Time</option>
-                        </select>
-                        <button class="btn btn-secondary refresh-chart" data-chart-id="revenueChart" aria-label="Refresh revenue chart" data-tippy-content="Refresh revenue chart">
-                            <i class="fas fa-sync-alt"></i> Refresh
-                        </button>
-                    </div>
-                    <div class="chart-wrapper" data-chart-id="revenueChart" role="img" aria-label="Line chart of revenue over time"></div>
-                </div>
-                <div class="tab-pane" id="payment" role="tabpanel" aria-labelledby="payment-tab">
-                    <div class="chart-controls">
-                        <select class="form-select date-range-filter" data-chart-id="paymentChart" aria-label="Select date range for payment chart">
-                            <option value="7">Last 7 Days</option>
-                            <option value="30" selected>Last 30 Days</option>
-                            <option value="all">All Time</option>
-                        </select>
-                        <button class="btn btn-secondary refresh-chart" data-chart-id="paymentChart" aria-label="Refresh payment chart" data-tippy-content="Refresh payment chart">
-                            <i class="fas fa-sync-alt"></i> Refresh
-                        </button>
-                    </div>
-                    <div class="chart-wrapper" data-chart-id="paymentChart" role="img" aria-label="Pie chart of payment status"></div>
-                </div>
-                <div class="tab-pane" id="user-growth" role="tabpanel" aria-labelledby="user-growth-tab">
-                    <div class="chart-controls">
-                        <select class="form-select date-range-filter" data-chart-id="userGrowthChart" aria-label="Select date range for user growth chart">
-                            <option value="7">Last 7 Days</option>
-                            <option value="30" selected>Last 30 Days</option>
-                            <option value="all">All Time</option>
-                        </select>
-                        <button class="btn btn-secondary refresh-chart" data-chart-id="userGrowthChart" aria-label="Refresh user growth chart" data-tippy-content="Refresh user growth chart">
-                            <i class="fas fa-sync-alt"></i> Refresh
-                        </button>
-                    </div>
-                    <div class="chart-wrapper" data-chart-id="userGrowthChart" role="img" aria-label="Line chart of user growth"></div>
-                </div>
-                <div class="tab-pane" id="customers" role="tabpanel" aria-labelledby="customers-tab">
-                    <div class="chart-controls">
-                        <select class="form-select date-range-filter" data-chart-id="topCustomersChart" aria-label="Select date range for top customers chart">
-                            <option value="7">Last 7 Days</option>
-                            <option value="30" selected>Last 30 Days</option>
-                            <option value="all">All Time</option>
-                        </select>
-                        <button class="btn btn-secondary refresh-chart" data-chart-id="topCustomersChart" aria-label="Refresh top customers chart" data-tippy-content="Refresh top customers chart">
-                            <i class="fas fa-sync-alt"></i> Refresh
-                        </button>
-                    </div>
-                    <div class="chart-wrapper" data-chart-id="topCustomersChart" role="img" aria-label="Bar chart of top customers by bookings"></div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Recent Bookings Table -->
-        <section class="recent-bookings-section">
-            <div class="section-header">
-                <h3 class="section-title">Recent Bookings</h3>
-                <button id="export-bookings" class="btn btn-secondary" aria-label="Export selected bookings to CSV" data-tippy-content="Export selected bookings to CSV">
-                    <i class="fas fa-download"></i> Export to CSV
-                </button>
-            </div>
-            <div class="recent-bookings-table">
-                <table id="recent-bookings-table" class="display w-full">
-                    <thead>
-                        <tr>
-                            <th scope="col">ID</th>
-                            <th scope="col">User</th>
-                            <th scope="col">Route</th>
-                            <th scope="col">Date</th>
-                            <th scope="col">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-            </div>
-            <div style="display:none;">
-                <pre id="recent-bookings-data">{{ recent_bookings|json_script:"recent-bookings-data" }}</pre>
-            </div>
-        </section>
-
-        <!-- Recent Activity Log -->
-        <section class="recent-activity-section" id="recent_activity">
-            <div class="section-header">
-                <h3 class="section-title">Recent Operations</h3>
-                <button id="refresh-recent-activity" class="btn btn-secondary" aria-label="Refresh recent activity" data-tippy-content="Refresh recent activity">
-                    <i class="fas fa-sync-alt hidden" id="recent-activity-spinner"></i> Refresh
-                </button>
-            </div>
-            <div class="activity-list">
-                {% for activity in recent_activities %}
-                    <div class="activity-item">
-                        <span class="activity-date">{{ activity.timestamp|date:'H:i d M Y' }}</span>
-                        <span class="activity-operator">{{ activity.operator }}</span>
-                        <span class="activity-action">{{ activity.action }}</span>
-                        <span class="activity-resource">{{ activity.resource|truncatechars:40 }}</span>
-                        {% if activity.count > 1 %}
-                            <span class="activity-count">(x{{ activity.count }})</span>
-                        {% endif %}
-                    </div>
-                {% empty %}
-                    <div class="activity-item">No recent operations.</div>
-                {% endfor %}
-            </div>
-        </section>
-
-        <!-- Debug Data -->
-        <div style="display:none;">
-            <pre>Bookings: {{ bookings_per_route|safe }}</pre>
-            <pre>Utilization: {{ ferry_utilization|safe }}</pre>
-            <pre>Revenue: {{ revenue_over_time|safe }}</pre>
-            <pre>Bookings Over Time: {{ bookings_over_time|safe }}</pre>
-            <pre>Payment Status: {{ payment_status|safe }}</pre>
-            <pre>User Growth: {{ user_growth|safe }}</pre>
-            <pre>Top Customers: {{ top_customers|safe }}</pre>
+          </div>
+          <div class="title-text-wrapper">
+            <h1 class="dashboard-title">Fiji Ferry Control Hub</h1>
+            <div class="dashboard-subtitle">Real-time fleet management &amp; booking analytics</div>
+          </div>
         </div>
+        {% if user.is_authenticated %}
+        <div class="welcome-section">
+          <div class="welcome-card">
+            <div class="welcome-icon"><i class="fas fa-user-circle" aria-hidden="true"></i></div>
+            <div class="welcome-content">
+              <div class="welcome-text">Welcome back, <strong class="user-name">{{ user.first_name|default:user.username|title }}</strong>!</div>
+              <div class="welcome-subtitle">Manage your fleet and bookings with ease</div>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+      <div class="header-stats">
+        <div class="stat-badge time-badge"><i class="fas fa-clock" aria-hidden="true"></i><span id="current-time"></span></div>
+        <div class="stat-badge date-badge"><i class="fas fa-calendar-alt" aria-hidden="true"></i><span id="current-date"></span></div>
+      </div>
     </div>
+  </header>
+
+  <!-- ════════════════════════════════════════════
+       KPI HERO CARDS
+  ════════════════════════════════════════════ -->
+  <section aria-label="Key metrics">
+    <div class="kpi-grid">
+
+      <div class="kpi-card">
+        <div class="kpi-card__stripe stripe-green"></div>
+        <div class="kpi-card__icon icon-green"><i class="fas fa-ticket-alt"></i></div>
+        <div class="kpi-card__value">{{ total_bookings }}</div>
+        <div class="kpi-card__label">Confirmed bookings</div>
+        <div class="kpi-card__sub"><span class="up"><i class="fas fa-plus-circle"></i></span> {{ bookings_today }} today</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-card__stripe stripe-blue"></div>
+        <div class="kpi-card__icon icon-blue"><i class="fas fa-dollar-sign"></i></div>
+        <div class="kpi-card__value">F${{ total_revenue|floatformat:0 }}</div>
+        <div class="kpi-card__label">Total revenue</div>
+        <div class="kpi-card__sub"><span class="up"><i class="fas fa-plus-circle"></i></span> F${{ revenue_today|floatformat:0 }} today</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-card__stripe stripe-amber"></div>
+        <div class="kpi-card__icon icon-amber"><i class="fas fa-hourglass-half"></i></div>
+        <div class="kpi-card__value">{{ pending_bookings_count }}</div>
+        <div class="kpi-card__label">Pending bookings</div>
+        <div class="kpi-card__sub"><i class="fas fa-exclamation-circle icon-amber-text"></i> Awaiting payment</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-card__stripe stripe-teal"></div>
+        <div class="kpi-card__icon icon-teal"><i class="fas fa-ship"></i></div>
+        <div class="kpi-card__value">{{ active_ferries }}</div>
+        <div class="kpi-card__label">Active ferries</div>
+        <div class="kpi-card__sub"><i class="fas fa-route icon-teal-text"></i> In service today</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-card__stripe stripe-purple"></div>
+        <div class="kpi-card__icon icon-purple"><i class="fas fa-users"></i></div>
+        <div class="kpi-card__value">{{ registered_users }}</div>
+        <div class="kpi-card__label">Registered users</div>
+        <div class="kpi-card__sub"><span class="up"><i class="fas fa-user-plus"></i></span> {{ new_users_today }} new today</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-card__stripe stripe-red"></div>
+        <div class="kpi-card__icon icon-red"><i class="fas fa-credit-card"></i></div>
+        <div class="kpi-card__value">{{ pending_payments }}</div>
+        <div class="kpi-card__label">Pending payments</div>
+        <div class="kpi-card__sub"><i class="fas fa-coins icon-red-text"></i> Avg F${{ average_booking_value|floatformat:0 }} / booking</div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════════
+       NOTIFICATIONS / ALERTS (only when present)
+  ════════════════════════════════════════════ -->
+  {% if notifications %}
+  <section class="notifications-section" aria-label="Notifications">
+    <h2 class="section-title"><i class="fas fa-bell"></i> Notifications</h2>
+    <div class="notifications-list" aria-live="polite">
+      {% for n in notifications %}
+        <div class="activity-item">{{ n }}</div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if alerts %}
+  <section class="alerts-section" aria-label="Alerts">
+    <h2 class="section-title"><i class="fas fa-exclamation-triangle"></i> Critical Alerts</h2>
+    <div class="alerts-list" aria-live="polite">
+      {% for a in alerts %}
+        <div class="activity-item">{{ a }}</div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- ════════════════════════════════════════════
+       QUICK ACTIONS
+  ════════════════════════════════════════════ -->
+  <section class="quick-actions-section" aria-label="Quick actions">
+    <h2 class="section-title">Quick Actions</h2>
+    <div class="quick-actions">
+      <a href="{% url 'admin:bookings_booking_changelist' %}" class="btn btn-primary-custom"><i class="fas fa-ticket-alt"></i> View Bookings</a>
+      <a href="{% url 'admin:bookings_schedule_changelist' %}" class="btn btn-primary-custom"><i class="fas fa-calendar-alt"></i> Manage Schedules</a>
+      <a href="{% url 'admin:bookings_maintenancelog_changelist' %}" class="btn btn-primary-custom"><i class="fas fa-tools"></i> Maintenance Logs</a>
+      <a href="{% url 'admin:export-bookings' %}" class="btn btn-primary-custom"><i class="fas fa-download"></i> Export Bookings</a>
+      <a href="{% url 'bookings:weather_forecast' %}" class="btn btn-primary-custom"><i class="fas fa-cloud"></i> Weather Forecast</a>
+      <a href="{% url 'bookings:stripe_insights' %}" class="btn btn-primary-custom"><i class="fas fa-credit-card"></i> Stripe Insights</a>
+      <button type="button" id="scan-qr-code" class="btn btn-primary-custom"><i class="fas fa-qrcode"></i> Scan QR Code</button>
+      <a href="{% url 'custom_admin:agent_dashboard' %}" class="btn btn-primary-custom"><i class="fas fa-robot"></i> Agent Status</a>
+      <a href="{% url 'custom_admin:accounts_user_support' %}" class="btn btn-primary-custom"><i class="fas fa-life-ring"></i> User Support</a>
+      <a href="{% url 'custom_admin:ops_dashboard' %}" class="btn btn-primary-custom btn-primary-custom--danger"><i class="fas fa-exclamation-triangle"></i> Operations</a>
+      <a href="{% url 'custom_admin:departure_manifest' %}" class="btn btn-primary-custom"><i class="fas fa-clipboard-list"></i> Manifest</a>
+      <a href="{% url 'custom_admin:bulk_rebook' %}" class="btn btn-primary-custom"><i class="fas fa-random"></i> Rebook</a>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════════
+       QR SCANNER (hidden until triggered)
+  ════════════════════════════════════════════ -->
+  <section class="qr-scanner-section u-hidden" id="qrScannerSection">
+    <div class="widget-card">
+      <div class="section-header">
+        <h3 class="section-title">QR Scanner</h3>
+        <button type="button" id="qr-close" class="btn btn-secondary" aria-label="Close QR scanner"><i class="fas fa-times"></i> Close</button>
+      </div>
+      <input type="hidden" id="qr-actual-token" value="">
+      <div class="qr-video-container">
+        <video id="qr-video" width="100%" height="auto" autoplay playsinline aria-label="QR code scanning video feed"></video>
+        <div id="qr-scan-overlay" aria-hidden="true"></div>
+        <div id="qr-scan-progress" class="progress qr-progress-bar-wrap" role="status">
+          <div class="progress-bar bg-success" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+        </div>
+        <div id="qr-scan-feedback" class="qr-feedback qr-feedback-badge">Scanning…</div>
+      </div>
+      <div id="qr-result" class="mt-3 u-hidden">
+        <h6>Ticket Details</h6>
+        <div class="qr-result-grid">
+          <p><strong>Ticket ID:</strong> <span id="qr-ticket-id"></span></p>
+          <p><strong>Booking ID:</strong> <span id="qr-booking-id"></span></p>
+          <p><strong>Passenger:</strong> <span id="qr-passenger"></span></p>
+          <p><strong>Route:</strong> <span id="qr-route"></span></p>
+          <p><strong>Booking Date:</strong> <span id="qr-booking-date"></span></p>
+          <p><strong>Status:</strong> <span id="qr-ticket-status"></span></p>
+        </div>
+        <div class="mt-3 qr-action-buttons">
+          <button type="button" id="qr-mark-used"    class="btn btn-success-custom"><i class="fas fa-check"></i> Mark as Used</button>
+          <button type="button" id="qr-mark-unused"  class="btn btn-secondary-custom"><i class="fas fa-undo"></i> Mark as Active</button>
+          <button type="button" id="qr-view-booking" class="btn btn-primary-custom"><i class="fas fa-eye"></i> View Booking</button>
+          <button type="button" id="qr-log-activity" class="btn btn-info-custom"><i class="fas fa-history"></i> Log Activity</button>
+          <button type="button" id="qr-scan-again"   class="btn btn-primary-custom"><i class="fas fa-qrcode"></i> Scan Again</button>
+        </div>
+      </div>
+      <div id="qr-error" class="alert alert-danger mt-3 u-hidden" role="alert"></div>
+      <div id="qr-scan-history" class="mt-3">
+        <button type="button" class="btn btn-secondary-custom qr-history-toggle" data-bs-toggle="collapse" data-bs-target="#qr-history-collapse" aria-expanded="false" aria-controls="qr-history-collapse">
+          <i class="fas fa-history"></i> Scan History
+        </button>
+        <div class="collapse" id="qr-history-collapse">
+          <ul class="list-group qr-history-list"></ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════════
+       TODAY'S DEPARTURES
+  ════════════════════════════════════════════ -->
+  <section aria-label="Today's departures">
+    <div class="dash-card">
+      <div class="dash-card__header">
+        <h2 class="dash-card__title"><i class="fas fa-ship"></i> Today's Departures <span class="count-badge green" id="dep-count">{{ today_departures|length }}</span></h2>
+        <a href="{% url 'admin:bookings_schedule_changelist' %}" class="dash-card__link">All schedules <i class="fas fa-arrow-right"></i></a>
+      </div>
+      <div class="dash-card__body dash-card__body--flush">
+        {% if today_departures %}
+        <div class="departures-table-wrap">
+          <table class="departures-table" id="dep-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Ferry</th>
+                <th>Route</th>
+                <th>Capacity</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="dep-tbody">
+              {% for d in today_departures %}
+              <tr>
+                <td><strong id="dep-time-{{ d.id }}">{{ d.departure|slice:":16"|cut:"T" }}</strong></td>
+                <td>{{ d.ferry }}</td>
+                <td>{{ d.route }}</td>
+                <td>
+                  <div class="capacity-bar-wrap">
+                    <div class="capacity-bar">
+                      {% with pct=d.available_seats|add:0 %}
+                      <div class="capacity-fill {% if d.available_seats < 10 %}fill-danger{% elif d.available_seats < 30 %}fill-warn{% else %}fill-ok{% endif %}"
+                           style="width:{% widthratio d.available_seats d.capacity 100 %}%"></div>
+                      {% endwith %}
+                    </div>
+                    <span class="capacity-pct">{{ d.available_seats }}/{{ d.capacity }}</span>
+                  </div>
+                </td>
+                <td><span class="dep-status dep-{{ d.status }}">{{ d.status|title }}</span></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="ds-empty"><i class="fas fa-ship"></i> No departures in the next 24 hours.</div>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════════
+       FLEET STATUS + PENDING ACTIONS (2-col)
+  ════════════════════════════════════════════ -->
+  <div class="two-col">
+
+    <!-- Fleet status -->
+    <section aria-label="Fleet status">
+      <div class="dash-card dash-card--full">
+        <div class="dash-card__header">
+          <h2 class="dash-card__title"><i class="fas fa-anchor"></i> Fleet Status</h2>
+          <a href="{% url 'admin:bookings_ferry_changelist' %}" class="dash-card__link">Manage <i class="fas fa-arrow-right"></i></a>
+        </div>
+        <div class="dash-card__body">
+          {% if fleet_status %}
+          <div class="fleet-grid">
+            {% for ferry in fleet_status %}
+            <div class="fleet-card">
+              <div class="fleet-card__dot {% if ferry.status == 'Active' %}dot-active{% else %}dot-inactive{% endif %}"></div>
+              <div>
+                <div class="fleet-card__name">{{ ferry.name }}</div>
+                <div class="fleet-card__meta">
+                  {{ ferry.status }} · Cap. {{ ferry.capacity }}
+                  {% if ferry.last_maintenance %} · Maint. {{ ferry.last_maintenance|slice:":10" }}{% endif %}
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="ds-empty"><i class="fas fa-anchor"></i> No fleet data.</div>
+          {% endif %}
+        </div>
+      </div>
+    </section>
+
+    <!-- Pending actions -->
+    <section aria-label="Pending bookings">
+      <div class="dash-card dash-card--full">
+        <div class="dash-card__header">
+          <h2 class="dash-card__title">
+            <i class="fas fa-hourglass-half"></i> Pending Bookings
+            {% if pending_bookings_count %}<span class="count-badge">{{ pending_bookings_count }}</span>{% endif %}
+          </h2>
+          <a href="{% url 'admin:bookings_booking_changelist' %}?status__exact=pending" class="dash-card__link">View all <i class="fas fa-arrow-right"></i></a>
+        </div>
+        <div class="dash-card__body">
+          {% if pending_bookings_list %}
+          <div class="pending-list">
+            {% for b in pending_bookings_list %}
+            <div class="pending-row">
+              <span class="pending-row__id">#{{ b.id }}</span>
+              <div class="pending-row__info">
+                <div class="pending-row__route">{{ b.route }}</div>
+                <div class="pending-row__user">{{ b.user }}</div>
+              </div>
+              <span class="pending-row__price">F${{ b.total_price|floatformat:2 }}</span>
+              <a href="{% url 'admin:bookings_booking_change' b.id %}" class="pending-row__action">
+                <i class="fas fa-eye"></i> Review
+              </a>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="ds-empty"><i class="fas fa-check-circle"></i> No pending bookings — all clear!</div>
+          {% endif %}
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ════════════════════════════════════════════
+       KEY METRICS WIDGETS
+  ════════════════════════════════════════════ -->
+  <section class="widgets-section" aria-label="Key metrics and weather">
+    <h2 class="section-title">Key Metrics &amp; Alerts</h2>
+    <div class="widget-grid">
+      <div class="widget-card">{% include 'bookings/admin_widgets/performance_metrics.html' %}</div>
+      <div class="widget-card">{% include 'bookings/admin_widgets/weather_alerts.html' %}</div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════════
+       ANALYTICS DASHBOARD (charts)
+  ════════════════════════════════════════════ -->
+  <section class="analytics-section" aria-label="Analytics dashboard">
+    <h2 class="section-title">Analytics Dashboard</h2>
+    <div class="dashboard-nav">
+      <ul class="nav nav-tabs custom-tabs" role="tablist">
+        <li class="nav-item" role="presentation">
+          <button class="nav-link active" id="bookings-tab" data-bs-toggle="tab" data-bs-target="#bookings" type="button" role="tab" aria-controls="bookings" aria-selected="true">
+            <i class="fas fa-chart-bar"></i> Bookings
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="utilization-tab" data-bs-toggle="tab" data-bs-target="#utilization" type="button" role="tab" aria-controls="utilization" aria-selected="false">
+            <i class="fas fa-ship"></i> Utilization
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="revenue-tab" data-bs-toggle="tab" data-bs-target="#revenue" type="button" role="tab" aria-controls="revenue" aria-selected="false">
+            <i class="fas fa-dollar-sign"></i> Revenue
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="payment-tab" data-bs-toggle="tab" data-bs-target="#payment" type="button" role="tab" aria-controls="payment" aria-selected="false">
+            <i class="fas fa-credit-card"></i> Payments
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="user-growth-tab" data-bs-toggle="tab" data-bs-target="#user-growth" type="button" role="tab" aria-controls="user-growth" aria-selected="false">
+            <i class="fas fa-users"></i> User Growth
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="customers-tab" data-bs-toggle="tab" data-bs-target="#customers" type="button" role="tab" aria-controls="customers" aria-selected="false">
+            <i class="fas fa-user-tie"></i> Top Customers
+          </button>
+        </li>
+      </ul>
+    </div>
+    <div class="tab-content">
+      <div class="tab-pane show active" id="bookings" role="tabpanel" aria-labelledby="bookings-tab">
+        <div class="chart-controls">
+          <select class="form-select date-range-filter" data-chart-id="bookingsChart" aria-label="Select date range">
+            <option value="7">Last 7 Days</option><option value="30" selected>Last 30 Days</option><option value="all">All Time</option>
+          </select>
+          <button type="button" class="btn btn-secondary refresh-chart" data-chart-id="bookingsChart"><i class="fas fa-sync-alt"></i> Refresh</button>
+        </div>
+        <div class="chart-wrapper" data-chart-id="bookingsChart" role="img" aria-label="Bar chart of top routes by bookings"></div>
+      </div>
+      <div class="tab-pane" id="utilization" role="tabpanel" aria-labelledby="utilization-tab">
+        <div class="chart-controls">
+          <select class="form-select utilization-filter" aria-label="Filter by day">
+            <option value="all">All Days</option>
+            <option value="Monday">Monday</option><option value="Tuesday">Tuesday</option>
+            <option value="Wednesday">Wednesday</option><option value="Thursday">Thursday</option>
+            <option value="Friday">Friday</option><option value="Saturday">Saturday</option>
+            <option value="Sunday">Sunday</option>
+          </select>
+          <select class="form-select date-range-filter" data-chart-id="utilizationChart" aria-label="Select date range">
+            <option value="7">Last 7 Days</option><option value="30" selected>Last 30 Days</option><option value="all">All Time</option>
+          </select>
+          <button type="button" class="btn btn-secondary refresh-chart" data-chart-id="utilizationChart"><i class="fas fa-sync-alt"></i> Refresh</button>
+        </div>
+        <div class="chart-wrapper" data-chart-id="utilizationChart" role="img" aria-label="Ferry utilization chart"></div>
+      </div>
+      <div class="tab-pane" id="revenue" role="tabpanel" aria-labelledby="revenue-tab">
+        <div class="chart-controls">
+          <select class="form-select date-range-filter" data-chart-id="revenueChart" aria-label="Select date range">
+            <option value="7">Last 7 Days</option><option value="30" selected>Last 30 Days</option><option value="all">All Time</option>
+          </select>
+          <button type="button" class="btn btn-secondary refresh-chart" data-chart-id="revenueChart"><i class="fas fa-sync-alt"></i> Refresh</button>
+        </div>
+        <div class="chart-wrapper" data-chart-id="revenueChart" role="img" aria-label="Revenue over time"></div>
+      </div>
+      <div class="tab-pane" id="payment" role="tabpanel" aria-labelledby="payment-tab">
+        <div class="chart-controls">
+          <select class="form-select date-range-filter" data-chart-id="paymentChart" aria-label="Select date range">
+            <option value="7">Last 7 Days</option><option value="30" selected>Last 30 Days</option><option value="all">All Time</option>
+          </select>
+          <button type="button" class="btn btn-secondary refresh-chart" data-chart-id="paymentChart"><i class="fas fa-sync-alt"></i> Refresh</button>
+        </div>
+        <div class="chart-wrapper" data-chart-id="paymentChart" role="img" aria-label="Payment status pie chart"></div>
+      </div>
+      <div class="tab-pane" id="user-growth" role="tabpanel" aria-labelledby="user-growth-tab">
+        <div class="chart-controls">
+          <select class="form-select date-range-filter" data-chart-id="userGrowthChart" aria-label="Select date range">
+            <option value="7">Last 7 Days</option><option value="30" selected>Last 30 Days</option><option value="all">All Time</option>
+          </select>
+          <button type="button" class="btn btn-secondary refresh-chart" data-chart-id="userGrowthChart"><i class="fas fa-sync-alt"></i> Refresh</button>
+        </div>
+        <div class="chart-wrapper" data-chart-id="userGrowthChart" role="img" aria-label="User growth chart"></div>
+      </div>
+      <div class="tab-pane" id="customers" role="tabpanel" aria-labelledby="customers-tab">
+        <div class="chart-controls">
+          <select class="form-select date-range-filter" data-chart-id="topCustomersChart" aria-label="Select date range">
+            <option value="7">Last 7 Days</option><option value="30" selected>Last 30 Days</option><option value="all">All Time</option>
+          </select>
+          <button type="button" class="btn btn-secondary refresh-chart" data-chart-id="topCustomersChart"><i class="fas fa-sync-alt"></i> Refresh</button>
+        </div>
+        <div class="chart-wrapper" data-chart-id="topCustomersChart" role="img" aria-label="Top customers bar chart"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════════
+       RECENT BOOKINGS TABLE + RECENT REGISTRATIONS (2-col)
+  ════════════════════════════════════════════ -->
+  <div class="two-col">
+
+    <!-- Recent bookings -->
+    <section class="recent-bookings-section" aria-label="Recent bookings">
+      <div class="section-header">
+        <h3 class="section-title">Recent Bookings</h3>
+        <button type="button" id="export-bookings" class="btn btn-secondary"><i class="fas fa-download"></i> Export CSV</button>
+      </div>
+      <div class="recent-bookings-table">
+        <table id="recent-bookings-table" class="display w-full">
+          <thead>
+            <tr>
+              <th scope="col">ID</th>
+              <th scope="col">User</th>
+              <th scope="col">Route</th>
+              <th scope="col">Date</th>
+              <th scope="col">Status</th>
+              <th scope="col">Amount</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Recent registrations -->
+    <section aria-label="Recent user registrations">
+      <div class="dash-card dash-card--full">
+        <div class="dash-card__header">
+          <h2 class="dash-card__title"><i class="fas fa-user-plus"></i> Recent Registrations</h2>
+          <a href="{% url 'admin:accounts_user_changelist' %}" class="dash-card__link">All users <i class="fas fa-arrow-right"></i></a>
+        </div>
+        <div class="dash-card__body">
+          {% if recent_users %}
+          <div class="users-list">
+            {% for u in recent_users %}
+            <div class="user-row">
+              <div class="user-avatar">{{ u.full_name|first|upper }}{{ u.full_name|slice:"1:2"|upper }}</div>
+              <div>
+                <div class="user-row__name">{{ u.full_name }}</div>
+                <div class="user-row__email">{{ u.email }}</div>
+              </div>
+              <div class="user-row__meta">
+                <div class="user-row__date">{{ u.date_joined|slice:":10" }}</div>
+                <div class="user-row__trips">{{ u.booking_count }} booking{{ u.booking_count|pluralize }}</div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="ds-empty"><i class="fas fa-users"></i> No users yet.</div>
+          {% endif %}
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ════════════════════════════════════════════
+       RECENT ACTIVITY LOG
+  ════════════════════════════════════════════ -->
+  <section class="recent-activity-section" id="recent_activity" aria-label="Recent operations">
+    <div class="section-header">
+      <h3 class="section-title">Recent Operations</h3>
+      <button type="button" id="refresh-recent-activity" class="btn btn-secondary">
+        <i class="fas fa-sync-alt hidden" id="recent-activity-spinner"></i> Refresh
+      </button>
+    </div>
+    <div class="activity-list">
+      {% for activity in recent_activities %}
+        <div class="activity-item">
+          <span class="activity-date">{{ activity.timestamp|slice:":16"|cut:"T" }}</span>
+          <span class="activity-operator">{{ activity.operator }}</span>
+          <span class="activity-action">{{ activity.action }}</span>
+          <span class="activity-resource">{{ activity.resource|truncatechars:50 }}</span>
+          {% if activity.count > 1 %}<span class="activity-count">(×{{ activity.count }})</span>{% endif %}
+        </div>
+      {% empty %}
+        <div class="activity-item">No recent operations.</div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <!-- hidden data islands -->
+  <div class="u-hidden">
+    <pre>Bookings: {{ bookings_per_route|safe }}</pre>
+    <pre>Utilization: {{ ferry_utilization|safe }}</pre>
+    <pre>Revenue: {{ revenue_over_time|safe }}</pre>
+    <pre>Payment: {{ payment_status|safe }}</pre>
+    <pre>User Growth: {{ user_growth|safe }}</pre>
+    <pre>Top Customers: {{ top_customers|safe }}</pre>
+  </div>
+
+</div><!-- /.dashboard-container -->
 {% endblock %}
 
-{% block extrahead %}
-    {{ block.super }}
-    {{ bookings_per_route|json_script:"bookings-data" }}
-    {{ ferry_utilization|json_script:"utilization-data" }}
-    {{ revenue_over_time|json_script:"revenue-data" }}
-    {{ bookings_over_time|json_script:"bookings-over-time-data" }}
-    {{ payment_status|json_script:"payment-data" }}
-    {{ user_growth|json_script:"user-growth-data" }}
-    {{ top_customers|json_script:"top-customers-data" }}
-    {{ recent_bookings|json_script:"recent-bookings-data" }}
+{% block extrahead %}{{ block.super }}
+{{ bookings_per_route|json_script:"bookings-data" }}
+{{ ferry_utilization|json_script:"utilization-data" }}
+{{ revenue_over_time|json_script:"revenue-data" }}
+{{ bookings_over_time|json_script:"bookings-over-time-data" }}
+{{ payment_status|json_script:"payment-data" }}
+{{ user_growth|json_script:"user-growth-data" }}
+{{ top_customers|json_script:"top-customers-data" }}
+{{ recent_bookings|json_script:"recent-bookings-data" }}
 
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script>
-        // Enforce jQuery 3.6.0 and handle conflicts
-        if (window.jQuery && window.jQuery.fn.jquery !== '3.6.0') {
-            console.warn('jQuery version conflict detected. Using 3.6.0.');
-            window.jQueryOld = window.jQuery;
-            window.jQuery = jQuery.noConflict(true);
-        }
-    </script>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>
+  if (window.jQuery && window.jQuery.fn.jquery !== '3.6.0') {
+    window.jQueryOld = window.jQuery;
+    window.jQuery = jQuery.noConflict(true);
+  }
+  // Header clock
+  function updateHeaderTime() {
+    const now = new Date();
+    const t = document.getElementById('current-time');
+    const d = document.getElementById('current-date');
+    if (t) t.textContent = now.toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit', hour12:true });
+    if (d) d.textContent = now.toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+  }
+  setInterval(updateHeaderTime, 1000);
+  updateHeaderTime();
+</script>
 
-    <!-- Header Time/Date Update Script -->
-    <script>
-        // Update header time and date
-        function updateHeaderTime() {
-            const now = new Date();
-            const timeElement = document.getElementById('current-time');
-            const dateElement = document.getElementById('current-date');
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" defer></script>
+<link rel="stylesheet" href="https://cdn.datatables.net/2.1.8/css/dataTables.bootstrap5.min.css">
+<script src="https://cdn.datatables.net/2.1.8/js/jquery.dataTables.min.js" defer></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    if (typeof $.fn.DataTable === 'undefined') {
+      const s = document.createElement('script');
+      s.src = "{% static 'js/jquery.dataTables.min.js' %}";
+      document.head.appendChild(s);
+    }
+  });
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js" defer></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    if (typeof Chart === 'undefined') {
+      const s = document.createElement('script');
+      s.src = "{% static 'js/chart.umd.min.js' %}";
+      document.head.appendChild(s);
+    }
+  });
+</script>
 
-            if (timeElement) {
-                timeElement.textContent = now.toLocaleTimeString('en-US', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    hour12: true
-                });
-            }
-
-            if (dateElement) {
-                dateElement.textContent = now.toLocaleDateString('en-US', {
-                    weekday: 'long',
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                });
-            }
-        }
-
-        // Update every second
-        setInterval(updateHeaderTime, 1000);
-        updateHeaderTime(); // Initial call
-    </script>
-
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" defer></script>
-    <link rel="stylesheet" href="https://cdn.datatables.net/2.1.8/css/dataTables.bootstrap5.min.css">
-    <script src="https://cdn.datatables.net/2.1.8/js/jquery.dataTables.min.js" defer></script>
-    <script>
-        // Dynamic fallback to local DataTables
-        document.addEventListener('DOMContentLoaded', function() {
-            if (typeof $.fn.DataTable === 'undefined') {
-                console.warn('DataTables CDN failed. Attempting to load local DataTables.');
-                const script = document.createElement('script');
-                script.src = "{% static 'js/jquery.dataTables.min.js' %}";
-                script.onload = function() { console.log('Local DataTables loaded successfully.'); };
-                script.onerror = function() { console.error('Failed to load local DataTables.'); };
-                document.head.appendChild(script);
-            }
-        });
-    </script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js" defer></script>
-    <script>
-        // Dynamic fallback to local Chart.js
-        document.addEventListener('DOMContentLoaded', function() {
-            if (typeof Chart === 'undefined') {
-                console.warn('Chart.js CDN failed. Attempting to load local Chart.js.');
-                const script = document.createElement('script');
-                script.src = "{% static 'js/chart.umd.min.js' %}";
-                script.onload = function() { console.log('Local Chart.js loaded successfully.'); };
-                script.onerror = function() { console.error('Failed to load local Chart.js.'); };
-                document.head.appendChild(script);
-            }
-        });
-    </script>
-    <!-- Fonts & Icons -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-
-    <!-- Libraries (deferred safe) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js" defer></script>
-    <script src="https://unpkg.com/@popperjs/core@2" defer></script>
-    <script src="https://unpkg.com/tippy.js@6" defer></script>
-
-    <!-- jsQR: Load with safe CDN + local fallback -->
-    <script>
-        (function() {
-            // Create the CDN script element
-            var jsqrCDN = document.createElement('script');
-            jsqrCDN.src = "https://unpkg.com/jsqr@1.4.0/dist/jsQR.min.js";
-            jsqrCDN.onload = function() {
-                console.log('jsQR loaded successfully from CDN.');
-            };
-            jsqrCDN.onerror = function() {
-                console.warn('CDN jsQR failed. Loading local jsQR...');
-                var jsqrLocal = document.createElement('script');
-                jsqrLocal.src = "{% static 'js/jsQR.min.js' %}";
-                jsqrLocal.onload = function() { console.log('Local jsQR loaded successfully.'); };
-                jsqrLocal.onerror = function() { console.error('Failed to load local jsQR.'); };
-                document.head.appendChild(jsqrLocal);
-            };
-            document.head.appendChild(jsqrCDN);
-        })();
-    </script>
-
-
-    <!-- Custom scripts (deferred, safe because jsQR is already loaded) -->
-    <script src="{% static 'js/admin_custom.js' %}" id="chartScript" defer></script>
-    <script src="{% static 'js/qr_scanner.js' %}" defer></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js" defer></script>
+<script src="https://unpkg.com/@popperjs/core@2" defer></script>
+<script src="https://unpkg.com/tippy.js@6" defer></script>
+<script>
+  (function() {
+    var s = document.createElement('script');
+    s.src = "https://unpkg.com/jsqr@1.4.0/dist/jsQR.min.js";
+    s.onerror = function() {
+      var ls = document.createElement('script');
+      ls.src = "{% static 'js/jsQR.min.js' %}";
+      document.head.appendChild(ls);
+    };
+    document.head.appendChild(s);
+  })();
+</script>
+<script src="{% static 'js/admin_custom.js' %}" id="chartScript" defer></script>
+<script src="{% static 'js/qr_scanner.js' %}" defer></script>
 {% endblock %}

@@ -1,0 +1,251 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrastyle %}{{ block.super }}
+<style>
+  .agent-wrap { max-width: 1100px; margin: 0 auto; }
+  .agent-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
+  .agent-card {
+    background: var(--body-bg, #fff);
+    border: 1px solid rgba(0,0,0,.08);
+    border-radius: 14px;
+    box-shadow: 0 4px 18px rgba(0,0,0,.06);
+    overflow: hidden;
+  }
+  .agent-card__head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px; border-bottom: 1px solid rgba(0,0,0,.06);
+  }
+  .agent-card__head h2 { margin: 0; font-size: 1.05rem; display: flex; align-items: center; gap: 10px; }
+  .agent-card__body { padding: 18px 20px; }
+  .badge-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 12px; border-radius: 999px; font-size: .8rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .3px;
+  }
+  .badge-ok   { background: rgba(16,185,129,.14); color: #047857; }
+  .badge-bad  { background: rgba(239,68,68,.14);  color: #b91c1c; }
+  .badge-idle { background: rgba(107,114,128,.14); color: #374151; }
+  .agent-meta { color: #6b7280; font-size: .82rem; margin: 4px 0 14px; }
+  .summary-num { font-size: 2rem; font-weight: 800; line-height: 1; }
+  .summary-row { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; }
+  .check-list { list-style: none; margin: 0; padding: 0; }
+  .check-list li {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 8px 0; border-top: 1px solid rgba(0,0,0,.05); font-size: .88rem;
+  }
+  .check-list li:first-child { border-top: none; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
+  .dot-ok { background: #10b981; } .dot-bad { background: #ef4444; }
+  .check-name { font-weight: 600; }
+  .check-detail { color: #6b7280; font-size: .8rem; }
+  .log-box {
+    background: #0f172a; color: #cbd5e1; border-radius: 10px; padding: 14px 16px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .78rem;
+    line-height: 1.5; max-height: 280px; overflow: auto; white-space: pre-wrap; margin-top: 20px;
+  }
+  .agent-toolbar { display: flex; align-items: center; gap: 14px; margin: 4px 0 22px; }
+  .agent-refresh-note { color: #6b7280; font-size: .82rem; }
+  .agent-section-title { margin: 30px 0 12px; font-size: .95rem; text-transform: uppercase; letter-spacing: .5px; color: #6b7280; }
+  .err-note { background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.3); color: #92400e; padding: 12px 14px; border-radius: 10px; font-size: .85rem; }
+  .badge-warn { background: rgba(245,158,11,.16); color: #b45309; }
+  .sev-pill { display:inline-block; padding:2px 9px; border-radius:999px; font-size:.72rem; font-weight:700; margin-right:6px; }
+  .sev-critical { background: rgba(239,68,68,.14); color:#b91c1c; }
+  .sev-warning  { background: rgba(245,158,11,.16); color:#b45309; }
+  .sev-clear    { background: rgba(16,185,129,.14); color:#047857; }
+  .dot-warn { background: #f59e0b; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="agent-wrap tool-page" id="agent-dashboard">
+  {% include "admin/_tool_header.html" with icon="🛰️" heading="Agent Monitoring" subtitle="In-process agents bound to the running server. Auto-refreshes every 15s." %}
+  <div class="agent-toolbar">
+    <button type="button" class="button" id="agent-refresh-btn">↻ Refresh now</button>
+    <span class="agent-refresh-note">Auto-refreshes every 15s · last updated <span id="agent-updated">just now</span></span>
+  </div>
+
+  <p style="color:#6b7280;max-width:820px;">
+    The <strong>Automation agent</strong> runs a non-destructive self-test battery
+    (dependencies, read-only endpoints, pricing &amp; booking-state invariants).
+    The <strong>Server monitor</strong> heartbeats the database, cache and realtime
+    channel layer. The <strong>Cybersecurity agent</strong> audits the security
+    posture (Django deploy checks, settings hardening, cookie/HSTS, account &amp;
+    repo hygiene). All write to <code>logs/</code> so their status is visible even offline.
+  </p>
+
+  <div class="agent-grid">
+    <!-- Automation agent -->
+    <div class="agent-card">
+      <div class="agent-card__head">
+        <h2>🤖 Automation Agent</h2>
+        <span class="badge-pill" id="auto-badge">…</span>
+      </div>
+      <div class="agent-card__body" id="auto-body">
+        <!-- filled by JS -->
+      </div>
+    </div>
+
+    <!-- Server monitor -->
+    <div class="agent-card">
+      <div class="agent-card__head">
+        <h2>📡 Server Monitor</h2>
+        <span class="badge-pill" id="mon-badge">…</span>
+      </div>
+      <div class="agent-card__body" id="mon-body">
+        <!-- filled by JS -->
+      </div>
+    </div>
+
+    <!-- Cybersecurity agent -->
+    <div class="agent-card">
+      <div class="agent-card__head">
+        <h2>🛡️ Cybersecurity Agent</h2>
+        <span class="badge-pill" id="sec-badge">…</span>
+      </div>
+      <div class="agent-card__body" id="sec-body">
+        <!-- filled by JS -->
+      </div>
+    </div>
+  </div>
+
+  <h3 class="agent-section-title">Automation log (recent)</h3>
+  <div class="log-box" id="auto-log"></div>
+
+  <h3 class="agent-section-title">Server monitor log (recent)</h3>
+  <div class="log-box" id="mon-log"></div>
+
+  <h3 class="agent-section-title">Cybersecurity log (recent)</h3>
+  <div class="log-box" id="sec-log"></div>
+</div>
+
+<script>
+(function () {
+  const DATA_URL = "{% url 'custom_admin:agent_dashboard_data' %}";
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, c => (
+      {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function fmtTime(iso) {
+    if (!iso) return "—";
+    try { return new Date(iso).toLocaleString(); } catch (e) { return iso; }
+  }
+  function badge(el, state, label) {
+    el.className = "badge-pill " + (state === "ok" ? "badge-ok" : state === "bad" ? "badge-bad" : "badge-idle");
+    el.textContent = label;
+  }
+
+  function renderAutomation(d, err) {
+    const body = document.getElementById("auto-body");
+    const b = document.getElementById("auto-badge");
+    if (!d) {
+      badge(b, "idle", "No data");
+      body.innerHTML = '<div class="err-note">' + esc(err || "No status available.") + '</div>';
+      return;
+    }
+    badge(b, d.ok ? "ok" : "bad", d.ok ? "All passing" : "Failing");
+    let html = '<div class="summary-row"><span class="summary-num">' + d.passed + '/' + d.total +
+               '</span><span class="agent-meta">checks passing</span></div>';
+    html += '<div class="agent-meta">Last run: ' + esc(fmtTime(d.ran_at)) + '</div>';
+    html += '<ul class="check-list">';
+    (d.checks || []).forEach(c => {
+      html += '<li><span class="dot ' + (c.ok ? "dot-ok" : "dot-bad") + '"></span>' +
+              '<span><span class="check-name">' + esc(c.name) + '</span>' +
+              (c.detail ? '<br><span class="check-detail">' + esc(c.detail) + '</span>' : '') +
+              '</span></li>';
+    });
+    html += '</ul>';
+    body.innerHTML = html;
+  }
+
+  function renderMonitor(d, err) {
+    const body = document.getElementById("mon-body");
+    const b = document.getElementById("mon-badge");
+    if (!d) {
+      badge(b, "idle", "No data");
+      body.innerHTML = '<div class="err-note">' + esc(err || "No status available.") + '</div>';
+      return;
+    }
+    const stopped = d.state === "stopped";
+    badge(b, stopped ? "idle" : (d.healthy ? "ok" : "bad"),
+          stopped ? "Stopped" : (d.healthy ? "Healthy" : "Degraded"));
+    let html = '<div class="agent-meta">State: <strong>' + esc(d.state) + '</strong> · ' +
+               'PID ' + esc(d.pid) + '</div>';
+    html += '<div class="agent-meta">Started: ' + esc(fmtTime(d.started_at)) +
+            '<br>Last check: ' + esc(fmtTime(d.checked_at)) + '</div>';
+    html += '<ul class="check-list">';
+    const checks = d.checks || {};
+    Object.keys(checks).forEach(k => {
+      const c = checks[k];
+      html += '<li><span class="dot ' + (c.ok ? "dot-ok" : "dot-bad") + '"></span>' +
+              '<span><span class="check-name">' + esc(k) + '</span>' +
+              (c.error ? '<br><span class="check-detail">' + esc(c.error) + '</span>' : '') +
+              '</span></li>';
+    });
+    if (!Object.keys(checks).length) html += '<li><span class="check-detail">No checks (agent stopped).</span></li>';
+    html += '</ul>';
+    body.innerHTML = html;
+  }
+
+  function renderSecurity(d, err) {
+    const body = document.getElementById("sec-body");
+    const b = document.getElementById("sec-badge");
+    if (!d) {
+      badge(b, "idle", "No data");
+      body.innerHTML = '<div class="err-note">' + esc(err || "No status available.") + '</div>';
+      return;
+    }
+    const crit = d.critical_count || 0;
+    const warn = d.warning_count || 0;
+    // Green only when no critical AND no warning; amber when warnings only; red on critical.
+    b.className = "badge-pill " + (crit ? "badge-bad" : (warn ? "badge-warn" : "badge-ok"));
+    b.textContent = crit ? (crit + " critical") : (warn ? (warn + " warning" + (warn > 1 ? "s" : "")) : "Hardened");
+
+    let html = '<div class="summary-row"><span class="summary-num">' + d.passed + '/' + d.total +
+               '</span><span class="agent-meta">checks passing</span></div>';
+    html += '<div style="margin-bottom:12px;">' +
+            '<span class="sev-pill ' + (crit ? "sev-critical" : "sev-clear") + '">' + crit + ' critical</span>' +
+            '<span class="sev-pill ' + (warn ? "sev-warning" : "sev-clear") + '">' + warn + ' warning</span>' +
+            '</div>';
+    html += '<div class="agent-meta">Last audit: ' + esc(fmtTime(d.ran_at)) + '</div>';
+    html += '<ul class="check-list">';
+    (d.checks || []).forEach(c => {
+      if (c.ok) return; // only list findings to keep the card focused
+      const dotCls = c.severity === "critical" ? "dot-bad" : "dot-warn";
+      html += '<li><span class="dot ' + dotCls + '"></span>' +
+              '<span><span class="check-name">' + esc(c.name) + '</span>' +
+              (c.detail ? '<br><span class="check-detail">' + esc(c.detail) + '</span>' : '') +
+              '</span></li>';
+    });
+    if ((d.checks || []).every(c => c.ok)) {
+      html += '<li><span class="dot dot-ok"></span><span class="check-detail">No findings — all checks pass.</span></li>';
+    }
+    html += '</ul>';
+    body.innerHTML = html;
+  }
+
+  function load() {
+    fetch(DATA_URL, { headers: { "X-Requested-With": "XMLHttpRequest" } })
+      .then(r => r.json())
+      .then(d => {
+        renderAutomation(d.automation, d.automation_error);
+        renderMonitor(d.monitor, d.monitor_error);
+        renderSecurity(d.security, d.security_error);
+        document.getElementById("auto-log").textContent =
+          (d.automation_log || []).join("") || "No log entries.";
+        document.getElementById("mon-log").textContent =
+          (d.monitor_log || []).join("") || "No log entries.";
+        document.getElementById("sec-log").textContent =
+          (d.security_log || []).join("") || "No log entries.";
+        document.getElementById("agent-updated").textContent = new Date().toLocaleTimeString();
+      })
+      .catch(e => { console.error("Agent dashboard load failed", e); });
+  }
+
+  document.getElementById("agent-refresh-btn").addEventListener("click", load);
+  load();
+  setInterval(load, 15000);
+})();
+</script>
+{% endblock %}

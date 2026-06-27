@@ -6,305 +6,894 @@
 
 {% block extra_css %}
 <style>
-/* Card Enhancements */
-.booking-card {
+  /* ============================================================
+     TYPOGRAPHY & BASE
+     ============================================================ */
+  .history-page {
+    --card-radius: 16px;
+    --card-padding: 1.75rem;
+    --accent-width: 3px;
+  }
+
+  .history-page .page-eyebrow {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--primary);
+    margin-bottom: 0.6rem;
+  }
+
+  .history-page .page-title {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(2rem, 5vw, 3rem);
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.15;
+    margin-bottom: 0.5rem;
+  }
+
+  .history-page .page-subtitle {
+    font-size: 1.05rem;
+    color: var(--text-secondary);
+    font-weight: 400;
+    max-width: 420px;
+  }
+
+  /* ============================================================
+     STATS BAR
+     ============================================================ */
+  .stats-bar {
+    display: flex;
+    gap: 1px;
+    background: var(--border-light);
+    border-radius: 14px;
+    overflow: hidden;
+    margin-bottom: 2.5rem;
+  }
+
+  [data-theme="dark"] .stats-bar {
+    background: rgba(255,255,255,0.06);
+  }
+
+  .stat-item {
+    flex: 1;
     background: var(--bg-light);
-    border-radius: var(--radius);
-    padding: 2.5rem;
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
-    perspective: 2000px;
+    padding: 1.2rem 1rem;
+    text-align: center;
+    transition: background 0.2s;
+  }
+
+  [data-theme="dark"] .stat-item {
+    background: var(--neutral-800);
+  }
+
+  .stat-item:first-child { border-radius: 14px 0 0 14px; }
+  .stat-item:last-child  { border-radius: 0 14px 14px 0; }
+
+  .stat-number {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1;
+    margin-bottom: 0.25rem;
+  }
+
+  .stat-label {
+    font-size: 0.7rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+  }
+
+  /* ============================================================
+     SECTION HEADER
+     ============================================================ */
+  .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+
+  .section-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .section-count {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-weight: 500;
+  }
+
+  /* ============================================================
+     BOOKING CARD – Premium, refined
+     ============================================================ */
+  .booking-card {
+    background: var(--bg-light);
+    border-radius: var(--card-radius);
+    padding: var(--card-padding);
     position: relative;
     overflow: hidden;
-}
+    border: 1px solid var(--border-light);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.02);
+    display: flex;
+    flex-direction: column;
+    transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+                box-shadow 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+                border-color 0.3s ease;
+  }
 
-[data-theme="dark"] .booking-card {
+  [data-theme="dark"] .booking-card {
     background: var(--neutral-800);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
-}
+    border-color: rgba(255,255,255,0.06);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2), 0 4px 12px rgba(0,0,0,0.1);
+  }
 
-.booking-card:hover {
-    transform: translateY(-8px);
-    box-shadow: var(--shadow-xl);
-}
+  .booking-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.07), 0 2px 8px rgba(0,0,0,0.04);
+    border-color: rgba(0,0,0,0.08);
+  }
 
-[data-theme="dark"] .booking-card:hover {
-    box-shadow: 0 12px 24px rgba(0,0,0,0.5);
-}
+  [data-theme="dark"] .booking-card:hover {
+    box-shadow: 0 8px 30px rgba(0,0,0,0.4), 0 2px 8px rgba(0,0,0,0.2);
+    border-color: rgba(255,255,255,0.1);
+  }
 
-.booking-card::before {
+  /* Left accent stripe – refined, no glow */
+  .booking-card::before {
     content: '';
     position: absolute;
     top: 0;
     left: 0;
-    right: 0;
-    height: 4px;
-    background: linear-gradient(90deg, var(--ocean-teal), var(--nautical-blue));
-    opacity: 0.8;
-}
+    bottom: 0;
+    width: var(--accent-width);
+    background: var(--neutral-300);
+    border-radius: var(--card-radius) 0 0 var(--card-radius);
+  }
 
-[data-theme="dark"] .booking-card::before {
-    background: linear-gradient(90deg, var(--primary-light), #A5B4FC);
-}
+  [data-theme="dark"] .booking-card::before {
+    background: var(--neutral-600);
+  }
 
-/* Glow Animations */
-.booking-card.glow-scheduled {
-    animation: glowGreen 2s ease-in-out infinite;
-}
+  .booking-card[data-status="scheduled"]::before {
+    background: var(--success);
+  }
+  .booking-card[data-status="pending"]::before {
+    background: var(--warning);
+  }
+  .booking-card[data-status="cancelled"]::before {
+    background: var(--error);
+    opacity: 0.7;
+  }
 
-.booking-card.glow-cancelled {
-    animation: glowRed 2s ease-in-out infinite;
-}
+  /* ============================================================
+     CARD – HEADER ROW
+     ============================================================ */
+  .booking-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.25rem;
+    padding-left: 0.5rem;
+  }
 
-.booking-card.glow-pending {
-    animation: glowOrange 2s ease-in-out infinite;
-}
+  .booking-id {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+  }
 
-@keyframes glowGreen {
-    0%, 100% { box-shadow: 0 0 10px rgba(16, 185, 129, 0.4), 0 0 20px rgba(16, 185, 129, 0.2); }
-    50% { box-shadow: 0 0 15px rgba(16, 185, 129, 0.6), 0 0 30px rgba(16, 185, 129, 0.3); }
-}
-
-@keyframes glowRed {
-    0%, 100% { box-shadow: 0 0 10px rgba(239, 68, 68, 0.4), 0 0 20px rgba(239, 68, 68, 0.2); }
-    50% { box-shadow: 0 0 15px rgba(239, 68, 68, 0.6), 0 0 30px rgba(239, 68, 68, 0.3); }
-}
-
-@keyframes glowOrange {
-    0%, 100% { box-shadow: 0 0 10px rgba(245, 158, 11, 0.4), 0 0 20px rgba(245, 158, 11, 0.2); }
-    50% { box-shadow: 0 0 15px rgba(245, 158, 11, 0.6), 0 0 30px rgba(245, 158, 11, 0.3); }
-}
-
-/* Vibrant Animation */
-.vibrant {
-    animation: subtlePulse 2s ease-in-out infinite;
-}
-
-@keyframes subtlePulse {
-    0%, 100% { transform: scale(1); opacity: 1; }
-    50% { transform: scale(1.02); opacity: 0.95; }
-}
-
-/* Status Badge */
-.status-badge {
-    padding: 0.5rem 1.2rem;
-    border-radius: 999px;
-    font-size: 0.9rem;
+  .booking-status-badge {
+    font-size: 0.65rem;
     font-weight: 600;
     text-transform: uppercase;
-}
+    letter-spacing: 0.06em;
+    padding: 0.25rem 0.75rem;
+    border-radius: 100px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
 
-.status-badge.scheduled {
-    background: var(--success);
-    color: white;
-}
+  .booking-status-badge::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.7;
+  }
 
-.status-badge.pending {
-    background: var(--warning);
-    color: #1F2937;
-}
+  .booking-status-badge.scheduled {
+    background: #ecfdf5;
+    color: #065f46;
+  }
+  .booking-status-badge.pending {
+    background: #fffbeb;
+    color: #92400e;
+  }
+  .booking-status-badge.cancelled {
+    background: #fef2f2;
+    color: #991b1b;
+  }
 
-.status-badge.cancelled {
-    background: var(--error);
-    color: white;
-}
+  [data-theme="dark"] .booking-status-badge.scheduled {
+    background: rgba(16, 185, 129, 0.12);
+    color: #6ee7b7;
+  }
+  [data-theme="dark"] .booking-status-badge.pending {
+    background: rgba(245, 158, 11, 0.12);
+    color: #fcd34d;
+  }
+  [data-theme="dark"] .booking-status-badge.cancelled {
+    background: rgba(239, 68, 68, 0.12);
+    color: #fca5a5;
+  }
 
-[data-theme="dark"] .status-badge.scheduled {
-    background: var(--success);
-    color: white;
-}
+  /* ============================================================
+     CARD – ROUTE (hero element)
+     ============================================================ */
+  .route-block {
+    padding-left: 0.5rem;
+    margin-bottom: 1.25rem;
+  }
 
-[data-theme="dark"] .status-badge.pending {
-    background: var(--warning);
-    color: #1F2937;
-}
+  .route-display {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    margin-bottom: 0.15rem;
+  }
 
-[data-theme="dark"] .status-badge.cancelled {
-    background: var(--error);
-    color: white;
-}
-
-/* Modal Enhancements */
-#cancelModal {
-    transition: opacity 0.3s ease;
-}
-
-#cancelModal.show {
-    opacity: 1;
-}
-
-.modal-content {
-    background: var(--bg-light);
-    border-radius: var(--radius);
-    padding: 2.5rem;
-    box-shadow: var(--shadow-xl);
-}
-
-[data-theme="dark"] .modal-content {
-    background: var(--neutral-800);
-    box-shadow: 0 8px 20px rgba(0,0,0,0.4);
-}
-
-.modal-content h3 {
-    font-family: 'Playfair Display', serif;
-    font-size: 1.8rem;
+  .route-display .port {
     font-weight: 700;
-    background: linear-gradient(to right, var(--primary), var(--secondary));
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-}
+    font-size: 1.15rem;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+  }
 
-/* Countdown */
-.countdown {
-    font-size: 1rem;
-    font-weight: 600;
+  .route-arrow {
+    display: flex;
+    align-items: center;
     color: var(--primary);
-    background: var(--neutral-100);
-    padding: 0.8rem 1.5rem;
-    border-radius: 8px;
-    text-align: center;
-    transition: color 0.3s ease;
-}
+    opacity: 0.6;
+    flex-shrink: 0;
+  }
 
-.countdown.urgent {
-    color: var(--error);
-}
+  .route-arrow svg {
+    width: 20px;
+    height: 20px;
+  }
 
-[data-theme="dark"] .countdown {
-    background: var(--neutral-800);
-    color: var(--#00ff97);
-}
+  /* ============================================================
+     CARD – METADATA GRID
+     ============================================================ */
+  .meta-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.9rem 1.25rem;
+    padding: 1rem 1rem 0 0.5rem;
+    margin-bottom: 1rem;
+    border-top: 1px solid var(--border-light);
+    border-bottom: 1px solid var(--border-light);
+  }
 
-[data-theme="dark"] .countdown.urgent {
-    color: #FCA5A5;
-}
+  [data-theme="dark"] .meta-grid {
+    border-color: rgba(255,255,255,0.06);
+  }
 
-/* Button Styles */
-.ticket-action-btn {
-    padding: 0.5rem 1rem;
-    border-radius: 8px;
+  .meta-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  .meta-label {
+    font-size: 0.65rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .meta-label svg {
+    width: 12px;
+    height: 12px;
+    opacity: 0.5;
+    flex-shrink: 0;
+  }
+
+  .meta-value {
+    font-size: 0.88rem;
     font-weight: 600;
-    font-size: 0.9rem;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .meta-value.price {
+    color: var(--primary);
+    font-size: 1.05rem;
+    font-weight: 700;
+  }
+
+  /* ============================================================
+     CARD – COUNTDOWN
+     ============================================================ */
+  .countdown-strip {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 1rem;
+    margin: 0.85rem 0 0 0.5rem;
+    background: var(--neutral-50);
+    border-radius: 10px;
+    border: 1px solid var(--border-light);
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    transition: background 0.2s, border-color 0.2s;
+  }
+
+  [data-theme="dark"] .countdown-strip {
+    background: rgba(255,255,255,0.03);
+    border-color: rgba(255,255,255,0.06);
+  }
+
+  .countdown-strip svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    opacity: 0.5;
+  }
+
+  .countdown-text {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-primary);
+  }
+
+  .countdown-strip.urgent {
+    border-color: rgba(239, 68, 68, 0.25);
+    background: #fef2f2;
+  }
+
+  .countdown-strip.urgent .countdown-text {
+    color: var(--error);
+  }
+
+  [data-theme="dark"] .countdown-strip.urgent {
+    background: rgba(239, 68, 68, 0.08);
+    border-color: rgba(239, 68, 68, 0.2);
+  }
+
+  /* ============================================================
+     CARD – ACTIONS
+     ============================================================ */
+  .action-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: auto;
+    padding-top: 1rem;
+    padding-left: 0.5rem;
+  }
+
+  .card-btn {
+    padding: 0.45rem 1rem;
+    border-radius: 100px;
+    font-weight: 600;
+    font-size: 0.75rem;
     text-decoration: none;
-    transition: transform 0.2s ease, background 0.3s;
+    transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+    border: 1px solid var(--border-light);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: inherit;
+    line-height: 1.4;
+  }
+
+  .card-btn svg {
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
+  }
+
+  .card-btn:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: rgba(0, 180, 166, 0.04);
+    transform: translateY(-1px);
+  }
+
+  [data-theme="dark"] .card-btn:hover {
+    background: rgba(0, 180, 166, 0.08);
+  }
+
+  .card-btn.danger {
+    color: var(--error);
+    border-color: rgba(239, 68, 68, 0.2);
+  }
+
+  .card-btn.danger:hover {
+    background: rgba(239, 68, 68, 0.06);
+    border-color: var(--error);
+    color: var(--error);
+  }
+
+  [data-theme="dark"] .card-btn.danger:hover {
+    background: rgba(239, 68, 68, 0.1);
+  }
+
+  .card-btn.muted {
+    color: var(--text-muted);
+    border-color: transparent;
+    cursor: not-allowed;
+    pointer-events: none;
+    opacity: 0.5;
+  }
+
+  /* ============================================================
+     PRIMARY CTA
+     ============================================================ */
+  .btn-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.7rem 1.8rem;
+    border-radius: 100px;
+    font-weight: 600;
+    font-size: 0.88rem;
+    text-decoration: none;
     border: none;
     cursor: pointer;
-    text-transform: none;
-}
+    font-family: inherit;
+    background: var(--primary);
+    color: #fff;
+    transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+    box-shadow: 0 2px 8px rgba(0, 180, 166, 0.25);
+  }
 
-.ticket-action-btn.back {
-    background: var(--neutral-100);
-    color: var(--secondary-dark);
-}
-
-[data-theme="dark"] .ticket-action-btn.back {
-    background: var(--neutral-800);
-    color: var(--text-dark);
-}
-
-.ticket-action-btn.back:hover {
-    background: var(--border-hover);
-    transform: scale(1.02);
-}
-
-.ticket-action-btn.cancel {
-    background: var(--error);
-    color: white;
-}
-
-.ticket-action-btn.cancel:hover {
-    background: #DC2626;
-}
-
-.ticket-action-btn.disabled {
-    background: var(--neutral-100);
-    color: var(--text-muted);
-    cursor: not-allowed;
-}
-
-[data-theme="dark"] .ticket-action-btn.cancel {
-    background: #FCA5A5;
-    color: black;
-}
-
-[data-theme="dark"] .ticket-action-btn.disabled {
-    background: var(--neutral-800);
-    color: var(--text-muted);
-}
-
-/* Loading Spinner */
-.loading-spinner {
-    display: none;
+  .btn-cta svg {
     width: 16px;
     height: 16px;
-    border: 2px solid variegated;
-    border-top-color: var(--primary);
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-}
+  }
 
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
+  .btn-cta:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 180, 166, 0.35);
+    background: var(--primary-dark, #009e92);
+  }
+
+  .btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.7rem 1.8rem;
+    border-radius: 100px;
+    font-weight: 600;
+    font-size: 0.88rem;
+    text-decoration: none;
+    border: 1px solid var(--border-light);
+    cursor: pointer;
+    font-family: inherit;
+    background: transparent;
+    color: var(--text-secondary);
+    transition: all 0.25s ease;
+  }
+
+  .btn-ghost:hover {
+    border-color: var(--text-muted);
+    color: var(--text-primary);
+  }
+
+  [data-theme="dark"] .btn-ghost {
+    border-color: rgba(255,255,255,0.1);
+  }
+
+  /* ============================================================
+     MODAL
+     ============================================================ */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+    padding: 1rem;
+  }
+
+  .modal-overlay.show {
+    visibility: visible;
+    opacity: 1;
+  }
+
+  .modal-panel {
+    background: var(--bg-light);
+    border-radius: 20px;
+    padding: 2.25rem;
+    max-width: 420px;
+    width: 100%;
+    box-shadow: 0 24px 48px rgba(0,0,0,0.15);
+    transform: translateY(12px) scale(0.97);
+    transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .modal-overlay.show .modal-panel {
+    transform: translateY(0) scale(1);
+  }
+
+  [data-theme="dark"] .modal-panel {
+    background: var(--neutral-800);
+    box-shadow: 0 24px 48px rgba(0,0,0,0.5);
+  }
+
+  .modal-icon-wrap {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    background: #fef2f2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1.25rem;
+  }
+
+  [data-theme="dark"] .modal-icon-wrap {
+    background: rgba(239, 68, 68, 0.12);
+  }
+
+  .modal-icon-wrap svg {
+    width: 22px;
+    height: 22px;
+    color: var(--error);
+  }
+
+  .modal-panel h3 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 0.4rem;
+  }
+
+  .modal-panel p {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    line-height: 1.55;
+    margin-bottom: 1.75rem;
+  }
+
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+  }
+
+  .modal-actions .card-btn.danger {
+    padding: 0.55rem 1.3rem;
+  }
+
+  /* ============================================================
+     EMPTY STATE
+     ============================================================ */
+  .empty-state {
+    text-align: center;
+    padding: 4rem 1rem 3rem;
+    max-width: 440px;
+    margin: 0 auto;
+  }
+
+  .empty-illustration {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto 1.5rem;
+    border-radius: 24px;
+    background: var(--neutral-50);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-light);
+  }
+
+  [data-theme="dark"] .empty-illustration {
+    background: rgba(255,255,255,0.03);
+    border-color: rgba(255,255,255,0.06);
+  }
+
+  .empty-illustration svg {
+    width: 32px;
+    height: 32px;
+    color: var(--text-muted);
+    opacity: 0.5;
+  }
+
+  .empty-state h3 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 0.4rem;
+  }
+
+  .empty-state p {
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+    line-height: 1.55;
+    margin-bottom: 2rem;
+  }
+
+  /* ============================================================
+     LOADING SPINNER
+     ============================================================ */
+  .spinner {
+    display: none;
+    width: 13px;
+    height: 13px;
+    border: 2px solid rgba(239, 68, 68, 0.25);
+    border-top-color: var(--error);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  .spinner.active { display: inline-block; }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ============================================================
+     RESPONSIVE
+     ============================================================ */
+  @media (max-width: 768px) {
+    .stats-bar {
+      border-radius: 12px;
+    }
+    .stat-item {
+      padding: 1rem 0.5rem;
+    }
+    .stat-number {
+      font-size: 1.3rem;
+    }
+    .booking-card {
+      --card-padding: 1.35rem;
+    }
+    .route-display .port {
+      font-size: 1.05rem;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .stats-bar {
+      flex-wrap: wrap;
+      border-radius: 12px;
+    }
+    .stat-item {
+      flex: 1 1 45%;
+      border-radius: 0 !important;
+    }
+    .stat-item:nth-child(1) { border-radius: 12px 0 0 0 !important; }
+    .stat-item:nth-child(2) { border-radius: 0 12px 0 0 !important; }
+    .stat-item:nth-child(3) { border-radius: 0 0 0 12px !important; }
+    .stat-item:nth-child(4) { border-radius: 0 0 12px 0 !important; }
+    .action-group {
+      flex-direction: column;
+    }
+    .action-group .card-btn {
+      justify-content: center;
+    }
+    .meta-grid {
+      gap: 0.75rem 1rem;
+    }
+    .modal-panel {
+      padding: 1.5rem;
+    }
+  }
 </style>
 {% endblock %}
 
 {% block content %}
-<section class="ticket-container" id="main-content">
-    <h1 class="text-3xl font-bold text-center mb-4" style="font-family: 'Playfair Display', serif; background: linear-gradient(to right, var(--primary), var(--secondary)); -webkit-background-clip: text; background-clip: text; color: transparent;">Your Booking History</h1>
-    <h2 class="text-xl text-center mb-8" style="color: var(--text-secondary);">View and Manage Your Island Adventures</h2>
-    <div class="flex justify-center mb-8">
-        <a href="{% url 'bookings:book_ticket' %}" class="ticket-action-btn" style="background: linear-gradient(90deg, var(--ocean-teal), var(--nautical-blue)); color: white;" aria-label="Book another ferry ticket">Book Another Ferry</a>
+<section class="history-page ticket-container" id="main-content">
+  <div class="max-w-6xl mx-auto px-4 py-8 md:py-12">
+
+    <!-- Page Header -->
+    <div class="mb-10">
+      <p class="page-eyebrow">My Account</p>
+      <h1 class="page-title">Booking History</h1>
+      <p class="page-subtitle">Review your upcoming and past ferry journeys across the islands.</p>
     </div>
 
-    <div class="max-w-5xl mx-auto">
-        <h3 class="text-2xl font-semibold mb-6" style="font-family: 'Playfair Display', serif; color: var(--text-primary);">Your Bookings</h3>
+    <!-- Stats Bar -->
+    {% if bookings %}
+    <div class="stats-bar">
+    <div class="stat-item">
+        <div class="stat-number" id="stat-total">--</div>
+        <div class="stat-label">Total</div>
+    </div>
+    <div class="stat-item">
+        <div class="stat-number" id="stat-upcoming">--</div>
+        <div class="stat-label">Upcoming</div>
+    </div>
+    <div class="stat-item">
+        <div class="stat-number" id="stat-past">--</div>
+        <div class="stat-label">Past</div>
+    </div>
+    <div class="stat-item">
+        <div class="stat-number" id="stat-spent">--</div>
+        <div class="stat-label">Total Spent</div>
+    </div>
+    </div>
+    {% endif %}
+
+    <!-- Section Header -->
+    <div class="section-header">
+      <div>
+        <h2 class="section-title">Your Bookings</h2>
         {% if bookings %}
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {% for booking in bookings %}
-                    <div class="booking-card vibrant" data-status="{{ booking.status|lower }}" data-aos="fade-up" data-aos-delay="{{ forloop.counter0|multiply:100 }}" data-booking-id="{{ booking.id }}">
-                        <div class="text-lg font-bold mb-4" style="color: var(--text-primary);">Booking #{{ booking.id }}</div>
-                        <div class="mb-4">
-                            <h4 class="text-md font-semibold mb-2" style="color: var(--text-primary);">Trip Details</h4>
-                            <p style="color: var(--text-secondary);"><strong>{{ booking.schedule.route.departure_port }}</strong> to <strong>{{ booking.schedule.route.destination_port }}</strong></p>
-                            <p style="color: var(--text-secondary);">Ferry: {{ booking.schedule.ferry.name }}</p>
-                            <p style="color: var(--text-secondary);">Departure: {{ booking.schedule.departure_time|date:"F d, Y H:i" }}</p>
-                            <p style="color: var(--text-secondary);">Status: <span class="status-badge {{ booking.status|lower }}">{{ booking.status|capfirst }}</span> • FJD {{ booking.total_price|floatformat:2 }}</p>
-                            <div class="countdown" id="countdown-{{ booking.id }}" data-departure-time="{{ booking.schedule.departure_time|date:'c' }}">Countdown to Departure: Loading...</div>
-                        </div>
-                        <div class="flex flex-wrap gap-3">
-                            {% if booking.status != 'cancelled' %}
-                                {% if booking.schedule.departure_time > cutoff_time %}
-                                    <a href="{% url 'bookings:modify_booking' booking.id %}" class="ticket-action-btn back" aria-label="Modify booking {{ booking.id }}">Modify</a>
-                                {% else %}
-                                    <button class="ticket-action-btn disabled" disabled aria-label="Modify disabled: within 6 hours of departure">Modify</button>
-                                {% endif %}
-                                <a href="{% url 'bookings:cancel_booking' booking.id %}" class="ticket-action-btn cancel cancel-booking" data-booking-id="{{ booking.id }}" aria-label="Cancel booking {{ booking.id }}">Cancel <span class="loading-spinner"></span></a>
-                            {% endif %}
-                            <a href="{% url 'bookings:view_tickets' booking.id %}" class="ticket-action-btn back" aria-label="View tickets for booking {{ booking.id }}">View Tickets</a>
-                        </div>
-                    </div>
-                {% endfor %}
-            </div>
-        {% else %}
-            <p class="text-center" style="color: var(--text-secondary);">No bookings available at this time.</p>
+        <p class="section-count">{{ bookings|length }} booking{{ bookings|length|pluralize }}</p>
         {% endif %}
+      </div>
+      <a href="{% url 'bookings:book_ticket' %}" class="btn-cta" aria-label="Book a new ferry ticket">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+        New Booking
+      </a>
     </div>
 
-    <div class="flex justify-center mt-8 gap-4">
-        <a href="{% url 'bookings:book_ticket' %}" class="ticket-action-btn" style="background: linear-gradient(90deg, var(--ocean-teal), var(--nautical-blue)); color: white;" aria-label="Book another ticket">Book Another Ticket</a>
-        <a href="{% url 'home' %}" class="ticket-action-btn back" aria-label="Back to home">Back to Home</a>
+    <!-- Bookings Grid -->
+    {% if bookings %}
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        {% for booking in bookings %}
+          <article class="booking-card" data-status="{{ booking.status|lower }}" data-booking-id="{{ booking.id }}" data-aos="fade-up" data-aos-delay="{{ forloop.counter0|multiply:80 }}">
+
+            <!-- Header -->
+            <div class="booking-header">
+              <span class="booking-id">#{{ booking.id }}</span>
+              <span class="booking-status-badge {{ booking.status|lower }}">
+                {{ booking.status|capfirst }}
+              </span>
+            </div>
+
+            <!-- Route -->
+            <div class="route-block">
+              <div class="route-display">
+                <span class="port">{{ booking.schedule.route.departure_port }}</span>
+                <span class="route-arrow">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                </span>
+                <span class="port">{{ booking.schedule.route.destination_port }}</span>
+              </div>
+            </div>
+
+            <!-- Meta Grid -->
+            <div class="meta-grid">
+              <div class="meta-item">
+                <span class="meta-label">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                  Date
+                </span>
+                <span class="meta-value">{{ booking.schedule.departure_time|date:"d M Y" }}</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                  Departure
+                </span>
+                <span class="meta-value">{{ booking.schedule.departure_time|date:"H:i" }}</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 21c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1s1.2 1 2.5 1c2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M19.38 20A11.6 11.6 0 0 0 21 14l-9-4-9 4c0 2.9.94 5.34 2.81 7.76"/><path d="M19 13V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6"/><path d="M12 1v3"/></svg>
+                  Ferry
+                </span>
+                <span class="meta-value">{{ booking.schedule.ferry.name }}</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                  Total
+                </span>
+                <span class="meta-value price">FJD {{ booking.total_price|floatformat:2 }}</span>
+              </div>
+            </div>
+
+            <!-- Countdown -->
+            {% if booking.status != 'cancelled' %}
+            <div class="countdown-strip" id="countdown-wrap-{{ booking.id }}">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <span>Departs in</span>
+              <span class="countdown-text" id="countdown-{{ booking.id }}" data-departure-time="{{ booking.schedule.departure_time|date:'c' }}">--</span>
+            </div>
+            {% endif %}
+
+            <!-- Actions -->
+            <div class="action-group">
+              {% if booking.status != 'cancelled' %}
+                {% if booking.schedule.departure_time > cutoff_time %}
+                  <a href="{% url 'bookings:modify_booking' booking.id %}" class="card-btn" aria-label="Modify booking {{ booking.id }}">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                    Modify
+                  </a>
+                {% else %}
+                  <span class="card-btn muted" aria-label="Modification unavailable">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                    Modify
+                  </span>
+                {% endif %}
+                <button class="card-btn danger cancel-booking" data-booking-id="{{ booking.id }}" aria-label="Cancel booking {{ booking.id }}">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                  Cancel
+                  <span class="spinner"></span>
+                </button>
+              {% endif %}
+              <a href="{% url 'bookings:view_tickets' booking.id %}" class="card-btn" aria-label="View tickets for booking {{ booking.id }}">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                Tickets
+              </a>
+            </div>
+
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <!-- Empty State -->
+      <div class="empty-state">
+        <div class="empty-illustration">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><polyline points="14 2 14 8 20 8"/></svg>
+        </div>
+        <h3>No bookings yet</h3>
+        <p>You haven't made any ferry reservations. Start planning your first island journey today.</p>
+        <a href="{% url 'bookings:book_ticket' %}" class="btn-cta">Book Your First Trip</a>
+      </div>
+    {% endif %}
+
+    <!-- Bottom Actions -->
+    {% if bookings %}
+    <div class="flex flex-wrap justify-center gap-3 mt-12 pt-8" style="border-top: 1px solid var(--border-light);">
+      <a href="{% url 'bookings:book_ticket' %}" class="btn-cta" aria-label="Book another ticket">Book Another Ticket</a>
+      <a href="{% url 'home' %}" class="btn-ghost" aria-label="Return to homepage">Back to Home</a>
     </div>
+    {% endif %}
+
+  </div>
 </section>
 
-<div id="cancelModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden" role="dialog" aria-labelledby="cancelModalTitle" aria-modal="true">
-    <div class="modal-content ticket-container" data-aos="zoom-in">
-        <h3 id="cancelModalTitle" class="text-xl font-semibold mb-4">Are you sure you want to cancel this booking?</h3>
-        <div class="flex justify-end gap-3">
-            <button id="confirmCancel" class="ticket-action-btn cancel" aria-label="Confirm cancellation">Confirm <span class="loading-spinner"></span></button>
-            <button id="closeModal" class="ticket-action-btn back" aria-label="Close modal">Close</button>
-        </div>
+<!-- Cancel Modal -->
+<div id="cancelModal" class="modal-overlay" role="dialog" aria-labelledby="cancelModalTitle" aria-modal="true">
+  <div class="modal-panel">
+    <div class="modal-icon-wrap">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
     </div>
+    <h3 id="cancelModalTitle">Cancel this booking?</h3>
+    <p>This action cannot be undone. Your reservation will be permanently removed and any payment will be refunded according to our cancellation policy.</p>
+    <div class="modal-actions">
+      <button id="closeModal" class="card-btn">Keep Booking</button>
+      <button id="confirmCancel" class="card-btn danger" aria-label="Confirm cancellation">
+        Yes, Cancel
+        <span class="spinner"></span>
+      </button>
+    </div>
+  </div>
 </div>
 {% endblock %}
 

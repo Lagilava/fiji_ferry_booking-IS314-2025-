@@ -184,20 +184,34 @@
     el.className = 'text-sm mt-2 ' + (good ? 'text-green-600' : 'text-red-600');
   }
 
-  // Persist minimal form data in sessionStorage so back/refresh keeps state
+  // Persist minimal form data in sessionStorage so an interrupted booking
+  // (e.g. lost connection mid-step) can be resumed. A timestamp lets us resume
+  // only recent, genuinely in-progress bookings — never a stale/finished one.
   const STORAGE_KEY = 'ffb_booking_form';
+  const RESUME_WINDOW_MS = 6 * 60 * 60 * 1000; // 6 hours
   function saveFormData(obj) {
     try {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(obj));
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ ...obj, _savedAt: Date.now() }));
       console.log('Form data saved');
     } catch (e) {
       console.warn('saveFormData failed', e);
     }
   }
+  function clearFormData() {
+    try { sessionStorage.removeItem(STORAGE_KEY); } catch (e) { /* noop */ }
+  }
   function loadFormData() {
     try {
       const json = sessionStorage.getItem(STORAGE_KEY);
-      return json ? JSON.parse(json) : {};
+      if (!json) return {};
+      const data = JSON.parse(json);
+      // Drop anything older than the resume window so we always start fresh
+      // unless the user was actively booking very recently.
+      if (!data._savedAt || (Date.now() - data._savedAt) > RESUME_WINDOW_MS) {
+        clearFormData();
+        return {};
+      }
+      return data;
     } catch {
       return {};
     }
@@ -335,27 +349,36 @@
     css.id = 'ffb-summary-css';
     css.textContent = `
       .ffb-summary { background: var(--surface-muted); border:1px solid var(--border);
-        border-radius: 14px; padding: 1rem; }
+        border-radius: 16px; padding: 1.25rem; }
       .ffb-schedule-banner {
-        background: var(--gradient-primary); color: #fff; border-radius: 10px;
-        padding: .85rem 1rem; margin-bottom: 1rem; display:flex; align-items:center;
+        background: var(--gradient-primary); color: #fff; border-radius: 14px;
+        padding: 1.1rem 1.25rem; margin-bottom: 1.25rem; display:flex; align-items:center;
         justify-content: space-between; gap:.75rem;
       }
-      .ffb-schedule-banner .ffb-route { font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .ffb-schedule-meta { opacity: .95; font-size: .9rem; display:flex; flex-wrap:wrap; gap:.5rem .9rem; margin-top:.2rem; }
+      .ffb-schedule-banner .ffb-route { font-weight: 800; font-size: 1.3rem; line-height:1.2;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .ffb-schedule-meta { font-size: .85rem; display:flex; flex-wrap:wrap; gap:.45rem; margin-top:.5rem; }
+      /* Badges sitting on the coloured banner read better as translucent pills. */
+      .ffb-schedule-banner .ffb-badge {
+        border-color: rgba(255,255,255,.35); color:#fff;
+        background: rgba(255,255,255,.15); border-radius: 999px; padding:.18rem .6rem;
+      }
+      .ffb-banner-icon { flex:0 0 auto; font-size:1.6rem; opacity:.95; }
 
       .ffb-summary-grid { display: grid; gap: 1rem; }
       @media (min-width: 768px) {
-        .ffb-summary-grid { grid-template-columns: 1.3fr .9fr; }
+        .ffb-summary-grid { grid-template-columns: 1.3fr .9fr; align-items: start; }
+        .ffb-breakdown { position: sticky; top: 1rem; }
       }
 
       .ffb-card {
         background: var(--surface); border:1px solid var(--border);
-        border-radius: 10px; padding: .9rem;
+        border-radius: 12px; padding: 1.1rem 1.15rem;
       }
       .ffb-card + .ffb-card { margin-top: .8rem; }
 
-      .ffb-section-title { margin: 0 0 .6rem; font-weight: 700; color: var(--text-primary); font-size: 1rem; }
+      .ffb-section-title { margin: 0 0 .75rem; padding-bottom:.5rem; border-bottom:1px solid var(--border);
+        font-weight: 800; color: var(--text-primary); font-size: 1.05rem; }
 
       .ffb-list { list-style: none; padding: 0; margin: 0; }
       .ffb-item { display:flex; justify-content: space-between; align-items: center;
@@ -372,13 +395,16 @@
       }
 
       .ffb-breakdown .ffb-row {
-        display:flex; justify-content: space-between; align-items: baseline; padding:.35rem 0;
+        display:flex; justify-content: space-between; align-items: baseline; padding:.45rem 0;
+        font-size: .92rem;
       }
+      .ffb-breakdown .ffb-row .ffb-label { color: var(--text-secondary); }
+      .ffb-breakdown .ffb-row span:last-child { font-weight: 600; color: var(--text-primary); }
 
-      .ffb-total { border-top: 1px dashed var(--border); margin-top: .8rem; padding-top: .65rem;
+      .ffb-total { border-top: 2px solid var(--border); margin-top: .9rem; padding-top: .85rem;
         display:flex; justify-content: space-between; align-items: baseline; }
-      .ffb-total .ffb-total-label { font-weight: 800; color: var(--text-primary); }
-      .ffb-total .ffb-total-amount { font-weight: 900; font-size: 1.2rem; color: var(--text-primary); background: none; animation: none; }
+      .ffb-total .ffb-total-label { font-weight: 800; color: var(--text-primary); font-size: 1.05rem; }
+      .ffb-total .ffb-total-amount { font-weight: 900; font-size: 1.5rem; color: var(--primary); background: none; animation: none; }
 
       .ffb-meta-grid { display:grid; grid-template-columns: 1fr 1fr; gap: .4rem .75rem; }
       .ffb-meta-grid .ffb-row { display:flex; justify-content: space-between; }
@@ -434,6 +460,107 @@
     console.log('Preloaded schedule hints:', scheduleHints);
   })();
 
+  // =====================================================
+  // Live schedule sync — reflect admin-side changes
+  // (seat counts, cancellations, sell-outs) on the booking
+  // page without a full reload, so customers never pick a
+  // schedule that an operator just changed. The server stays
+  // the source of truth: validate_step re-checks on every
+  // step and create_checkout_session reserves seats atomically.
+  // =====================================================
+  (function liveScheduleSync() {
+    if (!scheduleSelect) return;
+    const ENDPOINT = (window.urls && window.urls.getActiveSchedules) || '/bookings/api/bookings/updates/';
+    const POLL_MS = 15000;
+    const noticeEl = document.getElementById('error-schedule_id');
+    const SEAT_MARKER = /\s*\((?:\d+\s*seats?|unavailable|sold out|cancelled|delayed|departed)\)\s*$/i;
+
+    function setMarker(opt, text) {
+      const base = (opt.textContent || '').replace(SEAT_MARKER, '');
+      opt.textContent = `${base} (${text})`;
+    }
+
+    function optionIds() {
+      return Array.from(scheduleSelect.options)
+        .map(o => (o.value || '').trim())
+        .filter(Boolean);
+    }
+
+    // Reason a schedule is not bookable, from its live status payload.
+    function unbookableReason(st) {
+      if (st.status === 'cancelled') return 'cancelled';
+      if (st.status === 'delayed') return 'delayed';
+      if (st.departed) return 'departed';
+      if ((st.available_seats || 0) <= 0) return 'sold out';
+      return 'unavailable';
+    }
+
+    async function poll() {
+      const ids = optionIds();
+      let data;
+      try {
+        const qs = `?limit=50${ids.length ? `&status_ids=${encodeURIComponent(ids.join(','))}` : ''}`;
+        const res = await fetch(`${ENDPOINT}${qs}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+        if (!res.ok) return;
+        data = await res.json();
+      } catch { return; }
+
+      const map = {};
+      (data.schedules || []).forEach(s => { map[String(s.id)] = s; });
+      const statuses = data.statuses || {};
+
+      const selectedVal = (scheduleSelect.value || '').trim();
+      let selectedReason = '';
+
+      Array.from(scheduleSelect.options).forEach(opt => {
+        const id = (opt.value || '').trim();
+        if (!id) return;
+        const st = statuses[id];
+        if (st) {
+          // Authoritative per-schedule status from the server.
+          if (st.bookable) {
+            opt.disabled = false;
+            setMarker(opt, `${st.available_seats} seats`);
+          } else {
+            opt.disabled = true;
+            const reason = unbookableReason(st);
+            setMarker(opt, reason);
+            if (id === selectedVal) selectedReason = reason;
+          }
+        } else if (map[id]) {
+          // Fallback: present in the bookable feed.
+          opt.disabled = false;
+          setMarker(opt, `${map[id].available_seats} seats`);
+        } else {
+          // Unknown / no longer returned — treat as not bookable.
+          opt.disabled = true;
+          setMarker(opt, 'unavailable');
+          if (id === selectedVal) selectedReason = 'unavailable';
+        }
+      });
+
+      // If the customer's current choice just became unavailable, surface why
+      // and clear it so they can't proceed toward payment on a dead schedule.
+      const selStatus = statuses[selectedVal];
+      const stillBookable = selStatus ? selStatus.bookable : !!map[selectedVal];
+      if (selectedVal && !stillBookable) {
+        if (noticeEl) {
+          const why = selectedReason ? ` (${selectedReason})` : '';
+          noticeEl.textContent =
+            `This schedule was just updated by the operator and is no longer available${why}. Please choose another.`;
+          noticeEl.classList.add('show');
+        }
+        scheduleSelect.value = '';
+        scheduleSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }
+
+    poll();
+    setInterval(poll, POLL_MS);
+    // Refresh immediately when the user returns to the tab.
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
+  })();
+
   // Small helper to read URL params
   function getParam(name) {
     try {
@@ -485,6 +612,8 @@
     const maxSteps = 4;
     const pct = Math.max(1, Math.min(maxSteps, Number(step))) / maxSteps * 100;
     if (progressBarFill) progressBarFill.style.width = `${pct}%`;
+    const progressBar = document.getElementById('booking-progressbar');
+    if (progressBar) progressBar.setAttribute('aria-valuenow', String(step));
 
     // step nav
     $$('.steps .step').forEach(li => {
@@ -1174,7 +1303,7 @@
                   ${schedule.seats ? `<span class="ffb-badge">${schedule.seats} seats left</span>` : ''}
                 </div>
               </div>
-              <div aria-hidden="true" style="opacity:.9;flex:0 0 auto">⟶</div>
+              <div class="ffb-banner-icon" aria-hidden="true"><i class="fas fa-ship"></i></div>
             </div>` : ''}
 
           <div class="ffb-summary-grid">
@@ -1215,7 +1344,7 @@
       console.error('Summary error:', e);
       summaryBox.innerHTML = `
         <div class="ffb-card ffb-loader">
-          <div style="font-size:2rem;margin-bottom:.5rem">⚠️</div>
+          <div style="font-size:2rem;margin-bottom:.5rem" aria-hidden="true"><i class="fas fa-triangle-exclamation"></i></div>
           <p class="ffb-label">Unable to load the summary. Please review your selections and try again.</p>
         </div>`;
     }
@@ -1236,18 +1365,32 @@
     return _checkoutIdemKey;
   }
 
+  function getSelectedPaymentMethod() {
+    const checked = document.querySelector('input[name="payment_method"]:checked');
+    return checked ? checked.value : 'card';
+  }
+
   async function createCheckout() {
     try {
       // Validate current step first
       const stepValid = await validateCurrentStepClient();
       if (!stepValid.valid) return;
 
+      const method = getSelectedPaymentMethod();
+      // Non-card methods are Fiji-local mock gateways: build the booking and hand
+      // off to the provider's payment page (server returns a redirect `url`).
+      const isMock = method && method !== 'card';
+      const endpoint = isMock
+        ? (urls.createMockCheckout || '/bookings/api/create_mock_checkout/')
+        : urls.createCheckoutSession;
+
       // Build form data and create session FIRST
       const fd = collectClientForm();
       fd.append('idempotency_key', getCheckoutIdemKey());
+      fd.append('payment_method', method);
       const csrf = getCsrfToken();
-      console.log('[Checkout] POST', urls.createCheckoutSession, 'csrftoken=', csrf ? '(present)' : '(missing)');
-      const res = await fetch(urls.createCheckoutSession, {
+      console.log('[Checkout] POST', endpoint, 'method=', method, 'csrftoken=', csrf ? '(present)' : '(missing)');
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'X-CSRFToken': csrf },
         body: fd
@@ -1266,8 +1409,12 @@
         return;
       }
 
-      // Some backends return a direct URL for hosted checkout
+      // Some backends return a direct URL for hosted checkout (e.g. the Fiji
+      // mock gateway). The booking is now committed, so clear the saved draft so
+      // the next visit to the booking page starts fresh (not on this step 4).
       if (json && json.url) {
+        clearFormData();
+        _checkoutIdemKey = null;
         window.location.assign(json.url);
         return;
       }
@@ -1298,7 +1445,10 @@
       }
 
       // Booking + session committed; a later checkout starts a fresh idempotency token.
+      // Also clear the saved draft so returning to the booking page starts fresh
+      // instead of resuming this finished booking at step 4.
       _checkoutIdemKey = null;
+      clearFormData();
       await stripe.redirectToCheckout({ sessionId });
     } catch (e) {
       console.error('Checkout error:', e);

@@ -1,5 +1,5 @@
 # bookings/admin.py
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.http import JsonResponse, HttpResponse, StreamingHttpResponse
 from django.urls import path, reverse
 from django.db.models import Count, Sum, F, Avg, Max, Q
@@ -1113,6 +1113,65 @@ class CustomAdminSite(admin.AdminSite):
         registered_users = User.objects.count()
         average_booking_value = Booking.objects.aggregate(avg=Avg('total_price'))['avg'] or 0
 
+        # Today's stats
+        today = current_time.date()
+        bookings_today = Booking.objects.filter(booking_date__date=today).count()
+        revenue_today = Booking.objects.filter(
+            booking_date__date=today, status='confirmed'
+        ).aggregate(total=Sum('total_price'))['total'] or 0
+        new_users_today = User.objects.filter(created_at__date=today).count()
+        pending_bookings_count = Booking.objects.filter(status='pending').count()
+        cancelled_today = Booking.objects.filter(booking_date__date=today, status='cancelled').count()
+
+        # Today's departures (next 24 h)
+        tomorrow = current_time + timedelta(hours=24)
+        today_departures = [
+            {
+                'id': s.id,
+                'ferry': s.ferry.name,
+                'route': f"{s.route.departure_port.name} → {s.route.destination_port.name}",
+                'departure': s.departure_time.isoformat(),
+                'available_seats': s.available_seats,
+                'capacity': s.ferry.capacity,
+                'status': s.status,
+            }
+            for s in Schedule.objects.select_related(
+                'ferry', 'route__departure_port', 'route__destination_port'
+            ).filter(
+                departure_time__gte=current_time,
+                departure_time__lt=tomorrow,
+            ).order_by('departure_time')[:12]
+        ]
+
+        # Pending bookings needing attention
+        pending_bookings_list = [
+            {
+                'id': b.id,
+                'user': b.user.email if b.user else b.guest_email or 'Guest',
+                'route': f"{b.schedule.route.departure_port.name} → {b.schedule.route.destination_port.name}"
+                         if b.schedule and b.schedule.route else 'N/A',
+                'departure': b.schedule.departure_time.isoformat() if b.schedule else None,
+                'total_price': float(b.total_price) if b.total_price else 0.0,
+                'booking_date': b.booking_date.isoformat() if b.booking_date else None,
+            }
+            for b in Booking.objects.select_related(
+                'user', 'schedule__route__departure_port', 'schedule__route__destination_port'
+            ).filter(status='pending').order_by('-booking_date')[:8]
+        ]
+
+        # Recent user registrations
+        recent_users = [
+            {
+                'id': u.id,
+                'username': u.username,
+                'email': u.email,
+                'full_name': f"{u.first_name} {u.last_name}".strip() or u.username,
+                'date_joined': u.created_at.isoformat(),
+                'booking_count': Booking.objects.filter(user=u).count(),
+            }
+            for u in User.objects.order_by('-created_at')[:8]
+        ]
+
         # Recent bookings
         recent_bookings = [
             {
@@ -1214,6 +1273,14 @@ class CustomAdminSite(admin.AdminSite):
             'total_revenue': round(float(total_revenue), 2),
             'registered_users': registered_users,
             'average_booking_value': round(float(average_booking_value), 2),
+            'bookings_today': bookings_today,
+            'revenue_today': round(float(revenue_today), 2),
+            'new_users_today': new_users_today,
+            'pending_bookings_count': pending_bookings_count,
+            'cancelled_today': cancelled_today,
+            'today_departures': today_departures,
+            'pending_bookings_list': pending_bookings_list,
+            'recent_users': recent_users,
             'alerts': self.get_alerts(current_time),
             'current_time': current_time.isoformat(),
             'charts_initialized': False
@@ -1221,10 +1288,286 @@ class CustomAdminSite(admin.AdminSite):
         request.session['charts_initialized'] = False
         return super().index(request, extra_context)
 
+    # ------------------------------------------------------------------ #
+    # Agent dashboard — surfaces the offline automation + server monitor
+    # daemons (bookings/automation.py, bookings/monitor.py) inside admin.
+    # ------------------------------------------------------------------ #
+    def _read_json_status(self, filename):
+        """Safely read a status JSON file written by an in-process agent."""
+        from django.conf import settings
+        import os
+        path = os.path.join(settings.BASE_DIR, "logs", filename)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f), None
+        except FileNotFoundError:
+            return None, "No status recorded yet — the agent has not run in this environment."
+        except Exception as e:
+            return None, f"Could not read status: {e}"
+
+    def _tail_log(self, filename, lines=40):
+        """Return the last N lines of an agent log file."""
+        from django.conf import settings
+        import os
+        path = os.path.join(settings.BASE_DIR, "logs", filename)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return list(f)[-lines:]
+        except Exception:
+            return []
+
+    def agent_dashboard_data(self, request):
+        """JSON endpoint powering live refresh of the agent dashboard."""
+        automation, automation_err = self._read_json_status("automation_status.json")
+        monitor, monitor_err = self._read_json_status("server_status.json")
+        security, security_err = self._read_json_status("security_status.json")
+        return JsonResponse({
+            "automation": automation,
+            "automation_error": automation_err,
+            "monitor": monitor,
+            "monitor_error": monitor_err,
+            "security": security,
+            "security_error": security_err,
+            "automation_log": self._tail_log("automation.log", 30),
+            "monitor_log": self._tail_log("server_monitor.log", 30),
+            "security_log": self._tail_log("security.log", 30),
+            "fetched_at": timezone.now().isoformat(),
+        })
+
+    def agent_dashboard(self, request):
+        """Render the agent monitoring dashboard within the admin shell."""
+        from django.template.response import TemplateResponse
+        automation, automation_err = self._read_json_status("automation_status.json")
+        monitor, monitor_err = self._read_json_status("server_status.json")
+        security, security_err = self._read_json_status("security_status.json")
+        context = {
+            **self.each_context(request),
+            "title": "Agent Monitoring",
+            "automation": automation,
+            "automation_error": automation_err,
+            "monitor": monitor,
+            "monitor_error": monitor_err,
+            "security": security,
+            "security_error": security_err,
+            "automation_log": self._tail_log("automation.log", 30),
+            "monitor_log": self._tail_log("server_monitor.log", 30),
+            "security_log": self._tail_log("security.log", 30),
+        }
+        return TemplateResponse(request, "admin/agent_dashboard.html", context)
+
+    # ------------------------------------------------------------------ #
+    # Departure manifest — printable/downloadable boarding list per schedule
+    # ------------------------------------------------------------------ #
+    def departure_manifest(self, request):
+        from django.template.response import TemplateResponse
+        schedule_id = request.GET.get('schedule_id', '').strip()
+        schedule = None
+        bookings = []
+        schedules = Schedule.objects.select_related(
+            'ferry', 'route__departure_port', 'route__destination_port'
+        ).filter(departure_time__gte=timezone.now()).order_by('departure_time')[:60]
+
+        if schedule_id:
+            try:
+                schedule = Schedule.objects.select_related(
+                    'ferry', 'route__departure_port', 'route__destination_port'
+                ).get(pk=schedule_id)
+                bookings = Booking.objects.filter(
+                    schedule=schedule, status='confirmed'
+                ).select_related('user').prefetch_related(
+                    'passengers', 'vehicles', 'cargo', 'add_ons', 'tickets'
+                ).order_by('booking_date')
+            except Schedule.DoesNotExist:
+                messages.error(request, "Schedule not found.")
+
+        context = {
+            **self.each_context(request),
+            'title': 'Departure Manifest',
+            'schedule': schedule,
+            'bookings': bookings,
+            'schedules': schedules,
+            'total_pax': sum(
+                (b.passenger_adults or 0) + (b.passenger_children or 0) + (b.passenger_infants or 0)
+                for b in bookings
+            ),
+            'total_vehicles': sum(b.vehicles.count() for b in bookings),
+            'total_cargo': sum(b.cargo.count() for b in bookings),
+            'unaccompanied_minors': [b for b in bookings if b.is_unaccompanied_minor],
+            'emergency_bookings': [b for b in bookings if b.is_emergency],
+        }
+        return TemplateResponse(request, 'admin/bookings/departure_manifest.html', context)
+
+    # ------------------------------------------------------------------ #
+    # Bulk rebook — move all confirmed bookings from one schedule to another
+    # ------------------------------------------------------------------ #
+    def bulk_rebook_view(self, request):
+        from django.template.response import TemplateResponse
+        from bookings import services
+
+        source_id = request.GET.get('schedule_id') or request.POST.get('source_schedule_id', '').strip()
+        source = None
+        source_bookings = []
+        upcoming = Schedule.objects.select_related(
+            'ferry', 'route__departure_port', 'route__destination_port'
+        ).filter(departure_time__gte=timezone.now()).order_by('departure_time')[:60]
+
+        if source_id:
+            try:
+                source = Schedule.objects.select_related(
+                    'ferry', 'route__departure_port', 'route__destination_port'
+                ).get(pk=source_id)
+                source_bookings = list(Booking.objects.filter(
+                    schedule=source, status='confirmed'
+                ).select_related('user'))
+            except Schedule.DoesNotExist:
+                messages.error(request, "Source schedule not found.")
+
+        if request.method == 'POST' and source:
+            target_id = request.POST.get('target_schedule_id', '').strip()
+            if not target_id:
+                messages.error(request, "Please select a target schedule.")
+            else:
+                moved, skipped, errors = 0, 0, []
+                for booking in source_bookings:
+                    try:
+                        services.rebook_booking(booking.pk, target_id, moved_by=request.user.email)
+                        moved += 1
+                    except Exception as e:
+                        skipped += 1
+                        errors.append(f"Booking {booking.pk}: {e}")
+                if moved:
+                    messages.success(request, f"{moved} booking(s) reBooked to new schedule.")
+                if skipped:
+                    messages.warning(request, f"{skipped} failed: " + "; ".join(errors[:3]))
+                if moved:
+                    from django.http import HttpResponseRedirect
+                    return HttpResponseRedirect(
+                        reverse('custom_admin:bulk_rebook') + f'?schedule_id={target_id}'
+                    )
+
+        context = {
+            **self.each_context(request),
+            'title': 'Bulk Rebook Passengers',
+            'source': source,
+            'source_bookings': source_bookings,
+            'upcoming_schedules': upcoming,
+        }
+        return TemplateResponse(request, 'admin/bookings/bulk_rebook.html', context)
+
+    # ------------------------------------------------------------------ #
+    # Operations dashboard — failures, flags, stuck payments
+    # ------------------------------------------------------------------ #
+    def ops_dashboard(self, request):
+        from django.template.response import TemplateResponse
+        now = timezone.now()
+
+        # Failed / stuck payments
+        failed_payments = Payment.objects.filter(
+            payment_status='failed'
+        ).select_related('booking__user', 'booking__schedule__route__departure_port',
+                         'booking__schedule__route__destination_port').order_by('-payment_date')[:30]
+
+        # Pending bookings older than 30 min (stuck in checkout)
+        stale_cutoff = now - timedelta(minutes=30)
+        stale_pending = Booking.objects.filter(
+            status='pending', booking_date__lt=stale_cutoff
+        ).select_related('user', 'schedule__route__departure_port',
+                         'schedule__route__destination_port').order_by('booking_date')[:30]
+
+        # Unaccompanied minors with upcoming departures
+        unaccompanied = Booking.objects.filter(
+            is_unaccompanied_minor=True,
+            status='confirmed',
+            schedule__departure_time__gte=now,
+        ).select_related('user', 'schedule__route__departure_port',
+                         'schedule__route__destination_port').order_by('schedule__departure_time')[:20]
+
+        # Emergency bookings upcoming
+        emergency = Booking.objects.filter(
+            is_emergency=True,
+            status='confirmed',
+            schedule__departure_time__gte=now,
+        ).select_related('user', 'schedule__route__departure_port',
+                         'schedule__route__destination_port').order_by('schedule__departure_time')[:20]
+
+        # Passengers with unverified documents (pending/rejected) on confirmed upcoming bookings
+        from bookings.models import Passenger
+        unverified_docs = Passenger.objects.filter(
+            verification_status__in=['pending', 'rejected'],
+            booking__status='confirmed',
+            booking__schedule__departure_time__gte=now,
+        ).select_related('booking__user', 'booking__schedule__route__departure_port',
+                         'booking__schedule__route__destination_port').order_by(
+            'booking__schedule__departure_time')[:30]
+
+        # Schedules with low seat availability (< 10%) departing in next 48 h
+        capacity_alerts = []
+        for s in Schedule.objects.select_related(
+            'ferry', 'route__departure_port', 'route__destination_port'
+        ).filter(status='scheduled', departure_time__gte=now,
+                 departure_time__lt=now + timedelta(hours=48)):
+            if s.ferry.capacity and s.available_seats / s.ferry.capacity < 0.10:
+                capacity_alerts.append(s)
+
+        # Cancellations in last 24 h with refund amounts
+        cancelled_24h = Booking.objects.filter(
+            status='cancelled',
+            booking_date__gte=now - timedelta(hours=24),
+        ).select_related('user', 'schedule').order_by('-booking_date')[:20]
+
+        context = {
+            **self.each_context(request),
+            'title': 'Operations Dashboard',
+            'failed_payments': failed_payments,
+            'stale_pending': stale_pending,
+            'unaccompanied': unaccompanied,
+            'emergency': emergency,
+            'unverified_docs': unverified_docs,
+            'capacity_alerts': capacity_alerts,
+            'cancelled_24h': cancelled_24h,
+        }
+        return TemplateResponse(request, 'admin/bookings/ops_dashboard.html', context)
+
+    # ------------------------------------------------------------------ #
+    # Manual confirm — staff override for stuck/cash payments
+    # ------------------------------------------------------------------ #
+    def manual_confirm_view(self, request):
+        from bookings import services
+        from django.http import HttpResponseRedirect
+
+        if request.method != 'POST':
+            return HttpResponseRedirect(reverse('custom_admin:ops_dashboard'))
+
+        booking_id = request.POST.get('booking_id', '').strip()
+        reference = request.POST.get('reference', '').strip()
+        if not booking_id:
+            messages.error(request, "No booking ID provided.")
+            return HttpResponseRedirect(reverse('custom_admin:ops_dashboard'))
+
+        try:
+            booking, changed = services.manually_confirm_booking(
+                int(booking_id),
+                confirmed_by=request.user.email,
+                reference=reference,
+            )
+            if changed:
+                messages.success(
+                    request,
+                    f"Booking #{booking_id} manually confirmed. Payment record created (ref: {reference or 'manual'})."
+                )
+            else:
+                messages.info(request, f"Booking #{booking_id} was already confirmed.")
+        except Exception as e:
+            messages.error(request, f"Could not confirm booking #{booking_id}: {e}")
+
+        return HttpResponseRedirect(reverse('custom_admin:ops_dashboard'))
+
     def get_urls(self):
         """Enhanced URL patterns including bulk operations and real-time endpoints."""
         urls = super().get_urls()
         custom_urls = [
+            path('agents/', self.admin_view(self.agent_dashboard), name='agent_dashboard'),
+            path('agents/data/', self.admin_view(self.agent_dashboard_data), name='agent_dashboard_data'),
             path('analytics-data/', self.admin_view(self.analytics_data_view), name='analytics-data'),
             path('widget-data/<str:widget_name>/', self.admin_view(self.get_widget_data), name='widget-data'),
             path('export-bookings/', self.admin_view(self.export_bookings), name='export-bookings'),
@@ -1237,6 +1580,11 @@ class CustomAdminSite(admin.AdminSite):
                  name='enhanced_export'),
             path('<str:app_label>/<str:model_name>/export/', self.admin_view(self.export_changelist),
                  name='export_changelist'),
+            # New operational tools
+            path('manifest/', self.admin_view(self.departure_manifest), name='departure_manifest'),
+            path('bulk-rebook/', self.admin_view(self.bulk_rebook_view), name='bulk_rebook'),
+            path('ops/', self.admin_view(self.ops_dashboard), name='ops_dashboard'),
+            path('manual-confirm/', self.admin_view(self.manual_confirm_view), name='manual_confirm'),
         ]
         return custom_urls + urls
 
@@ -1366,6 +1714,19 @@ class FerryAdmin(EnhancedModelAdmin):
         ('Specifications', {'fields': ('capacity', 'cruise_speed_knots')}),
         ('Status', {'fields': ('is_active',)}),
     )
+    actions = ['activate_ferries', 'deactivate_ferries']
+
+    @admin.action(description="✅ Activate selected ferries")
+    def activate_ferries(self, request, queryset):
+        updated = queryset.update(is_active=True)
+        clear_analytics_cache()
+        self.message_user(request, f"{updated} ferry(ies) activated.", messages.SUCCESS)
+
+    @admin.action(description="🛑 Deactivate selected ferries")
+    def deactivate_ferries(self, request, queryset):
+        updated = queryset.update(is_active=False)
+        clear_analytics_cache()
+        self.message_user(request, f"{updated} ferry(ies) deactivated.", messages.WARNING)
 
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
@@ -1400,6 +1761,15 @@ class WeatherConditionAdmin(EnhancedModelAdmin):
     list_per_page = 25
     ordering = ('-updated_at',)
     list_display_links = ('route', 'port')
+    actions = ['delete_expired']
+
+    @admin.action(description="🗑️ Delete expired weather entries")
+    def delete_expired(self, request, queryset):
+        expired = queryset.filter(expires_at__lt=timezone.now())
+        count = expired.count()
+        expired.delete()
+        clear_analytics_cache()
+        self.message_user(request, f"Deleted {count} expired weather entry(ies).", messages.SUCCESS)
 
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
@@ -1452,14 +1822,11 @@ class ScheduleAdmin(EnhancedModelAdmin):
 
     real_time_status.short_description = "Real-Time Status"
 
-    def save_model(self, request, obj, form, change):
-        super().save_model(request, obj, form, change)
-        clear_analytics_cache()
+    actions = ['mark_scheduled', 'mark_delayed', 'mark_cancelled', 'duplicate_next_day']
 
-        # WebSocket notification for schedule updates
+    def _broadcast_schedule(self, obj):
         if get_channel_layer():
-            channel_layer = get_channel_layer()
-            async_to_sync(channel_layer.group_send)(
+            async_to_sync(get_channel_layer().group_send)(
                 'admin_dashboard',
                 {
                     'type': 'schedule_update',
@@ -1469,6 +1836,53 @@ class ScheduleAdmin(EnhancedModelAdmin):
                     'timestamp': timezone.now().isoformat()
                 }
             )
+
+    def _set_status(self, request, queryset, status, label, level=messages.SUCCESS):
+        count = 0
+        for schedule in queryset:
+            schedule.status = status
+            schedule.save(update_fields=['status', 'last_updated'])
+            self._broadcast_schedule(schedule)
+            count += 1
+        clear_analytics_cache()
+        self.message_user(request, f"{count} schedule(s) marked {label}.", level)
+
+    @admin.action(description="🟢 Mark selected as Scheduled")
+    def mark_scheduled(self, request, queryset):
+        self._set_status(request, queryset, 'scheduled', 'scheduled')
+
+    @admin.action(description="🟠 Mark selected as Delayed")
+    def mark_delayed(self, request, queryset):
+        self._set_status(request, queryset, 'delayed', 'delayed', messages.WARNING)
+
+    @admin.action(description="🔴 Mark selected as Cancelled")
+    def mark_cancelled(self, request, queryset):
+        self._set_status(request, queryset, 'cancelled', 'cancelled', messages.WARNING)
+
+    @admin.action(description="📅 Duplicate for next day (same time)")
+    def duplicate_next_day(self, request, queryset):
+        created = 0
+        for s in queryset:
+            Schedule.objects.create(
+                ferry=s.ferry, route=s.route,
+                departure_time=s.departure_time + timedelta(days=1),
+                arrival_time=s.arrival_time + timedelta(days=1),
+                estimated_duration=s.estimated_duration,
+                available_seats=s.ferry.capacity,
+                status='scheduled',
+                operational_day=s.operational_day + timedelta(days=1),
+                created_by_auto=True,
+            )
+            created += 1
+        clear_analytics_cache()
+        self.message_user(request, f"Created {created} schedule(s) for the next day.", messages.SUCCESS)
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        clear_analytics_cache()
+
+        # WebSocket notification for schedule updates
+        self._broadcast_schedule(obj)
         logger.info("Cache invalidated after Schedule update")
 
 
@@ -1486,11 +1900,15 @@ class BookingAdmin(EnhancedModelAdmin):
     )
     autocomplete_fields = ['user', 'schedule']
     date_hierarchy = 'booking_date'
-    list_editable = ('status',)
+    # Status is intentionally NOT list-editable and is read-only on the form:
+    # changing a booking's status must go through the Confirm/Cancel actions so
+    # the service layer can release seats, issue refunds, update tickets, and
+    # reject illegal transitions. Free-form status edits would silently break
+    # seat inventory and could oversell.
     list_per_page = 25
     ordering = ('-booking_date',)
     list_display_links = ('id', 'user_email')
-    readonly_fields = ('total_price', 'booking_date')
+    readonly_fields = ('total_price', 'booking_date', 'status')
 
     # INLINES — CARGO INLINE ADDED
     inlines = [PassengerInline, VehicleInline, CargoInline, AddOnInline]
@@ -1510,9 +1928,26 @@ class BookingAdmin(EnhancedModelAdmin):
     )
 
     actions = [
-        'reschedule_bookings', 'cancel_bookings',
-        'export_bookings', 'mark_tickets_used', 'mark_tickets_unused'
+        'confirm_bookings', 'cancel_bookings',
+        'action_manual_confirm', 'export_bookings',
+        'mark_tickets_used', 'mark_tickets_unused',
     ]
+
+    @admin.action(description="✅ Confirm selected bookings")
+    def confirm_bookings(self, request, queryset):
+        from bookings import services
+        confirmed, skipped = 0, 0
+        for booking in queryset:
+            try:
+                services.transition_booking(booking, services.BookingStatus.CONFIRMED)
+                confirmed += 1
+            except services.InvalidTransition:
+                skipped += 1
+        clear_analytics_cache()
+        msg = f"{confirmed} booking(s) confirmed."
+        if skipped:
+            msg += f" {skipped} skipped (already cancelled/invalid)."
+        self.message_user(request, msg, messages.SUCCESS if confirmed else messages.WARNING)
 
     def changelist_view(self, request, extra_context=None):
         """Override to add WebSocket context"""
@@ -1540,47 +1975,85 @@ class BookingAdmin(EnhancedModelAdmin):
 
     user_email.short_description = 'User/Guest Email'
 
+    # === DELETE GUARDS: release seats so deleting an active booking never
+    # leaks ferry inventory (a deleted confirmed/pending booking would
+    # otherwise keep its seats reserved forever). ===
+    def _release_if_active(self, booking):
+        from bookings import services
+        if booking.status in (services.BookingStatus.PENDING, services.BookingStatus.CONFIRMED):
+            services.release_seats(booking.schedule_id, services.passenger_count(booking))
+
+    def delete_model(self, request, obj):
+        self._release_if_active(obj)
+        super().delete_model(request, obj)
+        clear_analytics_cache()
+
+    def delete_queryset(self, request, queryset):
+        for booking in queryset:
+            self._release_if_active(booking)
+        super().delete_queryset(request, queryset)
+        clear_analytics_cache()
+
     # === ACTIONS ===
 
-    def reschedule_bookings(self, request, queryset):
-        count = queryset.update(status='pending_reschedule')
-        self.message_user(request, f"{count} bookings marked for rescheduling.")
-        clear_analytics_cache()
-
-        if get_channel_layer():
-            channel_layer = get_channel_layer()
-            async_to_sync(channel_layer.group_send)(
-                'admin_dashboard',
-                {
-                    'type': 'booking_update',
-                    'count': count,
-                    'action': 'rescheduled',
-                    'timestamp': timezone.now().isoformat()
-                }
-            )
-        logger.info(f"Cache invalidated after rescheduling {count} bookings")
-
-    reschedule_bookings.short_description = "Mark for rescheduling"
-
     def cancel_bookings(self, request, queryset):
-        count = queryset.update(status='canceled')
-        self.message_user(request, f"{count} bookings canceled.")
-        clear_analytics_cache()
+        """Cancel via the service layer: releases seats, refunds (if paid),
+        cancels tickets, and sets the correct 'cancelled' status. Idempotent."""
+        from bookings import services
+        cancelled, already, errors = 0, 0, 0
+        for booking in queryset:
+            try:
+                _b, changed = services.cancel_booking(booking.pk, do_refund=True)
+                if changed:
+                    cancelled += 1
+                else:
+                    already += 1
+            except Exception as e:
+                errors += 1
+                logger.error(f"Admin cancel failed for booking {booking.pk}: {e}")
 
+        clear_analytics_cache()
         if get_channel_layer():
-            channel_layer = get_channel_layer()
-            async_to_sync(channel_layer.group_send)(
+            async_to_sync(get_channel_layer().group_send)(
                 'admin_dashboard',
                 {
                     'type': 'booking_update',
-                    'count': count,
-                    'action': 'canceled',
+                    'count': cancelled,
+                    'action': 'cancelled',
                     'timestamp': timezone.now().isoformat()
                 }
             )
-        logger.info(f"Cache invalidated after canceling {count} bookings")
+        msg = f"{cancelled} booking(s) cancelled (seats released, refunds issued where applicable)."
+        if already:
+            msg += f" {already} were already cancelled."
+        if errors:
+            msg += f" {errors} failed — see logs."
+        self.message_user(request, msg, messages.WARNING if errors else messages.SUCCESS)
+        logger.info(f"Admin cancelled {cancelled} bookings ({already} no-op, {errors} errors)")
 
-    cancel_bookings.short_description = "Cancel selected bookings"
+    cancel_bookings.short_description = "🔴 Cancel selected bookings (refund + release seats)"
+
+    @admin.action(description="💵 Manually confirm (cash / offline payment)")
+    def action_manual_confirm(self, request, queryset):
+        from bookings import services
+        confirmed, skipped, errors = 0, 0, []
+        for booking in queryset:
+            try:
+                _, changed = services.manually_confirm_booking(
+                    booking.pk, confirmed_by=request.user.email, reference='admin-manual'
+                )
+                if changed:
+                    confirmed += 1
+                else:
+                    skipped += 1
+            except Exception as e:
+                errors.append(str(e))
+        msg = f"{confirmed} booking(s) confirmed."
+        if skipped:
+            msg += f" {skipped} already confirmed."
+        if errors:
+            msg += f" Errors: {'; '.join(errors[:3])}"
+        self.message_user(request, msg, messages.SUCCESS if confirmed else messages.WARNING)
 
     def mark_tickets_used(self, request, queryset):
         count = 0
@@ -1715,6 +2188,22 @@ class PassengerAdmin(EnhancedModelAdmin):
     list_display_links = ('booking', 'first_name')
     list_select_related = ('booking', 'linked_adult')
     empty_value_display = '—'
+    actions = ['verify_documents', 'reject_documents', 'reset_verification']
+
+    @admin.action(description="✅ Mark documents Verified")
+    def verify_documents(self, request, queryset):
+        updated = queryset.update(verification_status='verified')
+        self.message_user(request, f"{updated} passenger(s) marked verified.", messages.SUCCESS)
+
+    @admin.action(description="❌ Mark documents Rejected")
+    def reject_documents(self, request, queryset):
+        updated = queryset.update(verification_status='rejected')
+        self.message_user(request, f"{updated} passenger(s) marked rejected.", messages.WARNING)
+
+    @admin.action(description="↩️ Reset verification to Pending")
+    def reset_verification(self, request, queryset):
+        updated = queryset.update(verification_status='pending')
+        self.message_user(request, f"{updated} passenger(s) reset to pending.", messages.INFO)
 
     fieldsets = (
         ('General Info', {
@@ -1819,6 +2308,30 @@ class PaymentAdmin(EnhancedModelAdmin):
         ('General Info', {'fields': ('booking', 'payment_method')}),
         ('Details', {'fields': ('amount', 'payment_status', 'payment_date', 'transaction_id', 'session_id')}),
     )
+    actions = ['mark_completed', 'mark_refunded', 'mark_failed']
+
+    @admin.action(description="✅ Mark payment Completed")
+    def mark_completed(self, request, queryset):
+        updated = queryset.update(payment_status='completed')
+        clear_analytics_cache()
+        self.message_user(request, f"{updated} payment(s) marked completed.", messages.SUCCESS)
+
+    @admin.action(description="💸 Mark payment Refunded (record only)")
+    def mark_refunded(self, request, queryset):
+        updated = queryset.update(payment_status='refunded')
+        clear_analytics_cache()
+        self.message_user(
+            request,
+            f"{updated} payment(s) marked refunded. Note: this only updates the record — "
+            "use the booking Cancel action to issue an actual Stripe refund.",
+            messages.WARNING,
+        )
+
+    @admin.action(description="⚠️ Mark payment Failed")
+    def mark_failed(self, request, queryset):
+        updated = queryset.update(payment_status='failed')
+        clear_analytics_cache()
+        self.message_user(request, f"{updated} payment(s) marked failed.", messages.WARNING)
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('booking')
@@ -1968,6 +2481,33 @@ class MaintenanceLogAdmin(EnhancedModelAdmin):
         ('General Info', {'fields': ('ferry', 'maintenance_date')}),
         ('Details', {'fields': ('completed_at', 'maintenance_interval_days')}),
     )
+    actions = ['mark_completed', 'reopen_maintenance']
+
+    @admin.action(description="✅ Mark maintenance Completed (restores schedules)")
+    def mark_completed(self, request, queryset):
+        # Save individually so the post_save signal restores the ferry's
+        # delayed schedules (bulk update would skip the signal).
+        count = 0
+        for log in queryset.filter(completed_at__isnull=True):
+            log.completed_at = timezone.now()
+            log.save(update_fields=['completed_at'])
+            count += 1
+        self.message_user(
+            request, f"{count} maintenance log(s) completed; affected schedules restored.",
+            messages.SUCCESS,
+        )
+
+    @admin.action(description="🔧 Reopen maintenance (delays upcoming schedules)")
+    def reopen_maintenance(self, request, queryset):
+        count = 0
+        for log in queryset.exclude(completed_at__isnull=True):
+            log.completed_at = None
+            log.save(update_fields=['completed_at'])
+            count += 1
+        self.message_user(
+            request, f"{count} maintenance log(s) reopened; upcoming schedules delayed.",
+            messages.WARNING,
+        )
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('ferry')

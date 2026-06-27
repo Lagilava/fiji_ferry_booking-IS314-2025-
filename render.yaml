@@ -1,0 +1,55 @@
+# Render Blueprint — provisions the whole stack from this repo.
+# Push to GitHub, then in Render: New + > Blueprint > pick this repo.
+# https://render.com/docs/blueprint-spec
+services:
+  # ---- Web (Django + Channels over Daphne/ASGI, serves HTTP + WebSockets) ----
+  - type: web
+    name: fiji-ferry-web
+    runtime: python
+    plan: free            # free tier sleeps when idle; upgrade to "starter" to stay awake
+    buildCommand: "./build.sh"
+    startCommand: "daphne -b 0.0.0.0 -p $PORT ferry_system.asgi:application"
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.6"
+      - key: SECRET_KEY
+        generateValue: true        # Render generates a strong secret
+      - key: DEBUG
+        value: "False"
+      - key: WEB_CONCURRENCY
+        value: "2"
+      # No Celery worker on free tier — avoid queuing tasks nothing will run.
+      - key: ADMIN_BACKGROUND_TASKS
+        value: "False"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: fiji-ferry-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: fiji-ferry-redis
+          property: connectionString
+      # ALLOWED_HOSTS / CSRF are auto-filled from RENDER_EXTERNAL_HOSTNAME,
+      # but set your custom domain here if you add one:
+      # - key: ALLOWED_HOSTS
+      #   value: "fijiferry.com,www.fijiferry.com"
+
+  # NOTE: Celery worker/beat are intentionally omitted to stay 100% free-tier
+  # (Render background workers require a paid plan). Scheduled upkeep is handled
+  # in-process: ScheduleUpdateMiddleware updates statuses per request and
+  # schedules are auto-seeded at startup. Add worker services later to run the
+  # full Celery beat schedule.
+
+  # ---- Redis (Render "Key Value"): channels layer + cache ----
+  - type: keyvalue
+    name: fiji-ferry-redis
+    plan: free
+    ipAllowList: []      # only reachable from within Render's network
+    maxmemoryPolicy: noeviction
+
+databases:
+  - name: fiji-ferry-db
+    databaseName: fiji_ferry
+    plan: free           # free Postgres expires after ~90 days; upgrade to keep

@@ -1,6 +1,6 @@
 from django import forms
 from django.contrib import messages
-from django.contrib.auth import authenticate, login as auth_login, get_user_model
+from django.contrib.auth import authenticate, login as auth_login, update_session_auth_hash, get_user_model
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import UserCreationForm
 from django.shortcuts import render, redirect, get_object_or_404
@@ -11,6 +11,7 @@ from django.conf import settings
 
 from bookings.models import Schedule, Booking
 from .models import User
+from .forms import ProfileUpdateForm, PasswordChangeForm
 
 
 # -----------------------------
@@ -19,13 +20,21 @@ from .models import User
 class CustomUserCreationForm(UserCreationForm):
     class Meta:
         model = User
-        fields = ['username', 'email', 'password1', 'password2']
+        fields = ['first_name', 'last_name', 'username', 'email', 'password1', 'password2']
         widgets = {
+            'first_name': forms.TextInput(attrs={'placeholder': ' '}),
+            'last_name': forms.TextInput(attrs={'placeholder': ' '}),
             'username': forms.TextInput(attrs={'placeholder': ' '}),
             'email': forms.EmailInput(attrs={'placeholder': ' '}),
             'password1': forms.PasswordInput(attrs={'placeholder': ' '}),
             'password2': forms.PasswordInput(attrs={'placeholder': ' '}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # First/last name are optional on the model; encourage them at signup.
+        self.fields['first_name'].required = True
+        self.fields['last_name'].required = True
 
 
 class RegisterView(View):
@@ -182,3 +191,51 @@ def cancel_booking(request, booking_id):
         booking.save()
         messages.success(request, f'Booking #{booking.id} has been cancelled.')
     return redirect('bookings:booking_history')
+
+
+@login_required
+def profile_settings(request):
+    profile_form = ProfileUpdateForm(instance=request.user)
+    password_form = PasswordChangeForm(user=request.user)
+    active_tab = 'profile'
+
+    if request.method == 'POST':
+        form_type = request.POST.get('form_type')
+
+        if form_type == 'profile':
+            active_tab = 'profile'
+            profile_form = ProfileUpdateForm(request.POST, instance=request.user)
+            if profile_form.is_valid():
+                profile_form.save()
+                messages.success(request, 'Profile updated successfully.')
+                return redirect('accounts:profile')
+            else:
+                messages.error(request, 'Please correct the errors below.')
+
+        elif form_type == 'password':
+            active_tab = 'security'
+            password_form = PasswordChangeForm(user=request.user, data=request.POST)
+            if password_form.is_valid():
+                password_form.save()
+                update_session_auth_hash(request, password_form.user)
+                messages.success(request, 'Password changed successfully.')
+                return redirect('accounts:profile')
+            else:
+                messages.error(request, 'Please correct the errors below.')
+
+    recent_bookings = (
+        Booking.objects.filter(user=request.user)
+        .select_related('schedule__route', 'schedule__ferry')
+        .order_by('-booking_date')[:5]
+    )
+    total_bookings = Booking.objects.filter(user=request.user).count()
+    confirmed_bookings = Booking.objects.filter(user=request.user, status='confirmed').count()
+
+    return render(request, 'accounts/profile.html', {
+        'profile_form': profile_form,
+        'password_form': password_form,
+        'active_tab': active_tab,
+        'recent_bookings': recent_bookings,
+        'total_bookings': total_bookings,
+        'confirmed_bookings': confirmed_bookings,
+    })

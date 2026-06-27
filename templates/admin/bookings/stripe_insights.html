@@ -1,0 +1,162 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}Stripe & Payment Insights — {{ site_header }}{% endblock %}
+
+{% block extrahead %}
+<style>
+.si-intro { color: #6b7280; font-size: .875rem; margin-bottom: 1.5rem; }
+.si-error { background: #fee2e2; border: 1px solid #ef4444; border-radius: 10px; padding: .75rem 1rem; font-size: .83rem; color: #991b1b; font-weight: 600; margin-bottom: 1.25rem; }
+.si-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.75rem; }
+.si-kpi { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 1rem 1.25rem; }
+.si-kpi__val { font-size: 1.6rem; font-weight: 800; color: #0f172a; }
+.si-kpi__lbl { font-size: .72rem; text-transform: uppercase; letter-spacing: .5px; color: #6b7280; margin-top: .2rem; }
+.si-kpi--green .si-kpi__val { color: #059669; }
+.si-kpi--red   .si-kpi__val { color: #dc2626; }
+.si-kpi--amber .si-kpi__val { color: #d97706; }
+.section-title { font-size: .95rem; font-weight: 700; margin: 1.5rem 0 .75rem; color: #374151; border-bottom: 2px solid #f3f4f6; padding-bottom: .4rem; }
+.si-table { width: 100%; border-collapse: collapse; font-size: .82rem; margin-bottom: 1.75rem; }
+.si-table th { background: #f8fafc; font-weight: 700; text-align: left; padding: .5rem .85rem; border-bottom: 2px solid #e5e7eb; white-space: nowrap; }
+.si-table td { padding: .5rem .85rem; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+.si-table tr:hover td { background: #f8fafc; }
+.st-tag { display: inline-block; padding: .15rem .55rem; border-radius: 999px; font-size: .72rem; font-weight: 700; }
+.st-succeeded { background: #d1fae5; color: #065f46; }
+.st-failed    { background: #fee2e2; color: #991b1b; }
+.st-pending   { background: #fef3c7; color: #92400e; }
+.st-refunded  { background: #ede9fe; color: #5b21b6; }
+.dispute-row td { background: #fef2f2; }
+.summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: .75rem; margin-bottom: 1.75rem; }
+.summary-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: .75rem 1rem; }
+.summary-card__label { font-size: .72rem; color: #6b7280; text-transform: uppercase; letter-spacing: .4px; }
+.summary-card__count { font-size: 1.4rem; font-weight: 800; color: #0f172a; }
+.summary-card__total { font-size: .8rem; color: #6b7280; }
+.si-empty { color: #9ca3af; text-align: center; padding: 1.5rem; font-size: .85rem; }
+.stripe-note { font-size: .75rem; color: #9ca3af; margin-top: -.5rem; margin-bottom: 1.5rem; }
+a.receipt-link { font-size: .75rem; color: #2563eb; }
+.si-confirm-btn { border: none; cursor: pointer; }
+.si-inline-form { display: inline; }
+.si-id-code { font-size: .72rem; }
+.si-no-disputes { color: #059669; font-size: .85rem; font-weight: 600; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="content-main" class="tool-page">
+  {% include "admin/_tool_header.html" with icon="💳" subtitle="Live overview of Stripe transactions, disputes, and local payment records." %}
+  {% if stripe_error %}<div class="si-error">⚠️ Stripe API error: {{ stripe_error }}. Local payment data still shown below.</div>{% endif %}
+
+  {# ── KPI row ─────────────────────────────────────────── #}
+  <div class="si-kpi-grid">
+    <div class="si-kpi si-kpi--green">
+      <div class="si-kpi__val">FJ${{ total_revenue|floatformat:2 }}</div>
+      <div class="si-kpi__lbl">Total Revenue (confirmed)</div>
+    </div>
+    <div class="si-kpi si-kpi--red">
+      <div class="si-kpi__val">FJ${{ total_refunded|floatformat:2 }}</div>
+      <div class="si-kpi__lbl">Total Refunded</div>
+    </div>
+    <div class="si-kpi si-kpi--amber">
+      <div class="si-kpi__val">{{ disputes|length }}</div>
+      <div class="si-kpi__lbl">Open Disputes</div>
+    </div>
+    <div class="si-kpi">
+      <div class="si-kpi__val">{{ recent_charges|length }}</div>
+      <div class="si-kpi__lbl">Recent Stripe Charges</div>
+    </div>
+  </div>
+
+  {# ── Local payment status summary ────────────────────── #}
+  <h2 class="section-title">📊 Local Payment Status Summary</h2>
+  {% if payment_summary %}
+  <div class="summary-grid">
+    {% for row in payment_summary %}
+    <div class="summary-card">
+      <div class="summary-card__label">{{ row.payment_status|title }}</div>
+      <div class="summary-card__count">{{ row.count }}</div>
+      <div class="summary-card__total">FJ${{ row.total|default:0|floatformat:2 }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+    <p class="si-empty">No local payment records.</p>
+  {% endif %}
+
+  {# ── Failed local payments ────────────────────────────── #}
+  {% if failed_payments %}
+  <h2 class="section-title">❌ Failed Payments — Action Required</h2>
+  <table class="si-table">
+    <thead>
+      <tr><th>Booking</th><th>Customer</th><th>Method</th><th>Amount</th><th>Date</th><th>Action</th></tr>
+    </thead>
+    <tbody>
+    {% for p in failed_payments %}
+    <tr>
+      <td><a href="{% url 'custom_admin:bookings_booking_change' p.booking_id %}">#{{ p.booking_id }}</a></td>
+      <td>{{ p.booking.user.email|default:"Guest" }}</td>
+      <td>{{ p.payment_method|title }}</td>
+      <td>FJ${{ p.amount|floatformat:2 }}</td>
+      <td>{{ p.payment_date|date:"M d, H:i" }}</td>
+      <td>
+        <form method="post" action="{% url 'custom_admin:manual_confirm' %}" class="si-inline-form">
+          {% csrf_token %}
+          <input type="hidden" name="booking_id" value="{{ p.booking_id }}">
+          <input type="hidden" name="reference" value="manual-retry">
+          <button type="submit" class="st-tag st-succeeded si-confirm-btn">✓ Confirm</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {# ── Stripe recent charges ───────────────────────────── #}
+  {% if recent_charges %}
+  <h2 class="section-title">⚡ Recent Stripe Charges</h2>
+  <p class="stripe-note">Last 25 charges. Cached 5 minutes.</p>
+  <table class="si-table">
+    <thead>
+      <tr><th>ID</th><th>Description</th><th>Amount</th><th>Status</th><th>Date</th><th>Receipt</th></tr>
+    </thead>
+    <tbody>
+    {% for c in recent_charges %}
+    <tr>
+      <td><code class="si-id-code">{{ c.id|slice:":16" }}…</code></td>
+      <td>{{ c.description }}</td>
+      <td>{{ c.currency }} {{ c.amount|floatformat:2 }}{% if c.refunded %} <span class="st-tag st-refunded">–{{ c.amount_refunded|floatformat:2 }} refunded</span>{% endif %}</td>
+      <td><span class="st-tag st-{{ c.status }}">{{ c.status|title }}</span></td>
+      <td>{{ c.created }}</td>
+      <td>{% if c.receipt_url %}<a href="{{ c.receipt_url }}" target="_blank" rel="noopener" class="receipt-link">View ↗</a>{% else %}—{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% elif not stripe_error %}
+    <p class="si-empty">No recent Stripe charges found.</p>
+  {% endif %}
+
+  {# ── Disputes ────────────────────────────────────────── #}
+  {% if disputes %}
+  <h2 class="section-title">⚠️ Open Stripe Disputes</h2>
+  <table class="si-table">
+    <thead>
+      <tr><th>ID</th><th>Amount</th><th>Reason</th><th>Status</th><th>Created</th></tr>
+    </thead>
+    <tbody>
+    {% for d in disputes %}
+    <tr class="dispute-row">
+      <td><code class="si-id-code">{{ d.id|slice:":20" }}…</code></td>
+      <td>{{ d.currency }} {{ d.amount|floatformat:2 }}</td>
+      <td>{{ d.reason }}</td>
+      <td><span class="st-tag st-failed">{{ d.status|title }}</span></td>
+      <td>{{ d.created }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% elif not stripe_error %}
+    <p class="si-no-disputes">✅ No open disputes.</p>
+  {% endif %}
+
+</div>
+{% endblock %}

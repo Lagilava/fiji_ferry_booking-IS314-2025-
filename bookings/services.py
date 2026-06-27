@@ -151,6 +151,59 @@ def confirm_paid_booking(booking_id, *, session_id, payment_intent_id, amount):
 
 
 # --------------------------------------------------------------------------- #
+# Mock / local payment confirmation  (idempotent)
+# --------------------------------------------------------------------------- #
+# Fiji-local payment rails offered as genuine-looking mock gateways. These do not
+# move real money; they confirm the booking exactly like Stripe does (same state
+# machine, same idempotency guarantees) so the rest of the system is unaffected.
+MOCK_PAYMENT_PROVIDERS = {
+    'anz':    'ANZ Fiji',
+    'bsp':    'BSP',
+    'mpaisa': 'Vodafone M-PAiSA',
+    'mycash': 'Digicel MyCash',
+    'card':   'Card',
+}
+
+
+@transaction.atomic
+def confirm_mock_payment(booking_id, *, provider, reference, amount):
+    """Confirm a booking paid through a mock Fiji-local gateway. Idempotent.
+
+    Mirrors ``confirm_paid_booking`` but for non-Stripe rails: a ``local`` Payment
+    row keyed on the unique (booking, session_id=reference) pair, the booking row
+    locked for the transition. Safe to call repeatedly (e.g. a refreshed return
+    page) — the second call is a no-op once the booking is confirmed.
+    """
+    if provider not in MOCK_PAYMENT_PROVIDERS:
+        raise ValueError(f"Unknown mock payment provider {provider!r}")
+
+    booking = Booking.objects.select_for_update().get(pk=booking_id)
+
+    payment, _created = Payment.objects.get_or_create(
+        booking=booking,
+        session_id=reference,
+        defaults={
+            'payment_method': 'local',
+            'amount': amount,
+            'payment_status': PaymentStatus.PENDING,
+        },
+    )
+    payment.transaction_id = reference
+    payment.amount = amount
+    payment.payment_status = PaymentStatus.COMPLETED
+    payment.save()
+
+    # Store the reference on the booking so the success page can resolve it the
+    # same way it resolves a Stripe session id (the ``mock_`` prefix flags it).
+    booking.stripe_session_id = reference
+    if booking.status != BookingStatus.CONFIRMED:
+        transition_booking(booking, BookingStatus.CONFIRMED, extra_fields=['stripe_session_id'])
+    else:
+        booking.save(update_fields=['stripe_session_id'])
+    return booking
+
+
+# --------------------------------------------------------------------------- #
 # Cancellation + refund  (idempotent, atomic)
 # --------------------------------------------------------------------------- #
 @transaction.atomic
@@ -187,6 +240,71 @@ def cancel_booking(booking_id, *, do_refund=True):
     transition_booking(booking, BookingStatus.CANCELLED)
 
     booking.tickets.update(ticket_status='cancelled')
+    return booking, True
+
+
+# --------------------------------------------------------------------------- #
+# Rebook — move all confirmed passengers to a different schedule
+# --------------------------------------------------------------------------- #
+@transaction.atomic
+def rebook_booking(booking_id, new_schedule_id, *, moved_by=None):
+    """Move a confirmed booking to new_schedule, releasing the old seat hold.
+
+    Returns (booking, old_schedule_id). Raises ValueError if the new schedule
+    has insufficient seats or the booking is not confirmed/pending.
+    """
+    booking = Booking.objects.select_for_update().get(pk=booking_id)
+    if booking.status == BookingStatus.CANCELLED:
+        raise ValueError("Cannot rebook a cancelled booking.")
+
+    seats = passenger_count(booking)
+    new_schedule = Schedule.objects.select_for_update().get(pk=new_schedule_id)
+    if new_schedule.available_seats < seats:
+        raise ValueError(
+            f"New schedule only has {new_schedule.available_seats} seat(s); booking needs {seats}."
+        )
+
+    old_schedule_id = booking.schedule_id
+
+    # Release from old, reserve on new
+    release_seats(old_schedule_id, seats)
+    new_schedule.available_seats = F('available_seats') - seats
+    new_schedule.save(update_fields=['available_seats'])
+
+    booking.schedule = new_schedule
+    booking.save(update_fields=['schedule'])
+
+    logger.info(
+        "Booking %s reBooked: schedule %s → %s by %s",
+        booking_id, old_schedule_id, new_schedule_id, moved_by or 'system',
+    )
+    return booking, old_schedule_id
+
+
+# --------------------------------------------------------------------------- #
+# Manual payment confirmation (staff override for stuck bookings)
+# --------------------------------------------------------------------------- #
+@transaction.atomic
+def manually_confirm_booking(booking_id, *, confirmed_by, reference=''):
+    """Confirm a pending booking without a Stripe payment (staff override).
+
+    Creates a local payment record so the audit trail is complete.
+    """
+    booking = Booking.objects.select_for_update().get(pk=booking_id)
+    if booking.status == BookingStatus.CONFIRMED:
+        return booking, False  # already confirmed
+    if booking.status == BookingStatus.CANCELLED:
+        raise ValueError("Cannot confirm a cancelled booking.")
+
+    Payment.objects.create(
+        booking=booking,
+        payment_method='local',
+        amount=booking.total_price,
+        payment_status=PaymentStatus.COMPLETED,
+        transaction_id=reference or f'manual-{booking_id}',
+    )
+    transition_booking(booking, BookingStatus.CONFIRMED)
+    logger.info("Booking %s manually confirmed by %s (ref=%s)", booking_id, confirmed_by, reference)
     return booking, True
 
 
