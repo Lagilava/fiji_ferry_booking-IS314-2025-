@@ -69,37 +69,28 @@ def calculate_passenger_price(adults, children, infants, schedule):
     )
 
 
-def calculate_vehicle_price(vehicle_type, dimensions):
+def calculate_vehicle_price(vehicle_type):
     try:
-        # Example pricing logic based on vehicle type and dimensions
         base_price = Decimal('50.00')  # Base price for vehicles
         type_multiplier = {
             'car': Decimal('1.0'),
             'sedan': Decimal('1.0'),
             'truck': Decimal('1.5'),
             'van': Decimal('1.5'),
-            'motorcycle': Decimal('0.5')
+            'motorcycle': Decimal('0.5'),
+            'bicycle': Decimal('0.3'),
         }
-        multiplier = type_multiplier.get(vehicle_type.lower(), Decimal('1.0'))
-
-        # Optional: Adjust price based on dimensions (e.g., LxWxH in cm)
-        if dimensions and re.match(r'^\d+x\d+x\d+$', dimensions):
-            length, width, height = map(int, dimensions.split('x'))
-            volume = length * width * height / 1_000_000  # Convert to cubic meters
-            volume_surcharge = Decimal(volume) * Decimal('10.00')  # $10 per cubic meter
-        else:
-            volume_surcharge = Decimal('0.00')
-
-        return base_price * multiplier + volume_surcharge
+        multiplier = type_multiplier.get((vehicle_type or '').lower(), Decimal('1.0'))
+        return base_price * multiplier
     except (ValueError, TypeError) as e:
-        logger.error(f"Invalid vehicle data: vehicle_type={vehicle_type}, dimensions={dimensions}, error={str(e)}")
-        raise ValueError("Invalid vehicle type or dimensions")
+        logger.error(f"Invalid vehicle data: vehicle_type={vehicle_type}, error={str(e)}")
+        raise ValueError("Invalid vehicle type")
 
 
 def calculate_total_price(adults, children, infants, schedule, add_cargo, cargo_type, weight_kg, addons,
-                          add_vehicle=False, vehicle_type=None, vehicle_dimensions=None):
+                          add_vehicle=False, vehicle_type=None):
     passenger_price = calculate_passenger_price(adults, children, infants, schedule)
     cargo_price = calculate_cargo_price(weight_kg, cargo_type) if add_cargo and cargo_type and weight_kg else Decimal('0.00')
-    vehicle_price = calculate_vehicle_price(vehicle_type, vehicle_dimensions) if add_vehicle and vehicle_type and vehicle_dimensions else Decimal('0.00')
+    vehicle_price = calculate_vehicle_price(vehicle_type) if add_vehicle and vehicle_type else Decimal('0.00')
     addon_price = sum(calculate_addon_price(addon['type'], addon['quantity']) for addon in addons)
     return passenger_price + cargo_price + vehicle_price + addon_price

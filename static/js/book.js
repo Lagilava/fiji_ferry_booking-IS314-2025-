@@ -257,14 +257,12 @@
   const addVehicleCheckbox = $('#add_vehicle');
   const vehicleFields = $('#vehicle-fields');
   const vehicleType = $('#vehicle_type');
-  const vehicleDimensions = $('#vehicle_dimensions');
   const vehicleLicense = $('#vehicle_license_plate');
 
   const addCargoCheckbox = $('#add_cargo');
   const cargoFields = $('#cargo-fields');
   const cargoType = $('#cargo_type');
   const cargoWeight = $('#cargo_weight_kg');
-  const cargoDims = $('#cargo_dimensions_cm');
   const cargoLicense = $('#cargo_license_plate');
 
   const summaryBox = $('#booking-summary');
@@ -1023,11 +1021,9 @@
       fd.set('add_vehicle', onV ? 'on' : '');
       if (onV) {
         fd.set('vehicle_type', mapVehicleTypeForBackend(vehicleType?.value || ''));
-        fd.set('vehicle_dimensions', (vehicleDimensions?.value || '').trim());
         fd.set('vehicle_license_plate', (vehicleLicense?.value || '').trim());
       } else {
         fd.delete('vehicle_type');
-        fd.delete('vehicle_dimensions');
         fd.delete('vehicle_license_plate');
       }
     }
@@ -1037,12 +1033,10 @@
       if (onC) {
         fd.set('cargo_type', mapCargoTypeForBackend(cargoType?.value || ''));
         fd.set('cargo_weight_kg', (cargoWeight?.value || '').trim());
-        fd.set('cargo_dimensions_cm', (cargoDims?.value || '').trim());
         fd.set('cargo_license_plate', (cargoLicense?.value || '').trim());
       } else {
         fd.delete('cargo_type');
         fd.delete('cargo_weight_kg');
-        fd.delete('cargo_dimensions_cm');
         fd.delete('cargo_license_plate');
       }
     }
@@ -1261,7 +1255,6 @@
           <div class="ffb-meta-grid">
             <div class="ffb-row"><span class="ffb-label">Type</span><span>${vehicleType?.options[vehicleType.selectedIndex]?.text || '—'}</span></div>
             <div class="ffb-row"><span class="ffb-label">License</span><span>${vehicleLicense?.value?.trim() || '—'}</span></div>
-            <div class="ffb-row"><span class="ffb-label">Dimensions</span><span>${vehicleDimensions?.value?.trim() || '—'}</span></div>
           </div>
         </div>` : '';
 
@@ -1271,7 +1264,6 @@
           <div class="ffb-meta-grid">
             <div class="ffb-row"><span class="ffb-label">Type</span><span>${cargoType?.options[cargoType.selectedIndex]?.text || '—'}</span></div>
             <div class="ffb-row"><span class="ffb-label">Weight</span><span>${cargoWeight?.value?.trim() || '—'} kg</span></div>
-            <div class="ffb-row"><span class="ffb-label">Dimensions</span><span>${cargoDims?.value?.trim() || '—'}</span></div>
             <div class="ffb-row"><span class="ffb-label">License</span><span>${cargoLicense?.value?.trim() || '—'}</span></div>
           </div>
         </div>` : '';

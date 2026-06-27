@@ -868,16 +868,12 @@ def validate_step(request):
 
         if add_vehicle:
             vehicle_type = (request.POST.get('vehicle_type') or '').strip()
-            vehicle_dimensions = (request.POST.get('vehicle_dimensions') or '').strip()
             if not vehicle_type:
                 errors.append({'field': 'vehicle_type', 'message': 'Vehicle type is required.'})
-            if not re.match(r'^\d+x\d+x\d+$', vehicle_dimensions or ''):
-                errors.append({'field': 'vehicle_dimensions', 'message': 'Vehicle dimensions must be in format LxWxH (e.g., 400x180x150).'})
 
         if add_cargo:
             cargo_type = (request.POST.get('cargo_type') or '').strip()
             cargo_weight = (request.POST.get('cargo_weight_kg') or '').strip()
-            cargo_dimensions = (request.POST.get('cargo_dimensions_cm') or '').strip()
             if not cargo_type:
                 errors.append({'field': 'cargo_type', 'message': 'Cargo type is required.'})
             try:
@@ -886,8 +882,6 @@ def validate_step(request):
                     errors.append({'field': 'cargo_weight_kg', 'message': 'Cargo weight must be a positive number.'})
             except ValueError:
                 errors.append({'field': 'cargo_weight_kg', 'message': 'Cargo weight must be a valid number.'})
-            if not re.match(r'^\d+x\d+x\d+$', cargo_dimensions or ''):
-                errors.append({'field': 'cargo_dimensions_cm', 'message': 'Cargo dimensions must be in format LxWxH (e.g., 400x180x150).'})
 
         return _resp(len(errors) == 0)
 
@@ -958,15 +952,12 @@ def _assemble_booking(request):
     cargo_type = request.POST.get('cargo_type', '')
     weight_kg = safe_float(request.POST.get('cargo_weight_kg', 0))
     cargo_license_plate = request.POST.get('cargo_license_plate', '')
-    cargo_dimensions = request.POST.get('cargo_dimensions_cm', '') if add_cargo else ''
-
     add_vehicle = request.POST.get('add_vehicle') in ['true', 'on']
     vehicle_type = request.POST.get('vehicle_type', '')
-    vehicle_dimensions = request.POST.get('vehicle_dimensions', '')
     vehicle_license_plate = request.POST.get('vehicle_license_plate', '').strip()
 
-    # License plate is mandatory for vehicles (crew identification). Dimensions
-    # are optional. Validate before reserving seats so we fail fast.
+    # License plate is mandatory for vehicles (crew identification).
+    # Validate before reserving seats so we fail fast.
     if add_vehicle:
         if not vehicle_type:
             raise BookingError('vehicle_type', 'Vehicle type is required')
@@ -1004,7 +995,7 @@ def _assemble_booking(request):
         # --- Calculate total price ---
         total_price = calculate_total_price(
             adults, children, infants, schedule, add_cargo, cargo_type, weight_kg, addons,
-            add_vehicle, vehicle_type, vehicle_dimensions
+            add_vehicle, vehicle_type
         )
 
         # --- Create booking ---
@@ -1076,7 +1067,6 @@ def _assemble_booking(request):
                 booking=booking,
                 cargo_type=cargo_type,
                 weight_kg=Decimal(weight_kg),
-                dimensions_cm=cargo_dimensions,
                 license_plate=cargo_license_plate,
                 price=calculate_cargo_price(Decimal(weight_kg), cargo_type)
             )
@@ -1085,9 +1075,8 @@ def _assemble_booking(request):
             Vehicle.objects.create(
                 booking=booking,
                 vehicle_type=vehicle_type,
-                dimensions=vehicle_dimensions,
                 license_plate=vehicle_license_plate,
-                price=calculate_vehicle_price(vehicle_type, vehicle_dimensions)
+                price=calculate_vehicle_price(vehicle_type)
             )
 
         for addon in addons:
@@ -1339,12 +1328,10 @@ def get_pricing(request):
         cargo_type = request.POST.get('cargo_type', '')  # Individual field
         weight_kg = request.POST.get('cargo_weight_kg', '')
         cargo_license_plate = request.POST.get('cargo_license_plate', '')
-        cargo_dimensions = request.POST.get('cargo_dimensions_cm', '') if add_cargo else ''
 
         # Handle individual vehicle fields
         add_vehicle = request.POST.get('add_vehicle') == 'true' or request.POST.get('add_vehicle') == 'on'
         vehicle_type = request.POST.get('vehicle_type', '')
-        vehicle_dimensions = request.POST.get('vehicle_dimensions', '')
 
         # Handle addons as individual quantity fields
         addons = []
@@ -1361,7 +1348,7 @@ def get_pricing(request):
         weight = safe_float(weight_kg) or 0
         total_price = calculate_total_price(
             adults, children, infants, schedule, add_cargo, cargo_type, weight, addons,
-            add_vehicle, vehicle_type, vehicle_dimensions
+            add_vehicle, vehicle_type
         )
 
         base_fare = schedule.route.base_fare or Decimal('35.50')
@@ -1372,7 +1359,7 @@ def get_pricing(request):
             'cargo': str(
                 calculate_cargo_price(Decimal(weight), cargo_type) if add_cargo and weight > 0 else Decimal('0.00')),
             'vehicle': str(
-                calculate_vehicle_price(vehicle_type, vehicle_dimensions) if add_vehicle else Decimal('0.00')),
+                calculate_vehicle_price(vehicle_type) if add_vehicle else Decimal('0.00')),
             'addons': [{'type': a['type'], 'quantity': a['quantity'], 'amount': str(calculate_addon_price(a['type'], a['quantity']))} for a in addons],
             'total': str(total_price)
         }
@@ -1519,11 +1506,9 @@ def book_ticket(request):
             'add_vehicle': False,
             'add_cargo': False,
             'vehicle_type': '',
-            'vehicle_dimensions': '',
             'vehicle_license_plate': '',
             'cargo_type': '',
             'cargo_weight_kg': '',
-            'cargo_dimensions_cm': '',
             'cargo_license_plate': '',
             'privacy_consent': False,
             'to_port': to_port or '',
@@ -1560,7 +1545,6 @@ def book_ticket(request):
                 add_vehicle = form_data['add_vehicle']
                 add_cargo = form_data['add_cargo']
                 vehicle_type = form_data['vehicle_type']
-                vehicle_dimensions = form_data['vehicle_dimensions']
                 cargo_type = form_data['cargo_type']
                 cargo_weight_kg = safe_float(form_data['cargo_weight_kg'])
 
@@ -1572,7 +1556,7 @@ def book_ticket(request):
 
                 total_price = calculate_total_price(
                     adults, children, infants, schedule, add_cargo, cargo_type,
-                    cargo_weight_kg, addons, add_vehicle, vehicle_type, vehicle_dimensions
+                    cargo_weight_kg, addons, add_vehicle, vehicle_type
                 )
 
                 base_fare = schedule.route.base_fare or Decimal('35.50')
@@ -1588,7 +1572,7 @@ def book_ticket(request):
                         'children': str(Decimal(children) * base_fare * Decimal('0.5')),
                         'infants': str(Decimal(infants) * base_fare * Decimal('0.1')),
                         'vehicle': str(
-                            calculate_vehicle_price(vehicle_type, vehicle_dimensions)) if add_vehicle else "0.00",
+                            calculate_vehicle_price(vehicle_type)) if add_vehicle else "0.00",
                         'cargo': str(
                             calculate_cargo_price(Decimal(cargo_weight_kg or 0), cargo_type)) if add_cargo else "0.00",
                         'addons': {
@@ -2453,8 +2437,6 @@ def payment_success(request):
                 vehicle_rows.extend([
                     f'<tr><td style="width:40%;color:#6b7280;background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">Type</td>'
                     f'<td style="background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">{v.get_vehicle_type_display()}</td></tr>',
-                    f'<tr><td style="color:#6b7280;background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">Dimensions</td>'
-                    f'<td style="background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">{v.dimensions}</td></tr>',
                     f'<tr><td style="color:#6b7280;background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">License Plate</td>'
                     f'<td style="background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">{v.license_plate or "N/A"}</td></tr>',
                     f'<tr><td style="color:#6b7280;background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">Price</td>'
@@ -2471,8 +2453,6 @@ def payment_success(request):
                     f'<td style="background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">{c.get_cargo_type_display()}</td></tr>',
                     f'<tr><td style="color:#6b7280;background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">Weight</td>'
                     f'<td style="background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">{c.weight_kg} kg</td></tr>',
-                    f'<tr><td style="color:#6b7280;background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">Dimensions</td>'
-                    f'<td style="background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">{c.dimensions_cm or "N/A"}</td></tr>',
                     f'<tr><td style="color:#6b7280  background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">License Plate</td>'
                     f'<td style="background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">{c.license_plate or "N/A"}</td></tr>',
                     f'<tr><td style="color:#6b7280  background:#f9fafb;padding:10px 12px;border:1px solid #eef2f7;">Price</td>'
@@ -2516,12 +2496,12 @@ Passengers:
 
             if booking.vehicles.exists():
                 email_text += "Vehicles:\n" + "\n".join(
-                    f"- {v.get_vehicle_type_display()} | {v.dimensions} | {v.license_plate or 'N/A'} | {fmt_fjd(v.price)}"
+                    f"- {v.get_vehicle_type_display()} | {v.license_plate or 'N/A'} | {fmt_fjd(v.price)}"
                     for v in booking.vehicles.all()
                 ) + "\n\n"
             if booking.cargo.exists():
                 email_text += "Cargo:\n" + "\n".join(
-                    f"- {c.get_cargo_type_display()} | {c.weight_kg} kg | {c.dimensions_cm or 'N/A'} | {fmt_fjd(c.price)}"
+                    f"- {c.get_cargo_type_display()} | {c.weight_kg} kg | {fmt_fjd(c.price)}"
                     for c in booking.cargo.all()
                 ) + "\n\n"
             if booking.add_ons.exists():
@@ -2870,7 +2850,6 @@ def stripe_webhook(request):
                 for vehicle in booking.vehicles.all():
                     email_body += (
                         f"- Type: {vehicle.get_vehicle_type_display()}\n"
-                        f"  Dimensions: {vehicle.dimensions}\n"
                         f"  License Plate: {vehicle.license_plate or 'N/A'}\n"
                         f"  Price: FJD {vehicle.price}\n\n"
                     )
@@ -2881,7 +2860,6 @@ def stripe_webhook(request):
                     email_body += (
                         f"- Type: {cargo.get_cargo_type_display()}\n"
                         f"  Weight: {cargo.weight_kg} kg\n"
-                        f"  Dimensions: {cargo.dimensions_cm or 'N/A'}\n"
                         f"  License Plate: {cargo.license_plate or 'N/A'}\n"
                         f"  Price: FJD {cargo.price}\n\n"
                     )

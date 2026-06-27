@@ -798,7 +798,7 @@ Skip to main content </a>
                     </div>
                 </div>
                 <div id="vehicle-fields" class="service-card-body {% if not form_data.add_vehicle %}hidden{% endif %}">
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div class="form-group">
                             <label class="block text-sm font-medium mb-2">Vehicle Type *</label>
                             <select id="vehicle_type" name="vehicle_type" class="form-select w-full">
@@ -818,14 +818,6 @@ Skip to main content </a>
                                    placeholder="e.g. FJ 1234" class="form-input w-full">
                             <p class="text-xs text-gray-400 mt-1">Required — lets crew identify your vehicle on board</p>
                             <p id="error-vehicle_license_plate" class="error-message"></p>
-                        </div>
-                        <div class="form-group">
-                            <label class="block text-sm font-medium mb-2">Dimensions (L×W×H cm)</label>
-                            <input type="text" id="vehicle_dimensions" name="vehicle_dimensions"
-                                   value="{{ form_data.vehicle_dimensions|default:'' }}"
-                                   placeholder="480x180x150" class="form-input w-full">
-                            <p class="text-xs text-gray-400 mt-1">Optional — only affects oversized-vehicle surcharge</p>
-                            <p id="error-vehicle_dimensions" class="error-message"></p>
                         </div>
                     </div>
                 </div>
@@ -848,7 +840,7 @@ Skip to main content </a>
                     </div>
                 </div>
                 <div id="cargo-fields" class="service-card-body {% if not form_data.add_cargo %}hidden{% endif %}">
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div class="form-group">
                             <label class="block text-sm font-medium mb-2">Cargo Type *</label>
                             <select id="cargo_type" name="cargo_type" class="form-select w-full">
@@ -866,13 +858,6 @@ Skip to main content </a>
                                    value="{{ form_data.cargo_weight_kg|default:'' }}" min="0.1" step="0.1"
                                    placeholder="e.g. 25" class="form-input w-full">
                             <p id="error-cargo_weight_kg" class="error-message"></p>
-                        </div>
-                        <div class="form-group">
-                            <label class="block text-sm font-medium mb-2">Dimensions (L×W×H cm)</label>
-                            <input type="text" id="cargo_dimensions_cm" name="cargo_dimensions_cm"
-                                   value="{{ form_data.cargo_dimensions_cm|default:'' }}"
-                                   placeholder="100x50x50" class="form-input w-full">
-                            <p class="text-xs text-gray-400 mt-1">Optional — helps with loading plans</p>
                         </div>
                     </div>
                     <!-- cargo_license_plate kept as hidden so views.py can still read it -->
@@ -940,15 +925,15 @@ Skip to main content </a>
                 <p class="mb-2"><strong>Adding a vehicle</strong></p>
                 <ul class="mb-4 list-disc pl-6">
                   <li>Tick <em>Add Vehicle to Booking</em> if you are transporting a vehicle.</li>
-                  <li>Select a <strong>vehicle type</strong> and enter <strong>dimensions</strong> in <code>LxWxH</code> (cm), e.g. <code>480x180x150</code>.</li>
-                  <li>License plate is optional but helps our crew identify your vehicle quickly.</li>
+                  <li>Select a <strong>vehicle type</strong> — pricing is based on the type you choose.</li>
+                  <li>A <strong>license plate</strong> is required so our crew can identify your vehicle on board.</li>
                 </ul>
 
                 <!-- Cargo -->
                 <p class="mb-2"><strong>Adding cargo</strong></p>
                 <ul class="mb-4 list-disc pl-6">
                   <li>Tick <em>Add Cargo to Booking</em> if you’re shipping items.</li>
-                  <li>Select a <strong>cargo type</strong>, enter a <strong>weight &gt; 0</strong> kg, and optionally add dimensions.</li>
+                  <li>Select a <strong>cargo type</strong> and enter a <strong>weight &gt; 0</strong> kg.</li>
                   <li>Use the license plate field if your cargo is vehicle-mounted or needs an external ID.</li>
                 </ul>
 

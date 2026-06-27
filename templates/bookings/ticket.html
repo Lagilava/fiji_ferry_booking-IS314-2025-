@@ -1462,7 +1462,7 @@
                     <h4><i class="fas fa-car" aria-hidden="true"></i> Vehicles</h4>
                     {% for vehicle in booking.vehicles.all %}
                     <div class="price-breakdown-row">
-                        <span class="label">{{ vehicle.vehicle_type|title }} &middot; {{ vehicle.dimensions }}</span>
+                        <span class="label">{{ vehicle.vehicle_type|title }}</span>
                         <span class="value">${{ vehicle.price }}</span>
                     </div>
                     {% endfor %}

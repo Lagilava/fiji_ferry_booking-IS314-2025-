@@ -8,7 +8,6 @@
         <h3 class="text-xl font-semibold mb-4 font-['Playfair_Display']" style="color: var(--text-color);">Cargo Details</h3>
         <p class="text-[var(--text-color)]">Cargo Type: {{ cargo.cargo_type|title }}</p>
         <p class="text-[var(--text-color)]">Weight (kg): {{ cargo.weight_kg }}</p>
-        <p class="text-[var(--text-color)]">Dimensions (cm): {{ cargo.dimensions_cm }}</p>
         <p class="text-[var(--text-color)]">Booking ID: #{{ cargo.booking.id }}</p>
         <p class="text-[var(--text-color)]">Status: {{ cargo.booking.status|capfirst }}</p>
         <p class="text-[var(--text-color)]">Booking Date: {{ cargo.booking.created_at|date:"F d, Y H:i" }}</p>

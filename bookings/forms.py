@@ -14,7 +14,7 @@ class ModifyBookingForm(forms.ModelForm):
 class CargoBookingForm(forms.ModelForm):
     class Meta:
         model = Cargo
-        fields = ['cargo_type', 'weight_kg', 'dimensions_cm']
+        fields = ['cargo_type', 'weight_kg']
         widgets = {
             'cargo_type': forms.Select(choices=[
                 ('', 'Select cargo type'),
@@ -24,5 +24,4 @@ class CargoBookingForm(forms.ModelForm):
                 ('bulk', 'Bulk'),
             ]),
             'weight_kg': forms.NumberInput(attrs={'min': 0, 'step': '0.1'}),
-            'dimensions_cm': forms.TextInput(attrs={'placeholder': 'e.g., 100x50x30'}),
         }

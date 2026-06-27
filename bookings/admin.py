@@ -1662,7 +1662,7 @@ class PassengerInline(admin.TabularInline):
 class VehicleInline(admin.TabularInline):
     model = Vehicle
     extra = 0
-    fields = ('vehicle_type', 'dimensions', 'license_plate', 'price')
+    fields = ('vehicle_type', 'license_plate', 'price')
     readonly_fields = ('price',)
 
     def save_model(self, request, obj, form, change):
@@ -1672,7 +1672,7 @@ class VehicleInline(admin.TabularInline):
 class CargoInline(admin.TabularInline):
     model = Cargo
     extra = 0
-    fields = ('cargo_type', 'weight_kg', 'dimensions_cm', 'license_plate')
+    fields = ('cargo_type', 'weight_kg', 'license_plate')
     verbose_name = "Cargo"
     verbose_name_plural = "Cargo"
 
@@ -1730,7 +1730,7 @@ class PortAdmin(EnhancedModelAdmin):
 
 @admin.register(Cargo, site=admin_site)
 class CargoAdmin(EnhancedModelAdmin):
-    list_display = ('booking', 'cargo_type', 'weight_kg', 'dimensions_cm', 'license_plate', 'price')
+    list_display = ('booking', 'cargo_type', 'weight_kg', 'license_plate', 'price')
     list_filter = ('cargo_type',)
     search_fields = ('cargo_type', 'license_plate')
     autocomplete_fields = ['booking']
@@ -1739,7 +1739,7 @@ class CargoAdmin(EnhancedModelAdmin):
     list_display_links = ('booking',)
     fieldsets = (
         ('General Info', {'fields': ('booking', 'cargo_type')}),
-        ('Details', {'fields': ('weight_kg', 'dimensions_cm', 'license_plate', 'price')}),
+        ('Details', {'fields': ('weight_kg', 'license_plate', 'price')}),
     )
     readonly_fields = ('price',)
 
@@ -2181,7 +2181,7 @@ class BookingAdmin(EnhancedModelAdmin):
             passengers = ", ".join([p.get_full_name() for p in item.passengers.all()]) or 'None'
             vehicles = ", ".join([f"{v.vehicle_type} ({v.license_plate})" for v in item.vehicles.all()]) or 'None'
             cargo_list = ", ".join([
-                f"{c.get_cargo_type_display()} ({c.weight_kg}kg, {c.dimensions_cm})"
+                f"{c.get_cargo_type_display()} ({c.weight_kg}kg)"
                 for c in item.cargo.all()
             ]) or 'None'
             add_ons = ", ".join([
@@ -2309,7 +2309,7 @@ class PassengerAdmin(EnhancedModelAdmin):
 
 @admin.register(Vehicle, site=admin_site)
 class VehicleAdmin(EnhancedModelAdmin):
-    list_display = ('booking', 'vehicle_type', 'dimensions', 'license_plate', 'price')
+    list_display = ('booking', 'vehicle_type', 'license_plate', 'price')
     list_filter = ('vehicle_type',)
     search_fields = ('license_plate', 'booking__id')
     autocomplete_fields = ['booking']
@@ -2318,7 +2318,7 @@ class VehicleAdmin(EnhancedModelAdmin):
     list_display_links = ('booking',)
     fieldsets = (
         ('General Info', {'fields': ('booking', 'vehicle_type')}),
-        ('Details', {'fields': ('dimensions', 'license_plate', 'price')}),
+        ('Details', {'fields': ('license_plate', 'price')}),
     )
     readonly_fields = ('price',)
 

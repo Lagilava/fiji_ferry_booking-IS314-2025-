@@ -32,7 +32,6 @@
 
         // Step 3
         vehicleTypeRequired: 'Vehicle type is required',
-        vehicleDimensionsInvalid: 'Dimensions must be in format LxWxH (e.g., 480x180x150)',
         vehicleLicenseRequired: 'License plate is required for vehicles',
         cargoTypeRequired: 'Cargo type is required',
         cargoWeightInvalid: 'Cargo weight must be greater than 0kg',
@@ -399,16 +398,6 @@
         const trimmed = email.trim();
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         return emailRegex.test(trimmed);
-    }
-
-    function validateDimensions(dimensions) {
-        if (!dimensions) return false;
-        const trimmed = dimensions.trim();
-        const dimensionRegex = /^\d{1,4}x\d{1,4}x\d{1,4}$/;
-        if (!dimensionRegex.test(trimmed)) return false;
-
-        const [length, width, height] = trimmed.split('x').map(Number);
-        return length > 0 && width > 0 && height > 0;
     }
 
     function validateAge(type, age) {
@@ -851,12 +840,6 @@
                     if (!(formData.get('vehicle_license_plate') || '').trim()) {
                         errors.push({ field: 'vehicle_license_plate', message: ERROR_MESSAGES.vehicleLicenseRequired });
                     }
-                    // Dimensions are optional (they only add a small volume surcharge);
-                    // validate format only when provided.
-                    const dims = formData.get('vehicle_dimensions');
-                    if (dims && !validateDimensions(dims)) {
-                        errors.push({ field: 'vehicle_dimensions', message: ERROR_MESSAGES.vehicleDimensionsInvalid });
-                    }
                 }
                 if (formData.get('add_cargo') === 'on') {
                     if (!formData.get('cargo_type')) {
@@ -900,7 +883,6 @@
         isValidEmail,
         validateFile,
         validateStep,
-        validateDimensions,
         validateAge,
         validateInfantDob,
         displayBackendErrors,

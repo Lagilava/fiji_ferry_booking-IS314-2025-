@@ -384,7 +384,6 @@ class Vehicle(models.Model):
 
     booking = models.ForeignKey('Booking', on_delete=models.CASCADE, related_name='vehicles')
     vehicle_type = models.CharField(max_length=20, choices=VEHICLE_TYPE_CHOICES)
-    dimensions = models.CharField(max_length=50, help_text="Vehicle dimensions in cm (e.g., 480x180x150)")
     license_plate = models.CharField(max_length=20, blank=True, null=True)
     price = models.DecimalField(max_digits=10, decimal_places=2)
 
@@ -408,7 +407,6 @@ class Cargo(models.Model):
     weight_kg = models.DecimalField(
         max_digits=10, decimal_places=2, validators=[MinValueValidator(0.01)]
     )
-    dimensions_cm = models.CharField(max_length=100, blank=True, null=True, help_text="e.g., 400x180x150")
     license_plate = models.CharField(
         max_length=20, blank=True, null=True, help_text="Optional license plate for vehicles"
     )
