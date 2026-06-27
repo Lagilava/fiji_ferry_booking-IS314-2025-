@@ -378,6 +378,26 @@ def _write(result):
     except Exception:
         pass
 
+    # Alert the admin when the automation agent reports unhealthy. Throttled to
+    # at most once an hour so a persistent failure doesn't flood the inbox.
+    if not result["ok"]:
+        try:
+            from bookings.notifications import send_admin_alert
+            body = (
+                f"The automation agent reported {len(failed)} failing check(s):\n\n"
+                + "\n".join(f"- {name}" for name in failed)
+                + f"\n\n{result['passed']}/{result['total']} checks passed at {result['ran_at']}."
+                + "\nDetails: /admin/agents/"
+            )
+            send_admin_alert(
+                f"Automation agent unhealthy — {len(failed)} check(s) failing",
+                body,
+                throttle_key="admin_alert:automation_unhealthy",
+                throttle_seconds=3600,
+            )
+        except Exception:
+            pass
+
 
 def _run_maintenance():
     """Run lightweight in-process maintenance tasks as a Celery Beat fallback.

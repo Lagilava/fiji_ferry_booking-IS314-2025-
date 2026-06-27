@@ -120,11 +120,12 @@ def evaluate_weather_holds():
 
     held = 0
     evaluated = 0
+    held_details = []
     candidates = Schedule.objects.filter(
         status="scheduled",
         departure_time__gt=now,
         departure_time__lte=horizon,
-    ).select_related("route", "ferry")
+    ).select_related("route__departure_port", "route__destination_port", "ferry")
 
     for sched in candidates:
         evaluated += 1
@@ -138,6 +139,23 @@ def evaluate_weather_holds():
         sched.notes = f"{sched.notes}\n{note}" if sched.notes else note
         sched.save(update_fields=["status", "notes", "last_updated"])
         held += 1
+        held_details.append(
+            f"#{sched.id} {sched.ferry.name} {sched.route} "
+            f"@ {timezone.localtime(sched.departure_time):%b %d %H:%M} — {reason}"
+        )
+
+    # Alert the operations admin so a human reviews the held sailings.
+    if held:
+        try:
+            from .notifications import send_admin_alert
+            body = (
+                f"{held} upcoming sailing(s) were placed on WEATHER HOLD and need review:\n\n"
+                + "\n".join(held_details)
+                + "\n\nReview & decide: /admin/ops/"
+            )
+            send_admin_alert(f"{held} sailing(s) on weather hold", body)
+        except Exception:  # never let an email failure break evaluation
+            pass
 
     return {"enabled": True, "held": held, "evaluated": evaluated,
             "wind_kmh": wind_kmh, "precip_pct": precip_pct, "horizon_h": horizon_h}

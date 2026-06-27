@@ -240,6 +240,14 @@ def cancel_booking(booking_id, *, do_refund=True):
     transition_booking(booking, BookingStatus.CANCELLED)
 
     booking.tickets.update(ticket_status='cancelled')
+
+    # Email the customer once the cancellation has actually committed (keeps the
+    # slow SMTP call out of the row-locked transaction). Best-effort.
+    def _notify():
+        from .notifications import send_booking_cancellation_email
+        send_booking_cancellation_email(booking)
+    transaction.on_commit(_notify)
+
     return booking, True
 
 

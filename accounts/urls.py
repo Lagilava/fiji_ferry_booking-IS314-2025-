@@ -1,5 +1,5 @@
 from django.urls import path, reverse_lazy
-from .views import LoginView, RegisterView, profile_settings
+from .views import LoginView, RegisterView, profile_settings, NotifyingPasswordResetView
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.views import LogoutView
 
@@ -14,7 +14,7 @@ urlpatterns = [
     # ----- Password reset (Django built-in flow) -----
     path(
         'password-reset/',
-        auth_views.PasswordResetView.as_view(
+        NotifyingPasswordResetView.as_view(
             template_name='accounts/password_reset_form.html',
             email_template_name='accounts/password_reset_email.txt',
             html_email_template_name='accounts/password_reset_email.html',

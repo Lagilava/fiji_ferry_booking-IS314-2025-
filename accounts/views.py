@@ -3,6 +3,7 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, login as auth_login, update_session_auth_hash, get_user_model
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth.views import PasswordResetView
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse_lazy
 from django.utils import timezone
@@ -51,6 +52,13 @@ class RegisterView(View):
             user = form.save()
             raw_password = form.cleaned_data.get('password1')
 
+            # Send a welcome / account-confirmation email (best-effort).
+            try:
+                from bookings.notifications import send_welcome_email
+                send_welcome_email(user)
+            except Exception:
+                pass
+
             # ✅ Robust auto-login after creating the user
             # First try the safest route: log in directly with a known backend.
             # (Django allows this right after signup.)
@@ -81,6 +89,33 @@ class RegisterView(View):
 
         messages.error(request, 'Registration failed. Please correct the errors below.')
         return render(request, self.template_name, {'form': form})
+
+
+# -----------------------------
+#  Password reset (notifies admin that a client asked for help)
+# -----------------------------
+class NotifyingPasswordResetView(PasswordResetView):
+    """Standard reset flow, plus an admin heads-up when a client requests one."""
+
+    def form_valid(self, form):
+        response = super().form_valid(form)  # sends the reset email to the user
+        try:
+            from bookings.notifications import send_admin_alert
+            email = form.cleaned_data.get('email', '')
+            U = get_user_model()
+            exists = U.objects.filter(email__iexact=email).exists()
+            send_admin_alert(
+                "Password reset requested",
+                f"A password reset was requested for: {email}\n"
+                f"(matching account exists: {'yes' if exists else 'no'})\n\n"
+                f"The reset link was emailed to the user automatically. No action needed "
+                f"unless they contact you for help.",
+                throttle_key=f"admin_alert:pwreset:{email.lower()}",
+                throttle_seconds=600,
+            )
+        except Exception:
+            pass
+        return response
 
 
 # -----------------------------
