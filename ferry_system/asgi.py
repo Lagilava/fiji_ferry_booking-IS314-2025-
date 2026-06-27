@@ -5,18 +5,21 @@ ASGI config for ferry_system project.
 import os
 import logging
 from django.core.asgi import get_asgi_application
-from channels.routing import ProtocolTypeRouter, URLRouter
-from channels.auth import AuthMiddlewareStack
-from channels.security.websocket import AllowedHostsOriginValidator
-from django.conf import settings
-import bookings.routing
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'ferry_system.settings')
 
 logger = logging.getLogger(__name__)
 
-# Initialize Django ASGI app
+# Initialize Django ASGI app FIRST — this calls django.setup() and populates the
+# app registry. Channels routing / consumers (which import admin models) must be
+# imported only after this, otherwise Django raises AppRegistryNotReady.
 django_asgi_app = get_asgi_application()
+
+from channels.routing import ProtocolTypeRouter, URLRouter  # noqa: E402
+from channels.auth import AuthMiddlewareStack  # noqa: E402
+from channels.security.websocket import AllowedHostsOriginValidator  # noqa: E402
+from django.conf import settings  # noqa: E402
+import bookings.routing  # noqa: E402
 
 # Combine all websocket routes directly
 websocket_app = AuthMiddlewareStack(
