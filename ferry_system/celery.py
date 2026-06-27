@@ -3,7 +3,7 @@ from celery import Celery
 from dotenv import load_dotenv
 
 load_dotenv()  # Make sure Celery sees the .env
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', os.environ.get('DJANGO_SETTINGS_MODULE'))
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'ferry_system.settings')
 
 app = Celery('ferry_system')
 app.config_from_object('django.conf:settings', namespace='CELERY')
