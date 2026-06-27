@@ -518,6 +518,13 @@ JAZZMIN_SETTINGS = {
             "class": "btn btn-success-custom topmenu-item",
             "permissions": ["bookings.view_maintenancelog"],
         },
+        {
+            "name": "Operations",
+            "url": "/admin/ops/",
+            "icon": "fas fa-triangle-exclamation",
+            "class": "btn btn-warning topmenu-item",
+            "permissions": ["bookings.view_schedule"],
+        },
         # Agent monitoring dashboard
         {
             "name": "Agents",

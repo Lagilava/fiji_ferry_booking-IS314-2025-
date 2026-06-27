@@ -43,6 +43,136 @@
 <div id="content-main" class="tool-page" data-live-refresh data-live-selector="#content-main">
   {% include "admin/_tool_header.html" with icon="⚙️" subtitle="Real-time view of operational issues requiring staff attention. Updates live as bookings, payments and schedules change." %}
 
+  {# ════ SCHEDULE RISKS — NEEDS ATTENTION (Layer D) ════ #}
+  <div class="section-label" style="font-size:.8rem;color:#dc2626;padding-left:0;">⚓ Schedule Risks — Needs Attention</div>
+  <div class="ops-grid">
+
+    {# ── Weather Holds ─────────────────────────────────────────────────── #}
+    <div class="ops-card">
+      <div class="ops-card__head" style="color:#b45309;">
+        ⛈️ Weather Holds (review &amp; decide)
+        <span class="badge {% if weather_holds %}badge-amber{% endif %}">{{ weather_holds|length }}</span>
+      </div>
+      <div class="ops-card__body">
+        {% if weather_holds %}
+          {% for s in weather_holds %}
+          <div class="ops-row">
+            <div class="ops-row__dot dot-amber"></div>
+            <div class="ops-row__main">
+              <div class="ops-row__title">{{ s.ferry.name }} — {{ s.route.departure_port.name }} → {{ s.route.destination_port.name }}</div>
+              <div class="ops-row__sub">{{ s.departure_time|date:"M d H:i" }} · held automatically — confirm only if safe</div>
+            </div>
+            <div class="ops-row__action" style="display:flex;gap:.35rem;">
+              <form method="post" action="{% url 'custom_admin:schedule_action' %}">
+                {% csrf_token %}
+                <input type="hidden" name="schedule_id" value="{{ s.id }}">
+                <input type="hidden" name="action" value="release">
+                <button type="submit" class="btn-xs btn-xs-green">✓ Release</button>
+              </form>
+              <form method="post" action="{% url 'custom_admin:schedule_action' %}"
+                    onsubmit="return confirm('Cancel this sailing?');">
+                {% csrf_token %}
+                <input type="hidden" name="schedule_id" value="{{ s.id }}">
+                <input type="hidden" name="action" value="cancel">
+                <button type="submit" class="btn-xs btn-xs-red">✕ Cancel</button>
+              </form>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="ops-empty">✅ No weather holds</div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ── Maintenance Conflicts ─────────────────────────────────────────── #}
+    <div class="ops-card">
+      <div class="ops-card__head" style="color:#dc2626;">
+        🛠️ Maintenance Conflicts
+        <span class="badge {% if maintenance_conflicts %}badge-red{% endif %}">{{ maintenance_conflicts|length }}</span>
+      </div>
+      <div class="ops-card__body">
+        {% if maintenance_conflicts %}
+          {% for s in maintenance_conflicts %}
+          <div class="ops-row">
+            <div class="ops-row__dot dot-red"></div>
+            <div class="ops-row__main">
+              <div class="ops-row__title">{{ s.ferry.name }} — {{ s.route.departure_port.name }} → {{ s.route.destination_port.name }}</div>
+              <div class="ops-row__sub">{{ s.departure_time|date:"M d H:i" }} · ferry has open maintenance — reassign or cancel</div>
+            </div>
+            <div class="ops-row__action" style="display:flex;gap:.35rem;">
+              <a href="{% url 'custom_admin:bookings_schedule_change' s.pk %}" class="btn-xs btn-xs-blue">Edit</a>
+              <form method="post" action="{% url 'custom_admin:schedule_action' %}"
+                    onsubmit="return confirm('Cancel this sailing?');">
+                {% csrf_token %}
+                <input type="hidden" name="schedule_id" value="{{ s.id }}">
+                <input type="hidden" name="action" value="cancel">
+                <button type="submit" class="btn-xs btn-xs-red">✕ Cancel</button>
+              </form>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="ops-empty">✅ No maintenance conflicts</div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ── Ferry Overlap Conflicts ───────────────────────────────────────── #}
+    <div class="ops-card">
+      <div class="ops-card__head" style="color:#dc2626;">
+        🔀 Ferry Overlaps (turnaround)
+        <span class="badge {% if overlap_conflicts %}badge-red{% endif %}">{{ overlap_conflicts|length }}</span>
+      </div>
+      <div class="ops-card__body">
+        {% if overlap_conflicts %}
+          {% for c in overlap_conflicts %}
+          <div class="ops-row">
+            <div class="ops-row__dot dot-red"></div>
+            <div class="ops-row__main">
+              <div class="ops-row__title">{{ c.schedule.ferry.name }} double-booked</div>
+              <div class="ops-row__sub">
+                {{ c.schedule.departure_time|date:"M d H:i" }} {{ c.schedule.route.departure_port.name }}→{{ c.schedule.route.destination_port.name }}
+                overlaps prior arrival {{ c.clash.arrival_time|date:"M d H:i" }}
+              </div>
+            </div>
+            <div class="ops-row__action">
+              <a href="{% url 'custom_admin:bookings_schedule_change' c.schedule.pk %}" class="btn-xs btn-xs-blue">Edit</a>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="ops-empty">✅ No ferry overlaps</div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ── Stale Weather Data ────────────────────────────────────────────── #}
+    <div class="ops-card">
+      <div class="ops-card__head" style="color:#2563eb;">
+        🌦️ Stale Weather (routes w/ sailings)
+        <span class="badge {% if stale_weather %}badge-amber{% endif %}">{{ stale_weather|length }}</span>
+      </div>
+      <div class="ops-card__body">
+        {% if stale_weather %}
+          {% for r in stale_weather %}
+          <div class="ops-row">
+            <div class="ops-row__dot dot-blue"></div>
+            <div class="ops-row__main">
+              <div class="ops-row__title">{{ r.departure_port.name }} → {{ r.destination_port.name }}</div>
+              <div class="ops-row__sub">No fresh weather — risk checks can't run; verify the weather feed</div>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="ops-empty">✅ Weather data fresh for all routes</div>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+
+  <div class="section-label" style="font-size:.8rem;color:#6b7280;padding-left:0;">📋 Bookings &amp; Payments</div>
   <div class="ops-grid">
 
     {# ── Failed Payments ─────────────────────────────────────────────── #}

@@ -143,6 +143,98 @@ def evaluate_weather_holds():
             "wind_kmh": wind_kmh, "precip_pct": precip_pct, "horizon_h": horizon_h}
 
 
+# --------------------------------------------------------------------------- #
+# Operational risk finders (Layer D: surface conflicts to staff)
+# --------------------------------------------------------------------------- #
+def upcoming_maintenance_conflicts():
+    """Upcoming 'scheduled' sailings whose ferry has open maintenance.
+
+    These slipped past prevention (e.g. maintenance opened *after* the sailing
+    was created) and need a staff decision. Returns a list of Schedule rows.
+    """
+    import datetime as _dt
+    from .models import MaintenanceLog, Schedule
+
+    today = _dt.date.today()
+    under_maintenance = list(
+        MaintenanceLog.objects.filter(
+            completed_at__isnull=True, maintenance_date__lte=today
+        ).values_list("ferry_id", flat=True)
+    )
+    if not under_maintenance:
+        return []
+    return list(
+        Schedule.objects.filter(
+            ferry_id__in=under_maintenance,
+            status="scheduled",
+            departure_time__gt=timezone.now(),
+        ).select_related("ferry", "route__departure_port", "route__destination_port")
+        .order_by("departure_time")[:50]
+    )
+
+
+def upcoming_overlap_conflicts(days=7):
+    """Upcoming active sailings where the same ferry overlaps itself.
+
+    Sweeps per ferry in time order (no per-row queries) and flags any sailing
+    that departs before the previous one's arrival + the route turnaround buffer.
+    Returns a list of dicts: {"schedule": <later>, "clash": <earlier>}.
+    """
+    from .models import Schedule
+
+    now = timezone.now()
+    horizon = now + timedelta(days=days)
+    sailings = list(
+        Schedule.objects.filter(
+            status__in=ACTIVE_SCHEDULE_STATUSES,
+            departure_time__gt=now,
+            departure_time__lte=horizon,
+        ).select_related("ferry", "route__departure_port", "route__destination_port")
+        .order_by("ferry_id", "departure_time")
+    )
+    conflicts = []
+    prev_by_ferry = {}
+    for s in sailings:
+        prev = prev_by_ferry.get(s.ferry_id)
+        if prev is not None:
+            buffer = timedelta(minutes=getattr(prev.route, "safety_buffer_minutes", 0) or 0)
+            if s.departure_time < prev.arrival_time + buffer:
+                conflicts.append({"schedule": s, "clash": prev})
+        # keep the sailing that ends latest as the reference for the next one
+        if prev is None or s.arrival_time > prev.arrival_time:
+            prev_by_ferry[s.ferry_id] = s
+    return conflicts
+
+
+def routes_with_stale_weather():
+    """Routes that have upcoming sailings but no fresh weather data.
+
+    Returns a list of Route rows — staff should run refresh_weather or check
+    the provider, because risk evaluation can't judge these sailings.
+    """
+    from .models import Route, Schedule, WeatherCondition
+
+    now = timezone.now()
+    route_ids = set(
+        Schedule.objects.filter(
+            status__in=("scheduled", "weather_hold"), departure_time__gt=now
+        ).values_list("route_id", flat=True)
+    )
+    if not route_ids:
+        return []
+    fresh = set(
+        WeatherCondition.objects.filter(
+            route_id__in=route_ids, expires_at__gt=now
+        ).values_list("route_id", flat=True)
+    )
+    stale_ids = route_ids - fresh
+    if not stale_ids:
+        return []
+    return list(
+        Route.objects.select_related("departure_port", "destination_port").filter(id__in=stale_ids)
+    )
+
+
 def validate_schedule_slot(ferry, route, departure, arrival, exclude_id=None):
     """Validate a candidate sailing.
 

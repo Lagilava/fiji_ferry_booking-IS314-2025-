@@ -1515,6 +1515,17 @@ class CustomAdminSite(admin.AdminSite):
             booking_date__gte=now - timedelta(hours=24),
         ).select_related('user', 'schedule').order_by('-booking_date')[:20]
 
+        # ── Schedule operational risks (Layer D: Needs Attention) ──
+        from bookings import scheduling
+        weather_holds = list(
+            Schedule.objects.filter(status='weather_hold', departure_time__gt=now)
+            .select_related('ferry', 'route__departure_port', 'route__destination_port')
+            .order_by('departure_time')[:50]
+        )
+        maintenance_conflicts = scheduling.upcoming_maintenance_conflicts()
+        overlap_conflicts = scheduling.upcoming_overlap_conflicts()
+        stale_weather = scheduling.routes_with_stale_weather()
+
         context = {
             **self.each_context(request),
             'title': 'Operations Dashboard',
@@ -1525,8 +1536,46 @@ class CustomAdminSite(admin.AdminSite):
             'unverified_docs': unverified_docs,
             'capacity_alerts': capacity_alerts,
             'cancelled_24h': cancelled_24h,
+            'weather_holds': weather_holds,
+            'maintenance_conflicts': maintenance_conflicts,
+            'overlap_conflicts': overlap_conflicts,
+            'stale_weather': stale_weather,
         }
         return TemplateResponse(request, 'admin/bookings/ops_dashboard.html', context)
+
+    # ------------------------------------------------------------------ #
+    # Schedule action — staff decision on a flagged sailing
+    # ------------------------------------------------------------------ #
+    def schedule_action(self, request):
+        from django.http import HttpResponseRedirect
+        redirect = HttpResponseRedirect(reverse('custom_admin:ops_dashboard'))
+        if request.method != 'POST':
+            return redirect
+
+        sid = request.POST.get('schedule_id', '').strip()
+        action = request.POST.get('action', '').strip()
+        try:
+            schedule = Schedule.objects.get(pk=int(sid))
+        except (ValueError, Schedule.DoesNotExist):
+            messages.error(request, "Schedule not found.")
+            return redirect
+
+        label = f"{schedule.ferry.name} — {schedule.route} ({schedule.departure_time:%b %d %H:%M})"
+        if action == 'release':
+            if schedule.status == 'weather_hold':
+                schedule.status = 'scheduled'
+                schedule.save(update_fields=['status', 'last_updated'])
+                messages.success(request, f"Released to Scheduled: {label}")
+            else:
+                messages.info(request, f"Schedule is not on weather hold: {label}")
+        elif action == 'cancel':
+            schedule.status = 'cancelled'
+            schedule.save(update_fields=['status', 'last_updated'])
+            messages.warning(request, f"Cancelled: {label}")
+        else:
+            messages.error(request, "Unknown action.")
+        clear_analytics_cache()
+        return redirect
 
     # ------------------------------------------------------------------ #
     # Manual confirm — staff override for stuck/cash payments
@@ -1585,6 +1634,7 @@ class CustomAdminSite(admin.AdminSite):
             path('bulk-rebook/', self.admin_view(self.bulk_rebook_view), name='bulk_rebook'),
             path('ops/', self.admin_view(self.ops_dashboard), name='ops_dashboard'),
             path('manual-confirm/', self.admin_view(self.manual_confirm_view), name='manual_confirm'),
+            path('schedule-action/', self.admin_view(self.schedule_action), name='schedule_action'),
         ]
         return custom_urls + urls
 
