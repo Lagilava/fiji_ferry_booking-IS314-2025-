@@ -406,6 +406,16 @@ def _run_maintenance():
     except Exception:
         logger.exception("automation: maintenance step failed")
 
+    # Weather review-holds (Layer B). Runs in-process as a Celery-beat fallback
+    # so it works on free-tier hosting with no worker. Idempotent.
+    try:
+        from bookings.scheduling import evaluate_weather_holds
+        result = evaluate_weather_holds()
+        if result.get("held"):
+            logger.warning("automation: weather-held %d sailing(s) for review", result["held"])
+    except Exception:
+        logger.exception("automation: weather-hold step failed")
+
 
 def _run(interval):
     log_path, _ = _paths()

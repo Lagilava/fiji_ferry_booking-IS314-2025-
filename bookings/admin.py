@@ -1807,6 +1807,8 @@ class ScheduleAdmin(EnhancedModelAdmin):
     )
 
     def real_time_status(self, obj):
+        if obj.status == 'weather_hold':
+            return format_html('<span style="color:#b91c1c;font-weight:600">⚠ Weather Hold — needs review</span>')
         weather = WeatherCondition.objects.filter(route=obj.route).order_by('-updated_at').first()
         if weather:
             if weather.wind_speed and weather.wind_speed > 20:
@@ -1822,7 +1824,8 @@ class ScheduleAdmin(EnhancedModelAdmin):
 
     real_time_status.short_description = "Real-Time Status"
 
-    actions = ['mark_scheduled', 'mark_delayed', 'mark_cancelled', 'duplicate_next_day']
+    actions = ['mark_scheduled', 'mark_delayed', 'mark_cancelled',
+               'release_weather_hold', 'duplicate_next_day']
 
     def _broadcast_schedule(self, obj):
         if get_channel_layer():
@@ -1858,6 +1861,15 @@ class ScheduleAdmin(EnhancedModelAdmin):
     @admin.action(description="🔴 Mark selected as Cancelled")
     def mark_cancelled(self, request, queryset):
         self._set_status(request, queryset, 'cancelled', 'cancelled', messages.WARNING)
+
+    @admin.action(description="✅ Release weather hold (back to Scheduled)")
+    def release_weather_hold(self, request, queryset):
+        held = queryset.filter(status='weather_hold')
+        count = held.count()
+        self._set_status(request, held, 'scheduled', 'scheduled (weather hold released)')
+        if not count:
+            self.message_user(request, "No selected schedules were on weather hold.",
+                              messages.INFO)
 
     @admin.action(description="📅 Duplicate for next day (same time)")
     def duplicate_next_day(self, request, queryset):

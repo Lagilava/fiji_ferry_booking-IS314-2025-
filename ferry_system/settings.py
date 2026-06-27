@@ -66,6 +66,11 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'bookings.tasks.refresh_weather',
         'schedule': crontab(minute='*/20'),
     },
+    # Flag upcoming sailings for staff review when weather turns dangerous.
+    'evaluate-weather-holds': {
+        'task': 'bookings.tasks.evaluate_weather_holds',
+        'schedule': crontab(minute='*/15'),
+    },
 }
 
 # Application definition
@@ -637,6 +642,14 @@ SERVER_MONITOR_INTERVAL = config('SERVER_MONITOR_INTERVAL', default=15, cast=int
 # Offline automation agent (periodic non-destructive self-tests)
 AUTOMATION_AGENT_ENABLED = config('AUTOMATION_AGENT_ENABLED', default=True, cast=bool)
 AUTOMATION_AGENT_INTERVAL = config('AUTOMATION_AGENT_INTERVAL', default=300, cast=int)
+
+# Weather review-holds: automatically move upcoming sailings to 'weather_hold'
+# (non-bookable, needs staff review) when the route's current weather breaches
+# these limits. Sailings are never auto-cancelled or auto-released.
+WEATHER_HOLD_ENABLED = config('WEATHER_HOLD_ENABLED', default=True, cast=bool)
+WEATHER_HOLD_WIND_KMH = config('WEATHER_HOLD_WIND_KMH', default=45, cast=float)
+WEATHER_HOLD_PRECIP_PCT = config('WEATHER_HOLD_PRECIP_PCT', default=85, cast=float)
+WEATHER_HOLD_HORIZON_HOURS = config('WEATHER_HOLD_HORIZON_HOURS', default=24, cast=int)
 
 # Auto-seed upcoming schedules on server startup (so the system is demo-ready)
 AUTO_SEED_SCHEDULES = config('AUTO_SEED_SCHEDULES', default=True, cast=bool)

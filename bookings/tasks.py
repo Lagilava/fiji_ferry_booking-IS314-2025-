@@ -33,9 +33,10 @@ def refresh_weather():
     from .models import Route
     from .weather.provider import fetch_and_store_weather
 
+    # Include weather_hold routes too, so staff can see when conditions clear.
     route_ids = (
         Schedule.objects
-        .filter(status='scheduled', departure_time__gt=now)
+        .filter(status__in=['scheduled', 'weather_hold'], departure_time__gt=now)
         .values_list('route_id', flat=True)
         .distinct()
     )
@@ -43,6 +44,20 @@ def refresh_weather():
     ok = sum(1 for r in routes if fetch_and_store_weather(r))
     logger.info("refresh_weather: updated %s route(s)", ok)
     return ok
+
+
+@shared_task
+def evaluate_weather_holds():
+    """Flag at-risk upcoming sailings for staff review (Layer B).
+
+    Delegates to the scheduling layer. Idempotent; safe under Celery beat or the
+    in-process automation fallback. Never auto-cancels or auto-releases.
+    """
+    from .scheduling import evaluate_weather_holds as _evaluate
+    result = _evaluate()
+    if result.get("held"):
+        logger.warning("evaluate_weather_holds: held %s sailing(s) for review", result["held"])
+    return result
 
 
 @shared_task

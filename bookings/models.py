@@ -149,6 +149,7 @@ class Schedule(models.Model):
             ('cancelled', 'Cancelled'),
             ('delayed', 'Delayed'),
             ('departed', 'Departed'),
+            ('weather_hold', 'Weather Hold (needs review)'),
         ],
         default='scheduled'
     )

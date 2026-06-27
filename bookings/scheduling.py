@@ -19,7 +19,9 @@ from datetime import datetime, timedelta
 from django.utils import timezone
 
 # Schedule statuses that still occupy the ferry (i.e. count for overlap checks).
-ACTIVE_SCHEDULE_STATUSES = ("scheduled", "delayed")
+# weather_hold counts too: the ferry stays assigned and the sailing can be
+# released back to 'scheduled' once weather clears.
+ACTIVE_SCHEDULE_STATUSES = ("scheduled", "delayed", "weather_hold")
 
 
 def _parse_window(window):
@@ -59,6 +61,86 @@ def overlapping_schedule(ferry, departure, arrival, buffer_minutes, exclude_id=N
     if exclude_id is not None:
         qs = qs.exclude(pk=exclude_id)
     return qs.select_related("route").first()
+
+
+# --------------------------------------------------------------------------- #
+# Weather risk evaluation (Layer B: flag-for-review holds)
+# --------------------------------------------------------------------------- #
+# Condition keywords that warrant a hold regardless of measured wind/precip.
+_SEVERE_CONDITION_KEYWORDS = ("thunderstorm", "violent", "hurricane", "gale", "heavy rain")
+
+
+def weather_breaches_threshold(weather, wind_kmh, precip_pct):
+    """Return a human-readable reason string if `weather` is unsafe, else ''.
+
+    `weather` is a WeatherCondition instance (or any object exposing
+    wind_speed / precipitation_probability / condition).
+    """
+    if weather is None:
+        return ""
+    wind = getattr(weather, "wind_speed", None)
+    precip = getattr(weather, "precipitation_probability", None)
+    condition = (getattr(weather, "condition", None) or "").lower()
+
+    if wind is not None and wind_kmh and wind > wind_kmh:
+        return f"wind {round(float(wind), 1)} km/h exceeds {wind_kmh} km/h"
+    if precip is not None and precip_pct and precip > precip_pct:
+        return f"precipitation {round(float(precip), 0)}% exceeds {precip_pct}%"
+    for kw in _SEVERE_CONDITION_KEYWORDS:
+        if kw in condition:
+            return f"severe condition: {getattr(weather, 'condition', '')}"
+    return ""
+
+
+def evaluate_weather_holds():
+    """Move at-risk upcoming sailings to 'weather_hold' for staff review.
+
+    Flag-for-review semantics: a breaching sailing is held (becomes
+    non-bookable) but is **never** auto-cancelled, and is **never**
+    auto-released — a staff member decides via the admin. Idempotent and safe
+    to run on a loop. Returns a summary dict.
+    """
+    from django.conf import settings
+    from .models import Schedule, WeatherCondition
+
+    if not getattr(settings, "WEATHER_HOLD_ENABLED", True):
+        return {"enabled": False, "held": 0, "evaluated": 0}
+
+    wind_kmh = float(getattr(settings, "WEATHER_HOLD_WIND_KMH", 45))
+    precip_pct = float(getattr(settings, "WEATHER_HOLD_PRECIP_PCT", 85))
+    horizon_h = int(getattr(settings, "WEATHER_HOLD_HORIZON_HOURS", 24))
+
+    now = timezone.now()
+    horizon = now + timedelta(hours=horizon_h)
+
+    # Cache the latest fresh weather per route so we hit the DB once per route.
+    fresh_weather = {}
+    for w in WeatherCondition.objects.filter(expires_at__gt=now).order_by("route_id", "-updated_at"):
+        fresh_weather.setdefault(w.route_id, w)
+
+    held = 0
+    evaluated = 0
+    candidates = Schedule.objects.filter(
+        status="scheduled",
+        departure_time__gt=now,
+        departure_time__lte=horizon,
+    ).select_related("route", "ferry")
+
+    for sched in candidates:
+        evaluated += 1
+        weather = fresh_weather.get(sched.route_id)
+        reason = weather_breaches_threshold(weather, wind_kmh, precip_pct)
+        if not reason:
+            continue
+        sched.status = "weather_hold"
+        stamp = timezone.localtime(now).strftime("%Y-%m-%d %H:%M")
+        note = f"[{stamp}] Auto weather-hold: {reason}. Needs staff review."
+        sched.notes = f"{sched.notes}\n{note}" if sched.notes else note
+        sched.save(update_fields=["status", "notes", "last_updated"])
+        held += 1
+
+    return {"enabled": True, "held": held, "evaluated": evaluated,
+            "wind_kmh": wind_kmh, "precip_pct": precip_pct, "horizon_h": horizon_h}
 
 
 def validate_schedule_slot(ferry, route, departure, arrival, exclude_id=None):
