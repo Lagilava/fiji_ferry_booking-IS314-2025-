@@ -90,8 +90,11 @@ def ensure_demo_data(days=7):
     """
     from .models import Schedule
 
+    from .scheduling import validate_schedule_slot
+
     ferries, routes = _ensure_base_data()
     created = 0
+    skipped = 0
     today = timezone.localdate()
     tz = timezone.get_current_timezone()
 
@@ -109,10 +112,20 @@ def ensure_demo_data(days=7):
                                            departure_time=departure).exists():
                     continue
                 hrs = route.estimated_duration or timedelta(hours=3)
+                arrival = departure + hrs
+
+                # Prevention gate: never auto-create an operationally invalid sailing
+                # (inactive/maintenance ferry, turnaround overlap, bad window).
+                ok, reason = validate_schedule_slot(ferry, route, departure, arrival)
+                if not ok:
+                    skipped += 1
+                    logger.info("autoseed: skipped %s @ %s — %s", route, departure, reason)
+                    continue
+
                 Schedule.objects.create(
                     ferry=ferry, route=route,
                     departure_time=departure,
-                    arrival_time=departure + hrs,
+                    arrival_time=arrival,
                     estimated_duration=f"{int(hrs.total_seconds() // 3600)}h",
                     available_seats=ferry.capacity,
                     status="scheduled",
@@ -123,8 +136,10 @@ def ensure_demo_data(days=7):
 
     upcoming = Schedule.objects.filter(status="scheduled",
                                        departure_time__gt=timezone.now()).count()
-    logger.info("ensure_demo_data: created %s new schedules; %s upcoming", created, upcoming)
-    return {"created": created, "upcoming": upcoming, "routes": len(routes), "ferries": len(ferries)}
+    logger.info("ensure_demo_data: created %s new schedules (%s skipped); %s upcoming",
+                created, skipped, upcoming)
+    return {"created": created, "skipped": skipped, "upcoming": upcoming,
+            "routes": len(routes), "ferries": len(ferries)}
 
 
 # --------------------------------------------------------------------------- #

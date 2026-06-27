@@ -144,7 +144,12 @@ class Schedule(models.Model):
     available_seats = models.PositiveIntegerField(validators=[MinValueValidator(0)])
     status = models.CharField(
         max_length=20,
-        choices=[('scheduled', 'Scheduled'), ('cancelled', 'Cancelled'), ('delayed', 'Delayed')],
+        choices=[
+            ('scheduled', 'Scheduled'),
+            ('cancelled', 'Cancelled'),
+            ('delayed', 'Delayed'),
+            ('departed', 'Departed'),
+        ],
         default='scheduled'
     )
     last_updated = models.DateTimeField(auto_now=True)
@@ -168,6 +173,27 @@ class Schedule(models.Model):
 
     def __str__(self):
         return f"{self.ferry.name} - {self.route} at {self.departure_time}"
+
+    def clean(self):
+        """Operational validity gate (admin/form path).
+
+        Mirrors the auto-seeder's prevention checks so staff can't manually
+        create a sailing that uses an inactive/under-maintenance ferry or that
+        overlaps another sailing of the same ferry. Only enforced for active
+        (scheduled/delayed) sailings — cancelled rows are exempt.
+        """
+        super().clean()
+        if self.status in ('cancelled', 'departed'):
+            return
+        if not (self.ferry_id and self.route_id and self.departure_time and self.arrival_time):
+            return  # other field-level validation will surface the missing pieces
+        from .scheduling import validate_schedule_slot
+        ok, reason = validate_schedule_slot(
+            self.ferry, self.route, self.departure_time, self.arrival_time,
+            exclude_id=self.pk,
+        )
+        if not ok:
+            raise ValidationError(reason)
 
 
 class Booking(models.Model):
