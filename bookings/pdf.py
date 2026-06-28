@@ -29,6 +29,18 @@ from reportlab.platypus import (
 )
 
 
+def booking_pdf_bytes(booking, tickets):
+    """Return the boarding-pass PDF for a booking as raw bytes.
+
+    Used to attach the tickets to the confirmation email (a standard email
+    attachment, which works over Brevo's HTTP API).
+    """
+    resp = render_booking_pdf(booking, tickets)
+    f = resp.file_to_stream
+    f.seek(0)
+    return f.read()
+
+
 def render_booking_pdf(booking, tickets):
     """Build the boarding-pass PDF for a booking and return a FileResponse."""
     # ---------- Brand palette (2026 refresh) ----------

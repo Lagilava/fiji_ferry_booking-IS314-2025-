@@ -2721,6 +2721,17 @@ Fiji Ferry Service Team
                 # (see ticket_qr_png), so no MIME inline attachments are needed —
                 # this is what makes the email work over Brevo's HTTP API.
                 msg.attach_alternative(email_html, "text/html")
+
+                # Attach the printable ticket PDF (a standard attachment, which
+                # Brevo's HTTP API supports — unlike inline cid: images).
+                try:
+                    from .pdf import booking_pdf_bytes
+                    pdf_bytes = booking_pdf_bytes(booking, tickets)
+                    msg.attach(f"FijiFerry_Booking_{booking.id}_Tickets.pdf",
+                               pdf_bytes, "application/pdf")
+                except Exception:
+                    logger.exception("Failed to attach ticket PDF for booking %s", booking.id)
+
                 msg.send()
                 logger.debug(f"Confirmation email sent to {recipient}")
             else:
