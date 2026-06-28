@@ -3353,7 +3353,7 @@ def api_send_otp(request):
     # backend, which "sends" successfully but delivers nothing. In that case
     # tell the user the truth instead of a fake success.
     backend = (settings.EMAIL_BACKEND or "").lower()
-    is_real_mail = "smtp" in backend
+    is_real_mail = ("smtp" in backend) or ("anymail" in backend)
     if not settings.DEBUG and not is_real_mail:
         logger.error(
             "OTP send blocked: email backend is '%s' (no SMTP credentials). "

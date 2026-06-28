@@ -203,16 +203,25 @@ EMAIL_TIMEOUT = config('EMAIL_TIMEOUT', default=15, cast=int)
 DEFAULT_FROM_EMAIL = config('EMAIL_HOST_USER', default='admin@fijiferry.com')
 ADMIN_EMAIL = config('ADMIN_EMAIL', default='admin@fijiferry.com')
 
-# Pick the email backend:
-#   * If SMTP credentials are configured, send real email over SMTP.
+# Brevo (HTTP email API) — used in production where outbound SMTP is blocked
+# (e.g. Render returns "[Errno 101] Network is unreachable" for SMTP). Sends over
+# HTTPS (port 443) which is never blocked. Set BREVO_API_KEY to enable.
+BREVO_API_KEY = config('BREVO_API_KEY', default='')
+if BREVO_API_KEY:
+    ANYMAIL = {'BREVO_API_KEY': BREVO_API_KEY}
+
+# Pick the email backend, in priority order:
+#   * Brevo HTTP API if BREVO_API_KEY is set (works on PaaS that block SMTP).
+#   * Else SMTP if credentials are configured (good for local dev).
 #   * Otherwise fall back to the console backend so OTP / password-reset codes
 #     are printed to the server console — the whole flow works end-to-end in
 #     development with zero setup. Override with EMAIL_BACKEND in the env.
-_default_email_backend = (
-    'django.core.mail.backends.smtp.EmailBackend'
-    if EMAIL_HOST_USER and EMAIL_HOST_PASSWORD
-    else 'django.core.mail.backends.console.EmailBackend'
-)
+if BREVO_API_KEY:
+    _default_email_backend = 'anymail.backends.brevo.EmailBackend'
+elif EMAIL_HOST_USER and EMAIL_HOST_PASSWORD:
+    _default_email_backend = 'django.core.mail.backends.smtp.EmailBackend'
+else:
+    _default_email_backend = 'django.core.mail.backends.console.EmailBackend'
 EMAIL_BACKEND = config('EMAIL_BACKEND', default=_default_email_backend)
 
 # Single Redis URL drives channels, cache, and Celery. On Render the managed

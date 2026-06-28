@@ -36,6 +36,9 @@ reportlab==4.1.0
 requests==2.32.3
 stripe==11.1.1
 
+# Email — HTTP API backend (Brevo) for hosts that block outbound SMTP (e.g. Render)
+django-anymail==15.0
+
 # Admin Interface
 django-jazzmin==3.0.1
 
