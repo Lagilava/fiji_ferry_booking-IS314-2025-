@@ -5,41 +5,424 @@
 
 {% block extrahead %}
 <style>
-.wf-intro { color: #6b7280; font-size: .875rem; margin-bottom: 1.5rem; }
-.wf-error { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 10px; padding: .75rem 1rem; font-size: .83rem; color: #92400e; font-weight: 600; margin-bottom: 1.25rem; }
-.wf-port-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 1.25rem; margin-bottom: 2rem; }
-.wf-port-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; overflow: hidden; }
-.wf-port-card__head { background: #0f172a; color: #fff; padding: .8rem 1.1rem; display: flex; align-items: center; justify-content: space-between; }
-.wf-port-card__name { font-weight: 700; font-size: .95rem; }
-.wf-port-card__body { padding: 0; }
-.wf-slot { display: flex; align-items: center; gap: .75rem; padding: .6rem 1rem; border-bottom: 1px solid #f3f4f6; font-size: .82rem; }
-.wf-slot:last-child { border-bottom: 0; }
-.wf-slot__time { min-width: 80px; color: #6b7280; font-size: .75rem; }
-.wf-slot__icon { font-size: 1.3rem; flex-shrink: 0; }
-.wf-slot__info { flex: 1; }
-.wf-slot__cond { font-weight: 600; color: #111; }
-.wf-slot__meta { color: #6b7280; font-size: .74rem; margin-top: .1rem; }
-.wf-slot__temp { font-weight: 800; font-size: 1rem; color: #0f172a; white-space: nowrap; }
-.rain-bar-wrap { width: 48px; background: #e5e7eb; border-radius: 4px; height: 6px; }
-.rain-bar { background: #3b82f6; border-radius: 4px; height: 6px; }
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
-.section-title { font-size: .95rem; font-weight: 700; margin: 1.5rem 0 .75rem; color: #374151; border-bottom: 2px solid #f3f4f6; padding-bottom: .4rem; }
-.local-table { width: 100%; border-collapse: collapse; font-size: .82rem; margin-bottom: 2rem; }
-.local-table th { background: #f8fafc; font-weight: 700; text-align: left; padding: .5rem .85rem; border-bottom: 2px solid #e5e7eb; }
-.local-table td { padding: .5rem .85rem; border-bottom: 1px solid #f3f4f6; }
-.local-table tr:hover td { background: #f8fafc; }
-.cond-tag { display: inline-block; padding: .15rem .55rem; border-radius: 999px; font-size: .72rem; font-weight: 700; background: #dbeafe; color: #1d4ed8; }
-.cond-tag--warn { background: #fef3c7; color: #92400e; }
-.cond-tag--danger { background: #fee2e2; color: #991b1b; }
-.wf-empty { color: #9ca3af; padding: 1.5rem; text-align: center; font-size: .85rem; }
-.refresh-note { font-size: .75rem; color: #9ca3af; margin-top: -.5rem; margin-bottom: 1.5rem; }
+/* ─── Base & Reset ─── */
+.tool-page {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: #1e293b;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+/* ─── Intro & Alerts ─── */
+.wf-intro {
+  color: #64748b;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  margin-bottom: 2rem;
+  max-width: 640px;
+}
+
+.wf-error {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border: 1px solid #f59e0b;
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  font-size: 0.875rem;
+  color: #92400e;
+  font-weight: 600;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  box-shadow: 0 4px 6px -1px rgba(245, 158, 11, 0.1);
+}
+
+/* ─── Port Grid ─── */
+.wf-port-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2.5rem;
+}
+
+/* ─── Port Cards ─── */
+.wf-port-card {
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 
+    0 1px 3px rgba(0, 0, 0, 0.05),
+    0 10px 30px -10px rgba(15, 23, 42, 0.08);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.wf-port-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 
+    0 1px 3px rgba(0, 0, 0, 0.05),
+    0 20px 40px -12px rgba(15, 23, 42, 0.12);
+}
+
+.wf-port-card__head {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  color: #fff;
+  padding: 1rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: relative;
+  overflow: hidden;
+}
+
+.wf-port-card__head::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  right: -10%;
+  width: 120px;
+  height: 120px;
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.15) 0%, transparent 70%);
+  border-radius: 50%;
+}
+
+.wf-port-card__name {
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  z-index: 1;
+}
+
+.wf-port-card__badge {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  z-index: 1;
+}
+
+.wf-port-card__body {
+  padding: 0.5rem 0;
+}
+
+/* ─── Forecast Slots ─── */
+.wf-slot {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 0.875rem;
+  transition: background 0.15s ease;
+}
+
+.wf-slot:hover {
+  background: #f8fafc;
+}
+
+.wf-slot:last-child {
+  border-bottom: 0;
+}
+
+.wf-slot__time {
+  min-width: 52px;
+  color: #64748b;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.wf-slot__icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f1f5f9;
+  border-radius: 10px;
+  transition: transform 0.2s ease;
+}
+
+.wf-slot:hover .wf-slot__icon {
+  transform: scale(1.1);
+}
+
+.wf-slot__info {
+  flex: 1;
+  min-width: 0;
+}
+
+.wf-slot__cond {
+  font-weight: 600;
+  color: #0f172a;
+  font-size: 0.875rem;
+  letter-spacing: -0.01em;
+}
+
+.wf-slot__meta {
+  color: #94a3b8;
+  font-size: 0.75rem;
+  margin-top: 0.15rem;
+  display: flex;
+  gap: 0.75rem;
+}
+
+.wf-slot__meta span {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.wf-slot__temp-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.4rem;
+  min-width: 60px;
+}
+
+.wf-slot__temp {
+  font-weight: 800;
+  font-size: 1.125rem;
+  color: #0f172a;
+  white-space: nowrap;
+  letter-spacing: -0.02em;
+}
+
+/* ─── Rain Bar ─── */
+.rain-bar-wrap {
+  width: 52px;
+  background: #e2e8f0;
+  border-radius: 999px;
+  height: 5px;
+  overflow: hidden;
+  position: relative;
+}
+
+.rain-bar {
+  background: linear-gradient(90deg, #60a5fa 0%, #3b82f6 100%);
+  border-radius: 999px;
+  height: 100%;
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+.rain-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.3) 50%, transparent 100%);
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* ─── Section Title ─── */
+.section-title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  margin: 2.5rem 0 1rem;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  letter-spacing: -0.02em;
+}
+
+.section-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, #e2e8f0 0%, transparent 100%);
+  margin-left: 0.75rem;
+}
+
+/* ─── Local Table ─── */
+.local-table-wrap {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  margin-bottom: 2.5rem;
+}
+
+.local-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.875rem;
+}
+
+.local-table th {
+  background: #f8fafc;
+  font-weight: 600;
+  text-align: left;
+  padding: 0.875rem 1.25rem;
+  color: #475569;
+  font-size: 0.8125rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+.local-table td {
+  padding: 0.875rem 1.25rem;
+  border-bottom: 1px solid #f1f5f9;
+  color: #334155;
+  vertical-align: middle;
+}
+
+.local-table tbody tr {
+  transition: background 0.15s ease;
+}
+
+.local-table tbody tr:hover td {
+  background: #f8fafc;
+}
+
+.local-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/* ─── Condition Tags ─── */
+.cond-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.875rem;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  background: #dbeafe;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+  transition: all 0.2s ease;
+}
+
+.cond-tag::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #3b82f6;
+}
+
+.cond-tag--warn {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #fde68a;
+}
+
+.cond-tag--warn::before {
+  background: #f59e0b;
+}
+
+.cond-tag--danger {
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #fecaca;
+}
+
+.cond-tag--danger::before {
+  background: #ef4444;
+}
+
+/* ─── Empty State ─── */
+.wf-empty {
+  color: #94a3b8;
+  padding: 3rem 1.5rem;
+  text-align: center;
+  font-size: 0.9375rem;
+  background: #f8fafc;
+  border-radius: 16px;
+  border: 2px dashed #e2e8f0;
+  margin: 2rem 0;
+}
+
+/* ─── Refresh Note ─── */
+.refresh-note {
+  font-size: 0.8125rem;
+  color: #94a3b8;
+  margin-top: -0.5rem;
+  margin-bottom: 2rem;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+/* ─── Status Indicators ─── */
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  position: relative;
+}
+
+.status-dot::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  opacity: 0.3;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 0.3; }
+  50% { transform: scale(1.5); opacity: 0; }
+}
+
+/* ─── Responsive ─── */
+@media (max-width: 768px) {
+  .wf-port-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .wf-slot {
+    padding: 0.625rem 1rem;
+  }
+  
+  .local-table th,
+  .local-table td {
+    padding: 0.625rem 0.75rem;
+  }
+  
+  .section-title {
+    font-size: 1rem;
+  }
+}
 </style>
 {% endblock %}
 
 {% block content %}
 <div id="content-main" class="tool-page">
   {% include "admin/_tool_header.html" with icon="🌤️" subtitle="Live 24-hour forecast for all ferry ports, refreshed every 30 minutes. Wind speeds in km/h." %}
-  {% if error %}<div class="wf-error">⚠️ {{ error }}</div>{% endif %}
+  
+  {% if error %}
+  <div class="wf-error">
+    <span>⚠️</span>
+    <span>{{ error }}</span>
+  </div>
+  {% endif %}
 
   {% if forecasts %}
   <div class="wf-port-grid">
@@ -47,7 +430,7 @@
     <div class="wf-port-card">
       <div class="wf-port-card__head">
         <span class="wf-port-card__name">📍 {{ pf.port }}</span>
-        <span style="font-size:.75rem;color:#94a3b8;">Next 24 h</span>
+        <span class="wf-port-card__badge">Next 24h</span>
       </div>
       <div class="wf-port-card__body">
         {% for slot in pf.forecast %}
@@ -66,9 +449,12 @@
           </div>
           <div class="wf-slot__info">
             <div class="wf-slot__cond">{{ slot.condition }}</div>
-            <div class="wf-slot__meta">💨 {{ slot.wind_speed }} km/h &nbsp;·&nbsp; 💧 {{ slot.humidity }}%</div>
+            <div class="wf-slot__meta">
+              <span>💨 {{ slot.wind_speed }} km/h</span>
+              <span>💧 {{ slot.humidity }}%</span>
+            </div>
           </div>
-          <div>
+          <div class="wf-slot__temp-col">
             <div class="wf-slot__temp">{{ slot.temperature }}°C</div>
             <div class="rain-bar-wrap" title="{{ slot.precipitation_probability }}% rain chance">
               <div class="rain-bar" style="width:{{ slot.precipitation_probability }}%"></div>
@@ -80,47 +466,53 @@
     </div>
     {% endfor %}
   </div>
-  <p class="refresh-note">Data cached for 30 minutes. Sourced from OpenWeatherMap.</p>
+  
+  <p class="refresh-note">
+    <span>🔄</span>
+    <span>Data cached for 30 minutes. Sourced from OpenWeatherMap.</span>
+  </p>
   {% else %}
     <div class="wf-empty">No live forecast data available. Check the OpenWeatherMap API key in settings.</div>
   {% endif %}
 
   {% if local_conditions %}
-  <h2 class="section-title">📡 On-Route Conditions (from local monitoring)</h2>
-  <table class="local-table">
-    <thead>
-      <tr>
-        <th>Port</th>
-        <th>Condition</th>
-        <th>Temp (°C)</th>
-        <th>Wind (km/h)</th>
-        <th>Rain chance</th>
-        <th>Updated</th>
-        <th>Expires</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in local_conditions %}
-      <tr>
-        <td><strong>{{ row.port__name }}</strong></td>
-        <td>
-          <span class="cond-tag
-            {% with c=row.condition|lower %}
-              {% if "storm" in c or "thunder" in c or "hurricane" in c %}cond-tag--danger
-              {% elif "rain" in c or "rough" in c or "warning" in c %}cond-tag--warn
-              {% endif %}
-            {% endwith %}
-          ">{{ row.condition }}</span>
-        </td>
-        <td>{% if row.temperature %}{{ row.temperature|floatformat:1 }}{% else %}—{% endif %}</td>
-        <td>{% if row.wind_speed %}{{ row.wind_speed|floatformat:1 }}{% else %}—{% endif %}</td>
-        <td>{% if row.precipitation_probability %}{{ row.precipitation_probability|floatformat:0 }}%{% else %}—{% endif %}</td>
-        <td>{{ row.updated_at|date:"M d H:i" }}</td>
-        <td>{% if row.expires_at %}{{ row.expires_at|date:"M d H:i" }}{% else %}—{% endif %}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <h2 class="section-title">📡 On-Route Conditions</h2>
+  <div class="local-table-wrap">
+    <table class="local-table">
+      <thead>
+        <tr>
+          <th>Port</th>
+          <th>Condition</th>
+          <th>Temp (°C)</th>
+          <th>Wind (km/h)</th>
+          <th>Rain chance</th>
+          <th>Updated</th>
+          <th>Expires</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in local_conditions %}
+        <tr>
+          <td><strong>{{ row.port__name }}</strong></td>
+          <td>
+            <span class="cond-tag
+              {% with c=row.condition|lower %}
+                {% if "storm" in c or "thunder" in c or "hurricane" in c %}cond-tag--danger
+                {% elif "rain" in c or "rough" in c or "warning" in c %}cond-tag--warn
+                {% endif %}
+              {% endwith %}
+            ">{{ row.condition }}</span>
+          </td>
+          <td>{% if row.temperature %}{{ row.temperature|floatformat:1 }}{% else %}—{% endif %}</td>
+          <td>{% if row.wind_speed %}{{ row.wind_speed|floatformat:1 }}{% else %}—{% endif %}</td>
+          <td>{% if row.precipitation_probability %}{{ row.precipitation_probability|floatformat:0 }}%{% else %}—{% endif %}</td>
+          <td>{{ row.updated_at|date:"M d H:i" }}</td>
+          <td>{% if row.expires_at %}{{ row.expires_at|date:"M d H:i" }}{% else %}—{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
   {% endif %}
 </div>
 {% endblock %}
