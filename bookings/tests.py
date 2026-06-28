@@ -397,8 +397,9 @@ class OtpTests(TestCase):
         from django.core.cache import cache
         cache.clear()
         c = client()
+        # Per-email limit is 5 successful sends per window; the 6th is throttled.
         codes = [c.post("/bookings/api/send_otp/", {"email": "rl@x.com"}).status_code
-                 for _ in range(5)]
+                 for _ in range(6)]
         self.assertIn(429, codes)
 
     @mock.patch("bookings.views.EmailMultiAlternatives")
