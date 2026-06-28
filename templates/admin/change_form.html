@@ -13,7 +13,7 @@
     {{ block.super }}
     <script>
         window.WEBSOCKET_CONFIG = {
-            url: 'ws://' + window.location.host + '/ws/admin/dashboard/',
+            url: (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws/admin/dashboard/',
             model: '{{ opts.model_name|escapejs }}',
             app_label: '{{ opts.app_label|escapejs }}',
             object_id: '{{ object_id|escapejs }}'

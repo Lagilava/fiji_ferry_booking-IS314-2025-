@@ -3,6 +3,7 @@ import logging
 import asyncio
 import redis
 from django.core.cache import cache
+from django.conf import settings
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from asgiref.sync import sync_to_async
@@ -20,7 +21,8 @@ from django.dispatch import receiver
 logger = logging.getLogger(__name__)
 
 # Redis connection for rate limiting and banning
-redis_client = redis.Redis.from_url('redis://localhost:6379/0')
+# Use the same REDIS_URL from settings (works locally and on Render)
+redis_client = redis.Redis.from_url(settings.REDIS_URL)
 
 
 class AdminDashboardConsumer(AsyncWebsocketConsumer):

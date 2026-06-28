@@ -216,7 +216,7 @@
             };
 
             window.WEBSOCKET_CONFIG = {
-                url: 'ws://' + window.location.host + '/ws/admin/dashboard/',
+                url: (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws/admin/dashboard/',
                 model: window.CHANGE_LIST_CONTEXT.model_name,
                 app_label: window.CHANGE_LIST_CONTEXT.app_label,
                 reconnectDelay: 5000,
