@@ -1540,6 +1540,23 @@
 
     AOS.init({ duration: 600, easing: 'ease-out-cubic', once: true, offset: 40 });
 
+    {% if not user.is_authenticated and booking.tickets.all %}
+    // Guests don't have an account to revisit their tickets, so auto-download the
+    // PDF once on this confirmation page (gated per booking so reloads don't repeat).
+    (function autoDownloadGuestPdf() {
+        var key = 'ffb_pdf_dl_{{ booking.id }}';
+        try { if (sessionStorage.getItem(key)) return; sessionStorage.setItem(key, '1'); } catch (e) {}
+        setTimeout(function () {
+            var a = document.createElement('a');
+            a.href = "{% url 'bookings:booking_pdf' booking.id %}";
+            a.download = 'fiji-ferry-tickets-{{ booking.id }}.pdf';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        }, 800);
+    })();
+    {% endif %}
+
     // Lightweight tab switcher (replaces Bootstrap JS, which was removed because
     // its CSS clashed with the global site navbar). Works with the existing
     // data-bs-toggle / data-bs-target markup.

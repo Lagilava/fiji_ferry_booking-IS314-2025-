@@ -181,7 +181,27 @@
     const el = document.getElementById('otp-status');
     if (!el) return;
     el.textContent = msg || '';
-    el.className = 'text-sm mt-2 ' + (good ? 'text-green-600' : 'text-red-600');
+    el.className = 'otp-status-msg ' + (good ? 'ok' : 'err');
+  }
+
+  // Toggle the busy/loading state of an OTP button (single source of truth).
+  function setOtpBtnBusy(btn, busy, busyText) {
+    if (!btn) return;
+    const label = btn.querySelector('.otp-btn-label');
+    if (busy) {
+      btn.dataset.loading = 'true';
+      btn.disabled = true;
+      btn.setAttribute('aria-busy', 'true');
+      if (label) {
+        btn.dataset.origLabel = btn.dataset.origLabel || label.textContent;
+        if (busyText) label.textContent = busyText;
+      }
+    } else {
+      btn.dataset.loading = 'false';
+      btn.disabled = false;
+      btn.removeAttribute('aria-busy');
+      if (label && btn.dataset.origLabel) label.textContent = btn.dataset.origLabel;
+    }
   }
 
   // Persist minimal form data in sessionStorage so an interrupted booking
@@ -1540,23 +1560,26 @@
       on(sendOtpBtn, 'click', async () => {
         console.log('[OTP] Send Code clicked');
         const email = (guestEmail?.value || '').trim();
-        if (!email) {
-          setOtpUIState('Enter your email first.');
-          console.warn('[OTP] No email entered');
+        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          setOtpUIState('Enter a valid email first.');
           return;
         }
+        setOtpBtnBusy(sendOtpBtn, true, 'Sending…');
         setOtpUIState('Sending code…', true);
         try {
           const { ok, json } = await postForm(urls.sendOtp, { email });
           if (ok && json?.success) {
             otpArea?.classList.remove('hidden');
-            setOtpUIState('Code sent! Check your inbox.', true);
+            setOtpUIState('Code sent! Check your inbox (and spam).', true);
+            document.getElementById('otp_code')?.focus();
           } else {
-            setOtpUIState(json?.errors?.[0]?.message || 'Failed to send code.');
+            setOtpUIState(json?.errors?.[0]?.message || 'Failed to send code. Try again.');
           }
         } catch (err) {
           console.error('[OTP] Send error', err);
-          setOtpUIState('Failed to send code.');
+          setOtpUIState('Failed to send code. Check your connection and try again.');
+        } finally {
+          setOtpBtnBusy(sendOtpBtn, false);
         }
       });
     } else {
@@ -1571,9 +1594,13 @@
         const code = (otpCodeInput?.value || '').trim();
         if (!email || !code) {
           setOtpUIState('Enter the code sent to your email.');
-          console.warn('[OTP] Missing email or code');
           return;
         }
+        if (!/^\d{4,8}$/.test(code)) {
+          setOtpUIState('The code is digits only — check and try again.');
+          return;
+        }
+        setOtpBtnBusy(verifyOtpBtn, true, 'Verifying…');
         setOtpUIState('Verifying…', true);
         try {
           const { ok, json } = await postForm(urls.verifyOtp, { email, code });
@@ -1583,22 +1610,49 @@
               guestEmail.readOnly = true;
               guestEmail.classList.add('opacity-70', 'cursor-not-allowed');
             }
-            // Persist verification flags (used by client validation)
             sessionStorage.setItem('ffb_guest_verified', '1');
             sessionStorage.setItem('ffb_guest_verified_email', email.toLowerCase());
+            revealGuestChoice(email);
           } else {
-            setOtpUIState(json?.errors?.[0]?.message || 'Verification failed.');
+            // Wrong/expired code: let them retry immediately.
+            setOtpUIState(json?.errors?.[0]?.message || 'Incorrect code. Please try again.');
+            if (otpCodeInput) { otpCodeInput.value = ''; otpCodeInput.focus(); }
           }
         } catch (err) {
           console.error('[OTP] Verify error', err);
-          setOtpUIState('Verification failed.');
+          setOtpUIState('Verification failed. Please try again.');
+        } finally {
+          setOtpBtnBusy(verifyOtpBtn, false);
         }
       });
     } else {
       console.warn('[OTP] verifyOtpBtn not found in DOM');
     }
 
-    // NEW: If user edits email, clear verification flags & reset UI so they must re-verify
+    // After a successful verification, offer to register or continue as guest.
+    function revealGuestChoice(email) {
+      const choice = document.getElementById('guest-choice');
+      if (!choice) return;
+      const regLink = document.getElementById('guest-register-link');
+      if (regLink) {
+        const base = regLink.getAttribute('href').split('?')[0];
+        const params = new URLSearchParams({ email: email, next: window.location.pathname + window.location.search });
+        regLink.setAttribute('href', `${base}?${params.toString()}`);
+      }
+      choice.classList.remove('hidden');
+      choice.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    // "Continue as guest" → just advance to the next step.
+    const guestContinueBtn = document.getElementById('guest-continue');
+    if (guestContinueBtn) {
+      on(guestContinueBtn, 'click', () => {
+        const next = document.querySelector('.next-step[data-next="2"]');
+        if (next) next.click();
+      });
+    }
+
+    // If user edits email, clear verification flags & reset UI so they must re-verify
     if (guestEmail) {
       on(guestEmail, 'input', () => {
         try {
@@ -1608,6 +1662,7 @@
         guestEmail.readOnly = false;
         guestEmail.classList.remove('opacity-70', 'cursor-not-allowed');
         otpArea?.classList.add('hidden');
+        document.getElementById('guest-choice')?.classList.add('hidden');
         setOtpUIState('');
       });
     }

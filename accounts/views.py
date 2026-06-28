@@ -43,8 +43,17 @@ class RegisterView(View):
     success_url = reverse_lazy('home')
 
     def get(self, request):
-        form = CustomUserCreationForm()
-        return render(request, self.template_name, {'form': form})
+        # Prefill the email when arriving from the guest-booking "Create an
+        # account" link, and carry the `next` target through registration.
+        initial = {}
+        email = request.GET.get('email')
+        if email:
+            initial['email'] = email
+        form = CustomUserCreationForm(initial=initial)
+        return render(request, self.template_name, {
+            'form': form,
+            'next': request.GET.get('next', ''),
+        })
 
     def post(self, request):
         form = CustomUserCreationForm(request.POST)

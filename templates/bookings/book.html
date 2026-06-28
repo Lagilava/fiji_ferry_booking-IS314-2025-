@@ -293,7 +293,68 @@ html.dark, body.dark, .dark, [data-theme="dark"], [class*="dark"]{
 #otp-status { display:inline-flex; align-items:center; gap:.5rem; min-height:1.25rem; }
 
 @keyframes ffb-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .ffb-spinner { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .ffb-spinner, .otp-spinner { animation: none; } }
+
+/* =========================
+   Guest OTP verification — clean, theme-aware layout
+   ========================= */
+.otp-row { display:flex; gap:.6rem; align-items:stretch; }
+.otp-row .form-input { flex:1 1 auto; min-width:0; }
+.otp-btn {
+  flex:0 0 auto;
+  display:inline-flex; align-items:center; justify-content:center; gap:.5rem;
+  min-width:7.5rem; padding:0 1.1rem; height:auto;
+  border:none; border-radius:.7rem; cursor:pointer;
+  font-weight:700; font-size:.95rem; white-space:nowrap;
+  color:#fff; background:linear-gradient(135deg,#2563eb,#0ea5e9);
+  box-shadow:0 6px 16px -6px rgba(37,99,235,.6);
+  transition:transform .15s ease, box-shadow .15s ease, opacity .15s ease;
+}
+.otp-btn:hover:not(:disabled) { transform:translateY(-1px); box-shadow:0 10px 22px -8px rgba(37,99,235,.7); }
+.otp-btn:active:not(:disabled) { transform:translateY(0); }
+.otp-btn:disabled { opacity:.65; cursor:not-allowed; }
+.otp-spinner {
+  width:14px; height:14px; border-radius:50%; display:none;
+  border:2px solid rgba(255,255,255,.45); border-top-color:#fff;
+  animation:ffb-spin .8s linear infinite;
+}
+.otp-btn[data-loading="true"] .otp-spinner { display:inline-block; }
+
+.otp-hint { font-size:.8rem; color:var(--text-secondary,#64748b); margin-top:.45rem; }
+.otp-verify { margin-top:.85rem; }
+.otp-code-input { letter-spacing:.25em; font-weight:700; text-align:center; }
+.otp-status-msg { font-size:.85rem; margin-top:.5rem; min-height:1.1rem; }
+.otp-status-msg.ok  { color:#16a34a; }
+.otp-status-msg.err { color:#dc2626; }
+
+/* Post-verify choice card */
+.guest-choice {
+  margin-top:1rem; padding:1rem 1.15rem;
+  border:1px solid rgba(16,185,129,.35); border-radius:.85rem;
+  background:rgba(16,185,129,.08);
+}
+.guest-choice-head { display:flex; align-items:center; gap:.55rem; font-weight:700; color:#15803d; margin-bottom:.85rem; }
+[data-theme="dark"] .guest-choice-head { color:#4ade80; }
+.guest-choice-head i { font-size:1.15rem; }
+.guest-choice-actions { display:flex; flex-wrap:wrap; gap:.6rem; }
+.guest-choice-btn {
+  display:inline-flex; align-items:center; gap:.5rem;
+  padding:.6rem 1.1rem; border-radius:.7rem; font-weight:700; font-size:.9rem;
+  cursor:pointer; text-decoration:none; transition:transform .15s ease, box-shadow .15s ease;
+}
+.guest-choice-btn.primary { color:#fff; background:linear-gradient(135deg,#10b981,#059669); border:none;
+  box-shadow:0 6px 16px -6px rgba(16,185,129,.6); }
+.guest-choice-btn.ghost { color:var(--text-primary,#0f172a); background:transparent; border:1.5px solid var(--border,#cbd5e1); }
+[data-theme="dark"] .guest-choice-btn.ghost { color:#e5e7eb; }
+.guest-choice-btn:hover { transform:translateY(-1px); }
+.guest-choice-note { font-size:.78rem; color:var(--text-secondary,#64748b); margin-top:.7rem; }
+
+@media (max-width:480px) {
+  .otp-row { flex-direction:column; }
+  .otp-btn { width:100%; min-width:0; padding:.7rem 1rem; }
+  .guest-choice-actions { flex-direction:column; }
+  .guest-choice-btn { justify-content:center; }
+}
 
 /* =========================
    NEW: Stronger overrides to beat .btn/.btn-* utilities and ensure dark support
@@ -482,26 +543,46 @@ Skip to main content </a>
             {% if not user.is_authenticated %}
             <div class="form-group mb-6">
               <label for="guest_email" class="block text-sm font-semibold mb-2">Email Address *</label>
-              <div class="flex gap-2">
+              <div class="otp-row">
                 <input type="email" id="guest_email" name="guest_email"
                        value="{{ form_data.guest_email|default_if_none:'' }}"
-                       required class="form-input w-full" placeholder="your.email@example.com">
-                <button type="button" id="send-otp" class="btn btn-secondary whitespace-nowrap ffb-btn ffb-btn-primary">
-                  <span class="ffb-spinner" aria-hidden="true"></span>
-                  <span class="ffb-label">Send Code</span>
+                       required class="form-input" placeholder="your.email@example.com" autocomplete="email">
+                <button type="button" id="send-otp" class="otp-btn">
+                  <span class="otp-spinner" aria-hidden="true"></span>
+                  <span class="otp-btn-label">Send Code</span>
                 </button>
               </div>
-              <div id="otp-area" class="mt-3 hidden">
-                <div class="flex gap-2">
-                  <input type="text" id="otp_code" inputmode="numeric" pattern="[0-9]*"
-                         class="form-input w-full" placeholder="6-digit code">
-                  <button type="button" id="verify-otp" class="btn btn-primary ffb-btn">
-                    <span class="ffb-spinner" aria-hidden="true"></span>
-                    <span class="ffb-label">Verify</span>
+              <p class="otp-hint">We'll email you a 6-digit code to confirm this address.</p>
+
+              <div id="otp-area" class="otp-verify hidden">
+                <div class="otp-row">
+                  <input type="text" id="otp_code" inputmode="numeric" pattern="[0-9]*" maxlength="6"
+                         class="form-input otp-code-input" placeholder="Enter 6-digit code" autocomplete="one-time-code">
+                  <button type="button" id="verify-otp" class="otp-btn">
+                    <span class="otp-spinner" aria-hidden="true"></span>
+                    <span class="otp-btn-label">Verify</span>
                   </button>
                 </div>
-                <p class="text-sm mt-2" id="otp-status" aria-live="polite"></p>
+                <p class="otp-status-msg" id="otp-status" aria-live="polite"></p>
               </div>
+
+              <!-- After verification: let the guest register or continue as guest -->
+              <div id="guest-choice" class="guest-choice hidden">
+                <div class="guest-choice-head">
+                  <i class="fas fa-circle-check" aria-hidden="true"></i>
+                  <span>Email verified! How would you like to continue?</span>
+                </div>
+                <div class="guest-choice-actions">
+                  <a id="guest-register-link" href="{% url 'accounts:register' %}" class="guest-choice-btn primary">
+                    <i class="fas fa-user-plus" aria-hidden="true"></i> Create an account
+                  </a>
+                  <button type="button" id="guest-continue" class="guest-choice-btn ghost">
+                    <i class="fas fa-arrow-right" aria-hidden="true"></i> Continue as guest
+                  </button>
+                </div>
+                <p class="guest-choice-note">Registering lets you manage trips and skip verification next time.</p>
+              </div>
+
               <p id="error-guest_email" class="error-message text-red-500 text-sm mt-1" aria-live="polite"></p>
             </div>
             {% endif %}
@@ -1178,53 +1259,9 @@ window.isAuthenticated = {% if user.is_authenticated %}true{% else %}false{% end
 <!-- Template-only enhancement: button spinners without touching book.js -->
 
 <script>
-(function(){
-  function el(id){ return document.getElementById(id); }
-
-  function setBtnLoading(btn, on, loadingText){
-    if(!btn) return;
-    const label = btn.querySelector('.ffb-label');
-    if (on){
-      btn.dataset.loading = 'true';
-      btn.disabled = true;
-      btn.setAttribute('aria-busy', 'true');
-      btn.dataset.origLabel = btn.dataset.origLabel || (label ? label.textContent : '');
-      if (label && loadingText) label.textContent = loadingText;
-    } else {
-      btn.dataset.loading = 'false';
-      btn.disabled = false;
-      btn.removeAttribute('aria-busy');
-      if (label && btn.dataset.origLabel) label.textContent = btn.dataset.origLabel;
-    }
-  }
-
-  const sendBtn   = el('send-otp');
-  const verifyBtn = el('verify-otp');
-  const statusEl  = el('otp-status');
-  const otpArea   = el('otp-area');
-
-  if (sendBtn){
-    sendBtn.addEventListener('click', () => setBtnLoading(sendBtn, true, 'Sending…'), { passive:true });
-  }
-  if (verifyBtn){
-    verifyBtn.addEventListener('click', () => setBtnLoading(verifyBtn, true, 'Verifying…'), { passive:true });
-  }
-
-  function stopAll(){ setBtnLoading(sendBtn, false); setBtnLoading(verifyBtn, false); }
-
-  if (statusEl){
-    new MutationObserver(() => {
-      const t = (statusEl.textContent || '').trim().toLowerCase();
-      if (t && !/sending|verifying/.test(t)) stopAll();
-    }).observe(statusEl, { childList:true, characterData:true, subtree:true });
-  }
-  if (otpArea){
-    new MutationObserver(() => {
-      const hidden = otpArea.classList.contains('hidden');
-      if (!hidden) stopAll();
-    }).observe(otpArea, { attributes:true, attributeFilter:['class'] });
-  }
-})();
+/* OTP button loading state is managed in book.js (single source of truth).
+   The previous observer-based script was removed to fix the stuck "Sending…"
+   state caused by two scripts racing on the same buttons. */
 </script>
 
 <script>
