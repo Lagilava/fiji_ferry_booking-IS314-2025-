@@ -29,7 +29,7 @@ def client(**extra):
     return Client(HTTP_HOST="localhost", **extra)
 
 
-def make_schedule(seats=10, departs_in_hours=48):
+def make_schedule(seats=10, departs_in_hours=48, vehicle_slots=0, cargo_kg=Decimal("0")):
     p1 = Port.objects.create(name=f"Origin{Port.objects.count()}", lat=-18.0, lng=178.0)
     p2 = Port.objects.create(name=f"Dest{Port.objects.count()}", lat=-17.5, lng=178.5)
     ferry = Ferry.objects.create(name=f"Ferry{Ferry.objects.count()}", capacity=200)
@@ -43,7 +43,10 @@ def make_schedule(seats=10, departs_in_hours=48):
         ferry=ferry, route=route,
         departure_time=now + datetime.timedelta(hours=departs_in_hours),
         arrival_time=now + datetime.timedelta(hours=departs_in_hours + 2),
-        available_seats=seats, status='scheduled',
+        available_seats=seats,
+        available_vehicle_slots=vehicle_slots,
+        available_cargo_kg=cargo_kg,
+        status='scheduled',
         operational_day=(now + datetime.timedelta(hours=departs_in_hours)).date(),
     )
 
@@ -762,3 +765,120 @@ class ChatbotConversationTests(TestCase):
         r = chatbot.answer("how do i book")
         self.assertIn("context", r)
         self.assertEqual(r["context"]["last_intent"], "booking_how_to")
+
+
+# --------------------------------------------------------------------------- #
+# Vehicle / cargo deck capacity (atomic reservation)
+# --------------------------------------------------------------------------- #
+class CapacityTests(TransactionTestCase):
+    def test_vehicle_slots_reserve_release_and_limit(self):
+        sch = make_schedule(seats=50, vehicle_slots=2)
+        with transaction.atomic():
+            self.assertTrue(services.reserve_vehicle_slots(sch.pk, 1))
+            self.assertTrue(services.reserve_vehicle_slots(sch.pk, 1))
+            self.assertFalse(services.reserve_vehicle_slots(sch.pk, 1))  # full
+        sch.refresh_from_db()
+        self.assertEqual(sch.available_vehicle_slots, 0)
+        services.release_vehicle_slots(sch.pk, 1)
+        sch.refresh_from_db()
+        self.assertEqual(sch.available_vehicle_slots, 1)
+
+    def test_cargo_reserve_release_and_limit(self):
+        sch = make_schedule(seats=50, cargo_kg=Decimal("500"))
+        with transaction.atomic():
+            self.assertTrue(services.reserve_cargo(sch.pk, Decimal("400")))
+            self.assertFalse(services.reserve_cargo(sch.pk, Decimal("200")))  # over
+        sch.refresh_from_db()
+        self.assertEqual(sch.available_cargo_kg, Decimal("100.00"))
+        services.release_cargo(sch.pk, Decimal("400"))
+        sch.refresh_from_db()
+        self.assertEqual(sch.available_cargo_kg, Decimal("500.00"))
+
+
+# --------------------------------------------------------------------------- #
+# Tiered cancellation refund policy
+# --------------------------------------------------------------------------- #
+@override_settings(REFUND_FULL_HOURS=24, REFUND_PARTIAL_HOURS=2, REFUND_PARTIAL_PCT=50)
+class RefundPolicyTests(TestCase):
+    def test_refund_tiers(self):
+        full = make_booking(make_schedule(departs_in_hours=48))
+        self.assertEqual(services.compute_refund_amount(full), Decimal("100.00"))
+        partial = make_booking(make_schedule(departs_in_hours=10))
+        self.assertEqual(services.compute_refund_amount(partial), Decimal("50.00"))
+        none = make_booking(make_schedule(departs_in_hours=1))
+        self.assertEqual(services.compute_refund_amount(none), Decimal("0.00"))
+
+    @mock.patch("bookings.services.stripe.Refund.create")
+    def test_cancel_refunds_partial_amount(self, mrefund):
+        mrefund.return_value = SimpleNamespace(id="re_test")
+        sch = make_schedule(departs_in_hours=10)  # -> 50%
+        b = make_booking(sch, status="confirmed", payment_intent_id="pi_x")
+        _booking, changed = services.cancel_booking(b.pk, do_refund=True)
+        self.assertTrue(changed)
+        mrefund.assert_called_once()
+        self.assertEqual(mrefund.call_args.kwargs["amount"], 5000)  # 50.00 in cents
+        refund_row = Payment.objects.get(booking=b, payment_status="refunded")
+        self.assertEqual(refund_row.amount, Decimal("-50.00"))
+
+    @mock.patch("bookings.services.stripe.Refund.create")
+    def test_cancel_no_refund_close_to_departure(self, mrefund):
+        sch = make_schedule(departs_in_hours=1)  # -> 0%
+        b = make_booking(sch, status="confirmed", payment_intent_id="pi_y")
+        services.cancel_booking(b.pk, do_refund=True)
+        mrefund.assert_not_called()
+        self.assertFalse(Payment.objects.filter(booking=b, payment_status="refunded").exists())
+
+
+# --------------------------------------------------------------------------- #
+# Weather review-holds
+# --------------------------------------------------------------------------- #
+@override_settings(WEATHER_HOLD_ENABLED=True, WEATHER_HOLD_WIND_KMH=45,
+                   WEATHER_HOLD_PRECIP_PCT=85, WEATHER_HOLD_HORIZON_HOURS=24,
+                   EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class WeatherHoldTests(TestCase):
+    def _weather(self, sch, wind, precip):
+        from bookings.models import WeatherCondition
+        WeatherCondition.objects.create(
+            port=sch.route.departure_port, route=sch.route,
+            wind_speed=wind, precipitation_probability=precip, condition="Test",
+            expires_at=timezone.now() + datetime.timedelta(minutes=30),
+        )
+
+    def test_calm_weather_no_hold(self):
+        from bookings.scheduling import evaluate_weather_holds
+        sch = make_schedule(departs_in_hours=12)
+        self._weather(sch, wind=10, precip=5)
+        result = evaluate_weather_holds()
+        sch.refresh_from_db()
+        self.assertEqual(result["held"], 0)
+        self.assertEqual(sch.status, "scheduled")
+
+    def test_storm_holds_and_is_idempotent(self):
+        from bookings.scheduling import evaluate_weather_holds
+        sch = make_schedule(departs_in_hours=12)
+        self._weather(sch, wind=60, precip=95)
+        r1 = evaluate_weather_holds()
+        sch.refresh_from_db()
+        self.assertEqual(r1["held"], 1)
+        self.assertEqual(sch.status, "weather_hold")
+        r2 = evaluate_weather_holds()   # already held -> not re-held
+        self.assertEqual(r2["held"], 0)
+
+
+# --------------------------------------------------------------------------- #
+# Proactive disruption emails
+# --------------------------------------------------------------------------- #
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class DisruptionEmailTests(TestCase):
+    def test_notifies_only_active_bookings(self):
+        from django.core import mail
+        from bookings.notifications import notify_schedule_disruption
+        sch = make_schedule()
+        make_booking(sch, guest_email="a@x.com", status="confirmed")
+        make_booking(sch, guest_email="b@x.com", status="pending")
+        make_booking(sch, guest_email="c@x.com", status="cancelled")  # excluded
+        sent = notify_schedule_disruption(sch, "cancelled")
+        self.assertEqual(sent, 2)
+        self.assertEqual(len(mail.outbox), 2)
+        recipients = {addr for m in mail.outbox for addr in m.to}
+        self.assertEqual(recipients, {"a@x.com", "b@x.com"})

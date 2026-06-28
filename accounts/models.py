@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 
@@ -30,6 +32,11 @@ class User(AbstractBaseUser, PermissionsMixin):
     updated_at = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
+    # Soft email verification: accounts can log in and book immediately, but we
+    # confirm ownership of the address via a one-click link (a banner nudges
+    # unverified users). Guests verify separately via OTP.
+    is_verified = models.BooleanField(default=False)
+    email_verification_token = models.UUIDField(default=uuid.uuid4, editable=False)
 
     objects = UserManager()
 

@@ -662,6 +662,14 @@ SERVER_MONITOR_INTERVAL = config('SERVER_MONITOR_INTERVAL', default=15, cast=int
 AUTOMATION_AGENT_ENABLED = config('AUTOMATION_AGENT_ENABLED', default=True, cast=bool)
 AUTOMATION_AGENT_INTERVAL = config('AUTOMATION_AGENT_INTERVAL', default=300, cast=int)
 
+# Cancellation refund policy (tiered by time before departure).
+#   * >= REFUND_FULL_HOURS before departure    -> 100% refund
+#   * >= REFUND_PARTIAL_HOURS before departure -> REFUND_PARTIAL_PCT % refund
+#   * otherwise (incl. after departure)        -> no refund
+REFUND_FULL_HOURS = config('REFUND_FULL_HOURS', default=24, cast=int)
+REFUND_PARTIAL_HOURS = config('REFUND_PARTIAL_HOURS', default=2, cast=int)
+REFUND_PARTIAL_PCT = config('REFUND_PARTIAL_PCT', default=50, cast=int)
+
 # Weather review-holds: automatically move upcoming sailings to 'weather_hold'
 # (non-bookable, needs staff review) when the route's current weather breaches
 # these limits. Sailings are never auto-cancelled or auto-released.

@@ -1459,6 +1459,12 @@
     <!-- Main Content -->
     <main class="main-content" style="margin-top: 100px; theme-label">
         <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-8 ">
+            {% if user.is_authenticated and user.is_verified is False %}
+            <div style="background:#fffbeb;border:1px solid #fcd34d;color:#92400e;border-radius:12px;padding:0.85rem 1.1rem;margin-bottom:1.25rem;display:flex;align-items:center;gap:0.6rem;font-size:0.92rem;">
+                <i class="fas fa-envelope-circle-check" aria-hidden="true"></i>
+                <span>Please confirm your email address — check your inbox for the verification link we sent when you signed up.</span>
+            </div>
+            {% endif %}
             {% comment %}Django messages are surfaced through the unified toast system (see #server-messages JSON + Toast init in the base script).{% endcomment %}
             {% block content %}{% endblock %}
         </div>

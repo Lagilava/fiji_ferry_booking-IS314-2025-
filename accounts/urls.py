@@ -1,5 +1,5 @@
 from django.urls import path, reverse_lazy
-from .views import LoginView, RegisterView, profile_settings, NotifyingPasswordResetView
+from .views import LoginView, RegisterView, profile_settings, NotifyingPasswordResetView, verify_email
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.views import LogoutView
 
@@ -10,6 +10,7 @@ urlpatterns = [
     path('logout/', LogoutView.as_view(next_page='home'), name='logout'),
     path('register/', RegisterView.as_view(), name='register'),
     path('profile/', profile_settings, name='profile'),
+    path('verify-email/<uuid:token>/', verify_email, name='verify_email'),
 
     # ----- Password reset (Django built-in flow) -----
     path(

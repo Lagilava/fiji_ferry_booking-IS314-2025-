@@ -256,9 +256,37 @@ def confirm_mock_payment(booking_id, *, provider, reference, amount):
 # --------------------------------------------------------------------------- #
 # Cancellation + refund  (idempotent, atomic)
 # --------------------------------------------------------------------------- #
+def compute_refund_amount(booking, *, now=None):
+    """Refund due for cancelling ``booking`` now, per the tiered time policy.
+
+    Full refund if cancelled far enough ahead, partial in the middle window, none
+    close to (or after) departure. Thresholds come from settings so operators can
+    tune them. Returns a Decimal (0.00 .. total_price), rounded to cents.
+    """
+    from django.conf import settings
+    now = now or timezone.now()
+    departure = booking.schedule.departure_time
+    hours_until = (departure - now).total_seconds() / 3600.0
+
+    full_h = getattr(settings, 'REFUND_FULL_HOURS', 24)
+    partial_h = getattr(settings, 'REFUND_PARTIAL_HOURS', 2)
+    partial_pct = getattr(settings, 'REFUND_PARTIAL_PCT', 50)
+
+    if hours_until >= full_h:
+        pct = Decimal('100')
+    elif hours_until >= partial_h:
+        pct = Decimal(str(partial_pct))
+    else:
+        pct = Decimal('0')
+
+    amount = (booking.total_price * pct / Decimal('100'))
+    return amount.quantize(Decimal('0.01'))
+
+
 @transaction.atomic
 def cancel_booking(booking_id, *, do_refund=True):
-    """Cancel a booking: refund (idempotently), release seats, cancel tickets.
+    """Cancel a booking: refund per policy (idempotently), release inventory,
+    cancel tickets.
 
     Returns (booking, changed: bool). ``changed`` is False when the booking was
     already cancelled (idempotent no-op). The booking row is locked for the whole
@@ -272,19 +300,21 @@ def cancel_booking(booking_id, *, do_refund=True):
     seats = passenger_count(booking)
 
     if do_refund and booking.payment_intent_id:
-        # idempotency_key makes Stripe collapse a retried refund into one.
-        refund = stripe.Refund.create(
-            payment_intent=booking.payment_intent_id,
-            amount=int(booking.total_price * 100),
-            idempotency_key=f"ferry-refund-{booking.id}",
-        )
-        Payment.objects.create(
-            booking=booking,
-            payment_method='stripe',
-            amount=-booking.total_price,
-            payment_status=PaymentStatus.REFUNDED,
-            transaction_id=refund.id,
-        )
+        refund_amount = compute_refund_amount(booking)
+        if refund_amount > 0:
+            # idempotency_key makes Stripe collapse a retried refund into one.
+            refund = stripe.Refund.create(
+                payment_intent=booking.payment_intent_id,
+                amount=int(refund_amount * 100),
+                idempotency_key=f"ferry-refund-{booking.id}",
+            )
+            Payment.objects.create(
+                booking=booking,
+                payment_method='stripe',
+                amount=-refund_amount,
+                payment_status=PaymentStatus.REFUNDED,
+                transaction_id=refund.id,
+            )
 
     release_seats(booking.schedule_id, seats)
     # Return the vehicle slots and cargo weight this booking was holding.

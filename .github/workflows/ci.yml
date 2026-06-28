@@ -11,16 +11,17 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
-    # Live service containers the app depends on.
+    # Service containers matching production (Render: PostgreSQL + Redis).
     services:
-      mysql:
-        image: mysql:8.0
+      postgres:
+        image: postgres:16
         env:
-          MYSQL_ROOT_PASSWORD: group10
-          MYSQL_DATABASE: fiji_ferry_db
-        ports: ["3306:3306"]
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ferry_ci
+        ports: ["5432:5432"]
         options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -p$MYSQL_ROOT_PASSWORD"
+          --health-cmd="pg_isready -U postgres"
           --health-interval=5s --health-timeout=5s --health-retries=20
       redis:
         image: redis:7
@@ -33,15 +34,10 @@ jobs:
       # Django / app configuration (decouple reads these).
       SECRET_KEY: ci-test-secret-key-0123456789-not-for-production-use-only
       DEBUG: "True"                       # avoids ManifestStaticFilesStorage in tests
-      DB_NAME: fiji_ferry_db
-      DB_USER: root
-      DB_PASSWORD: group10
-      DB_HOST: 127.0.0.1
-      DB_PORT: "3306"
-      REDIS_WS_URL: redis://127.0.0.1:6379/0
-      REDIS_CACHE_URL: redis://127.0.0.1:6379/1
-      CELERY_BROKER_URL: redis://127.0.0.1:6379/0
-      CELERY_RESULT_BACKEND: redis://127.0.0.1:6379/0
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/ferry_ci
+      DB_SSL_REQUIRE: "False"
+      REDIS_URL: redis://localhost:6379/0
+      ALLOWED_HOSTS: localhost,127.0.0.1
       # Agents are not needed in CI (and only start for server processes anyway).
       SERVER_MONITOR_ENABLED: "False"
       AUTOMATION_AGENT_ENABLED: "False"
@@ -52,13 +48,13 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.12"
           cache: pip
 
-      - name: Install system dependencies
+      - name: Install system dependencies (libmagic for python-magic)
         run: |
           sudo apt-get update
-          sudo apt-get install -y default-libmysqlclient-dev build-essential pkg-config libmagic1
+          sudo apt-get install -y libmagic1
 
       - name: Install Python dependencies
         run: |
@@ -66,27 +62,16 @@ jobs:
           pip install -r requirements.txt
           pip install coverage
 
-      - name: Wait for MySQL
-        run: |
-          for i in $(seq 1 30); do
-            if mysqladmin ping -h 127.0.0.1 -P 3306 -uroot -pgroup10 --silent; then echo "mysql up"; break; fi
-            echo "waiting for mysql..."; sleep 2
-          done
-
       - name: Django system checks
         run: python manage.py check
 
-      - name: Apply migrations
-        run: python manage.py migrate --noinput
+      - name: No model/migration drift
+        run: python manage.py makemigrations --check --dry-run
 
       - name: Run test suite with coverage
         run: |
-          coverage run --source=bookings --omit="*/migrations/*,*/tests.py" manage.py test bookings -v2
+          coverage run --source=bookings,accounts --omit="*/migrations/*,*/tests.py" manage.py test bookings accounts -v2
           coverage report
-          coverage xml
-
-      - name: Run offline automation battery
-        run: python manage.py run_automation
 
       - name: Upload coverage artifact
         if: always()

@@ -4,6 +4,7 @@ from django.contrib.auth import authenticate, login as auth_login, update_sessio
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.views import PasswordResetView
+from django.core.exceptions import ValidationError
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse_lazy
 from django.utils import timezone
@@ -61,10 +62,13 @@ class RegisterView(View):
             user = form.save()
             raw_password = form.cleaned_data.get('password1')
 
-            # Send a welcome / account-confirmation email (best-effort).
+            # Send a welcome email with a one-click verification link (best-effort).
             try:
                 from bookings.notifications import send_welcome_email
-                send_welcome_email(user)
+                verify_url = request.build_absolute_uri(
+                    reverse_lazy('accounts:verify_email', args=[user.email_verification_token])
+                )
+                send_welcome_email(user, verify_url=str(verify_url))
             except Exception:
                 pass
 
@@ -98,6 +102,26 @@ class RegisterView(View):
 
         messages.error(request, 'Registration failed. Please correct the errors below.')
         return render(request, self.template_name, {'form': form})
+
+
+# -----------------------------
+#  Email verification (soft: confirms ownership, does not gate login)
+# -----------------------------
+def verify_email(request, token):
+    User = get_user_model()
+    try:
+        user = User.objects.get(email_verification_token=token)
+    except (User.DoesNotExist, ValueError, ValidationError):
+        messages.error(request, "That verification link is invalid or has already been used.")
+        return redirect('home')
+
+    if not user.is_verified:
+        user.is_verified = True
+        user.save(update_fields=['is_verified'])
+        messages.success(request, "Thank you — your email is now verified. ✔")
+    else:
+        messages.info(request, "Your email was already verified.")
+    return redirect('home')
 
 
 # -----------------------------

@@ -37,17 +37,26 @@ def send_booking_cancellation_email(booking):
     if not to:
         return False
 
+    from decimal import Decimal
+    from django.db.models import Sum
     route = booking.schedule.route
     dep = route.departure_port.name
     dest = route.destination_port.name
     depart = timezone.localtime(booking.schedule.departure_time).strftime("%a, %b %d %Y at %H:%M")
-    refunded = booking.payments.filter(payment_status="refunded").exists() if hasattr(booking, "payments") else False
-    refund_line = (
-        f"A refund of FJD {booking.total_price} has been issued to your original payment method "
-        f"(allow 5–10 business days)."
-        if refunded else
-        "If you had paid, any refund will be processed to your original payment method."
+    # Actual refunded amount per the tiered policy (sum of refund Payment rows).
+    refunded_total = abs(
+        booking.payments.filter(payment_status="refunded").aggregate(t=Sum("amount"))["t"] or Decimal("0")
     )
+    if refunded_total > 0:
+        refund_line = (
+            f"A refund of FJD {refunded_total} has been issued to your original payment method "
+            f"(allow 5–10 business days)."
+        )
+    else:
+        refund_line = (
+            "As per our cancellation policy, no refund applies for this cancellation "
+            "(cancelled close to departure). Contact us if you believe this is in error."
+        )
 
     subject = f"Booking #{booking.id} cancelled — Fiji Ferry"
     text = (
@@ -80,29 +89,41 @@ def send_booking_cancellation_email(booking):
 # --------------------------------------------------------------------------- #
 # Customer: registration welcome / confirmation
 # --------------------------------------------------------------------------- #
-def send_welcome_email(user):
-    """Confirm a newly registered account to the user's email."""
+def send_welcome_email(user, verify_url=None):
+    """Welcome a newly registered account and (optionally) ask them to verify
+    their email via a one-click link."""
     to = getattr(user, "email", None)
     if not to:
         return False
     name = user.first_name or user.username or "Traveller"
     site = getattr(settings, "SITE_URL", "").rstrip("/")
-    subject = "Welcome to Fiji Ferry — your account is ready"
+    subject = "Welcome to Fiji Ferry — please confirm your email"
+
+    verify_text = f"\nConfirm your email address: {verify_url}\n" if verify_url else ""
     text = (
         f"Bula {name},\n\n"
-        f"Your Fiji Ferry account has been created successfully with this email address.\n\n"
-        f"You can now book sailings, manage your trips, and receive booking confirmations here.\n"
-        + (f"\nVisit: {site}\n" if site else "")
-        + "\nIf you didn't create this account, please contact us immediately.\n\n"
+        f"Your Fiji Ferry account has been created with this email address.\n\n"
+        f"You can already book sailings and manage trips — but please confirm your "
+        f"email so we know it's really you.\n"
+        + verify_text
+        + (f"\nVisit: {site}\n" if site and not verify_url else "")
+        + "\nIf you didn't create this account, please ignore this email.\n\n"
         f"Vinaka,\nFiji Ferry"
+    )
+    verify_btn = (
+        f'<p><a href="{verify_url}" style="background:#10b981;color:#fff;padding:10px 18px;'
+        f'border-radius:8px;text-decoration:none">Confirm my email</a></p>'
+        if verify_url else
+        (f'<p><a href="{site}" style="background:#10b981;color:#fff;padding:10px 18px;'
+         f'border-radius:8px;text-decoration:none">Start booking</a></p>' if site else '')
     )
     html = f"""
     <div style="font-family:Inter,Arial,sans-serif;max-width:560px;margin:auto">
       <h2 style="color:#0e7490;margin:0 0 12px">Bula {name}, welcome aboard! ⚓</h2>
       <p>Your Fiji Ferry account has been created with <strong>{to}</strong>.</p>
-      <p>You can now book sailings, manage your trips, and receive booking confirmations.</p>
-      {f'<p><a href="{site}" style="background:#10b981;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">Start booking</a></p>' if site else ''}
-      <p style="color:#6b7280;font-size:13px">If you didn't create this account, please contact us immediately.</p>
+      <p>You can already book and manage trips. Please confirm your email so we know it's really you:</p>
+      {verify_btn}
+      <p style="color:#6b7280;font-size:13px">If you didn't create this account, please ignore this email.</p>
       <p>Vinaka,<br>Fiji Ferry</p>
     </div>
     """
