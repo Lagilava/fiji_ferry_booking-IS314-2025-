@@ -12,6 +12,7 @@ urlpatterns = [
     path('generate_ticket/<int:booking_id>/', views.generate_ticket, name='generate_ticket'),
     path('view_cargo/<int:cargo_id>/', views.view_cargo, name='view_cargo'),
     path('view_ticket/<str:qr_token>/', views.view_ticket, name='view_ticket'),
+    path('ticket_qr/<str:qr_token>.png', views.ticket_qr_png, name='ticket_qr_png'),
     path('book/', views.book_ticket, name='book_ticket'),
     path('process_payment/<int:booking_id>/', views.process_payment, name='process_payment'),
     path('api/create_mock_checkout/', views.create_mock_checkout, name='api_create_mock_checkout'),

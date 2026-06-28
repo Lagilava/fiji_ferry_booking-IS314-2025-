@@ -2061,15 +2061,10 @@ def ticket_detail(request, ticket_id):
     return render(request, "ticket.html", {"ticket": ticket})
 
 
-def _ticket_qr_data_uri(request, ticket):
-    """Return a base64 PNG data-URI of the ticket QR, regenerating if needed.
-
-    Inlining the QR makes the ticket page independent of MEDIA file serving,
-    which Django/WhiteNoise do not provide when DEBUG=False (so /media/ QR URLs
-    404 in production, e.g. on Render). Self-healing: if the stored file is
-    missing it is regenerated from the ticket token and re-saved.
-    """
-    import base64
+def _ticket_qr_bytes(request, ticket):
+    """Return raw PNG bytes for a ticket QR, regenerating from the token if the
+    stored file is missing (self-healing). Shared by the data-URI helper, the
+    PNG endpoint, and the confirmation email."""
     raw = None
     try:
         if ticket.qr_code and ticket.qr_code.name and default_storage.exists(ticket.qr_code.name):
@@ -2090,7 +2085,32 @@ def _ticket_qr_data_uri(request, ticket):
             ticket.qr_code.save(f"ticket_{ticket.id}.png", ContentFile(raw), save=True)
         except Exception:
             pass
-    return 'data:image/png;base64,' + base64.b64encode(raw).decode('ascii')
+    return raw
+
+
+def _ticket_qr_data_uri(request, ticket):
+    """Return a base64 PNG data-URI of the ticket QR (for inline page rendering,
+    independent of MEDIA file serving)."""
+    import base64
+    return 'data:image/png;base64,' + base64.b64encode(_ticket_qr_bytes(request, ticket)).decode('ascii')
+
+
+def ticket_qr_png(request, qr_token):
+    """Serve a ticket QR as a PNG by its (secret) token.
+
+    Used as a normal remote <img src> in confirmation emails — this works with
+    every email backend (Brevo HTTP API included) and every mail client, unlike
+    hand-built MIME cid: inline attachments which Brevo does not accept. Access
+    is capability-based: knowing the unguessable qr_token is the authorisation.
+    """
+    from django.http import HttpResponse, Http404
+    try:
+        ticket = Ticket.objects.get(qr_token=qr_token)
+    except Ticket.DoesNotExist:
+        raise Http404("Ticket not found")
+    resp = HttpResponse(_ticket_qr_bytes(request, ticket), content_type='image/png')
+    resp['Cache-Control'] = 'public, max-age=86400'
+    return resp
 
 
 @login_required_allow_anonymous
@@ -2526,13 +2546,6 @@ def payment_success(request):
                 )
             addons_html = _section_html("Add-ons", addon_rows)
 
-            # --- Generate QR code images for email (base64) ---
-            qr_images = {}
-            for ticket in tickets:
-                if ticket.qr_code:
-                    with default_storage.open(ticket.qr_code.name, 'rb') as img_file:
-                        qr_images[ticket.id] = base64.b64encode(img_file.read()).decode('utf-8')
-
             # --- Plain-text fallback ---
             email_text = f"""Bula {guest_name},
 
@@ -2583,9 +2596,10 @@ Fiji Ferry Service Team
             for ticket in tickets:
                 passenger = ticket.passenger
                 name = f"{passenger.first_name} {passenger.last_name}"
-                qr_cid = f"qr_{ticket.id}"
-                qr_data = qr_images.get(ticket.id)
-                qr_img = f'<img src="cid:{qr_cid}" alt="QR Code for {name}" style="width:150px;height:150px;margin:10px auto;display:block;border:1px solid #ddd;border-radius:8px;">' if qr_data else '<p style="color:#ef4444;">QR code unavailable</p>'
+                # Remote URL (works with every email backend + client). The QR
+                # endpoint regenerates from the token if the file is missing.
+                qr_url = request.build_absolute_uri(reverse('bookings:ticket_qr_png', args=[ticket.qr_token]))
+                qr_img = f'<img src="{qr_url}" alt="QR Code for {name}" style="width:150px;height:150px;margin:10px auto;display:block;border:1px solid #ddd;border-radius:8px;">'
                 qr_rows.append(f'''
                     <tr>
                         <td style="padding:16px 0;text-align:center;">
@@ -2703,23 +2717,12 @@ Fiji Ferry Service Team
                     from_email=settings.DEFAULT_FROM_EMAIL,
                     to=[recipient]
                 )
-                # Attach HTML body
+                # Attach HTML body. QR codes are referenced as remote <img> URLs
+                # (see ticket_qr_png), so no MIME inline attachments are needed —
+                # this is what makes the email work over Brevo's HTTP API.
                 msg.attach_alternative(email_html, "text/html")
-
-                # Ensure HTML + inline images are grouped as multipart/related
-                msg.mixed_subtype = 'related'
-
-                # Attach QR codes as inline images with Content-ID
-                for ticket in tickets:
-                    b64 = qr_images.get(ticket.id)
-                    if b64:
-                        img_part = MIMEImage(base64.b64decode(b64), _subtype="png")
-                        img_part.add_header('Content-ID', f'<qr_{ticket.id}>')  # matches src="cid:qr_<id>"
-                        img_part.add_header('Content-Disposition', 'inline', filename=f'qr_{ticket.id}.png')
-                        msg.attach(img_part)
-
                 msg.send()
-                logger.debug(f"Confirmation email with QR codes sent to {recipient}")
+                logger.debug(f"Confirmation email sent to {recipient}")
             else:
                 logger.warning("No recipient email found for booking confirmation")
 
