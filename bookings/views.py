@@ -3312,9 +3312,12 @@ def api_send_otp(request):
         )
 
     # SEC-4: rate-limit OTP sends per-email and per-IP to prevent mail-bombing
-    # and quota abuse. Uses the Redis cache backend.
+    # and quota abuse. Uses the Redis cache backend. We only CHECK the limits
+    # here and increment after a successful send below, so a failed/blocked send
+    # never burns a legitimate user's quota and locks them out.
     client_ip = request.META.get('REMOTE_ADDR', 'unknown')
-    for scope, limit, window in (("email:%s" % email, 3, 900), ("ip:%s" % client_ip, 10, 900)):
+    rate_limits = []
+    for scope, limit, window in (("email:%s" % email, 5, 900), ("ip:%s" % client_ip, 15, 900)):
         rl_key = "otp_rl:%s" % scope
         count = cache.get(rl_key, 0)
         if count >= limit:
@@ -3324,7 +3327,7 @@ def api_send_otp(request):
                              "message": "Too many verification requests. Please wait a few minutes and try again."}]},
                 status=429,
             )
-        cache.set(rl_key, count + 1, window)
+        rate_limits.append((rl_key, count, window))
 
     # If a previously verified email exists and differs, clear canonical markers
     prev_verified = (request.session.get("guest_otp_verified_email") or "").lower()
@@ -3405,6 +3408,10 @@ If you did not request this code, you can ignore this email.
                          "message": "We couldn't send the verification email right now. Please try again later."}]},
             status=502,
         )
+
+    # Only now (after a confirmed send) count this against the rate limits.
+    for rl_key, count, window in rate_limits:
+        cache.set(rl_key, count + 1, window)
 
     return JsonResponse({"success": True})
 
