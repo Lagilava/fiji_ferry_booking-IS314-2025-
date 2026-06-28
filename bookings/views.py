@@ -3345,6 +3345,28 @@ def api_send_otp(request):
     }
     request.session.modified = True
 
+    # Guard against a silently-misconfigured mail setup in production: when no
+    # SMTP credentials are configured the project falls back to the console
+    # backend, which "sends" successfully but delivers nothing. In that case
+    # tell the user the truth instead of a fake success.
+    backend = (settings.EMAIL_BACKEND or "").lower()
+    is_real_mail = "smtp" in backend
+    if not settings.DEBUG and not is_real_mail:
+        logger.error(
+            "OTP send blocked: email backend is '%s' (no SMTP credentials). "
+            "Set EMAIL_HOST_USER and EMAIL_HOST_PASSWORD in the environment.",
+            settings.EMAIL_BACKEND,
+        )
+        request.session.pop(key, None)
+        request.session.modified = True
+        return JsonResponse(
+            {"success": False,
+             "errors": [{"field": "guest_email",
+                         "message": "Email verification is temporarily unavailable. "
+                                    "Please contact support or try again later."}]},
+            status=503,
+        )
+
     # Send email (same stack as payment_success)
     subject = getattr(settings, "OTP_EMAIL_SUBJECT", "Your Fiji Ferry verification code")
     text_body = f"""Your Fiji Ferry verification code is: {code}
