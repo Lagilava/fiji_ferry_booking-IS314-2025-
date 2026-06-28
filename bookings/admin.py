@@ -1571,7 +1571,14 @@ class CustomAdminSite(admin.AdminSite):
         elif action == 'cancel':
             schedule.status = 'cancelled'
             schedule.save(update_fields=['status', 'last_updated'])
-            messages.warning(request, f"Cancelled: {label}")
+            notified = 0
+            try:
+                from .notifications import notify_schedule_disruption
+                notified = notify_schedule_disruption(schedule, 'cancelled')
+            except Exception:
+                pass
+            note = f" — {notified} passenger(s) emailed" if notified else ""
+            messages.warning(request, f"Cancelled: {label}{note}")
         else:
             messages.error(request, "Unknown action.")
         clear_analytics_cache()
@@ -1894,14 +1901,26 @@ class ScheduleAdmin(EnhancedModelAdmin):
             )
 
     def _set_status(self, request, queryset, status, label, level=messages.SUCCESS):
+        from .notifications import notify_schedule_disruption
         count = 0
+        notified = 0
         for schedule in queryset:
+            previous = schedule.status
             schedule.status = status
             schedule.save(update_fields=['status', 'last_updated'])
             self._broadcast_schedule(schedule)
             count += 1
+            # Notify affected passengers when a sailing becomes disrupted.
+            if status in ('delayed', 'cancelled') and previous != status:
+                try:
+                    notified += notify_schedule_disruption(schedule, status)
+                except Exception:
+                    pass
         clear_analytics_cache()
-        self.message_user(request, f"{count} schedule(s) marked {label}.", level)
+        msg = f"{count} schedule(s) marked {label}."
+        if notified:
+            msg += f" {notified} passenger(s) notified by email."
+        self.message_user(request, msg, level)
 
     @admin.action(description="🟢 Mark selected as Scheduled")
     def mark_scheduled(self, request, queryset):

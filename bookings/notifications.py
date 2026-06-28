@@ -110,6 +110,99 @@ def send_welcome_email(user):
 
 
 # --------------------------------------------------------------------------- #
+# Customer: schedule disruption (delay / cancellation / weather hold)
+# --------------------------------------------------------------------------- #
+_DISRUPTION_COPY = {
+    "delayed": {
+        "subject": "Your sailing is delayed",
+        "headline": "Your sailing has been delayed",
+        "color": "#d97706",
+        "body": "Your upcoming sailing has been delayed. We're working to confirm a new "
+                "departure time and will update you as soon as it's set.",
+        "action": "We'll notify you of the new time. No action is needed right now.",
+    },
+    "cancelled": {
+        "subject": "Your sailing has been cancelled",
+        "headline": "Your sailing has been cancelled",
+        "color": "#b91c1c",
+        "body": "Unfortunately your upcoming sailing has been cancelled.",
+        "action": "Please rebook an alternative sailing, or reply to this email and our "
+                  "team will help arrange a rebooking or refund.",
+    },
+    "weather_hold": {
+        "subject": "Weather alert for your sailing",
+        "headline": "Your sailing is under weather review",
+        "color": "#b45309",
+        "body": "Due to forecast weather conditions, your upcoming sailing is under review "
+                "and may be delayed or cancelled for safety.",
+        "action": "No action is needed yet — we'll confirm the final decision soon. Watch "
+                  "your email for updates.",
+    },
+}
+
+
+def notify_schedule_disruption(schedule, kind):
+    """Email every customer with an active booking on `schedule` about a
+    disruption. `kind` is one of: 'delayed', 'cancelled', 'weather_hold'.
+
+    Returns the number of emails sent. Best-effort and idempotent-safe to call
+    on each status change.
+    """
+    copy = _DISRUPTION_COPY.get(kind)
+    if copy is None:
+        return 0
+
+    from .models import Booking
+    route = schedule.route
+    dep = route.departure_port.name
+    dest = route.destination_port.name
+    depart = timezone.localtime(schedule.departure_time).strftime("%a, %b %d %Y at %H:%M")
+    site = getattr(settings, "SITE_URL", "").rstrip("/")
+    manage = f"{site}/bookings/history/" if site else ""
+
+    bookings = (
+        Booking.objects.filter(schedule=schedule, status__in=["pending", "confirmed"])
+        .select_related("user")
+    )
+    sent = 0
+    for booking in bookings:
+        to = _booking_recipient(booking)
+        if not to:
+            continue
+        subject = f"{copy['subject']} — {dep} → {dest}"
+        text = (
+            f"Bula {_customer_name(booking)},\n\n"
+            f"{copy['body']}\n\n"
+            f"Booking ID: {booking.id}\n"
+            f"Route: {dep} → {dest}\n"
+            f"Scheduled departure: {depart}\n\n"
+            f"{copy['action']}\n"
+            + (f"\nManage your booking: {manage}\n" if manage else "")
+            + "\nVinaka,\nFiji Ferry"
+        )
+        html = f"""
+        <div style="font-family:Inter,Arial,sans-serif;max-width:560px;margin:auto">
+          <h2 style="color:{copy['color']};margin:0 0 12px">{copy['headline']}</h2>
+          <p>Bula {_customer_name(booking)}, {copy['body']}</p>
+          <table style="border-collapse:collapse;width:100%;font-size:14px">
+            <tr><td style="padding:8px;color:#6b7280">Booking ID</td><td style="padding:8px">#{booking.id}</td></tr>
+            <tr><td style="padding:8px;color:#6b7280">Route</td><td style="padding:8px">{dep} → {dest}</td></tr>
+            <tr><td style="padding:8px;color:#6b7280">Scheduled departure</td><td style="padding:8px">{depart}</td></tr>
+          </table>
+          <p style="margin-top:14px">{copy['action']}</p>
+          {f'<p><a href="{manage}" style="background:#0e7490;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">Manage booking</a></p>' if manage else ''}
+          <p>Vinaka,<br>Fiji Ferry</p>
+        </div>
+        """
+        if _send(subject, text, [to], html):
+            sent += 1
+    if sent:
+        logger.info("notifications: sent %s '%s' disruption email(s) for schedule %s",
+                    sent, kind, schedule.id)
+    return sent
+
+
+# --------------------------------------------------------------------------- #
 # Admin: operational alerts
 # --------------------------------------------------------------------------- #
 def send_admin_alert(subject, message, *, html=None, throttle_key=None, throttle_seconds=0):

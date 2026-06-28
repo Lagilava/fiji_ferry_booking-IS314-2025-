@@ -139,6 +139,12 @@ def evaluate_weather_holds():
         sched.notes = f"{sched.notes}\n{note}" if sched.notes else note
         sched.save(update_fields=["status", "notes", "last_updated"])
         held += 1
+        # Proactively notify passengers booked on this now-held sailing.
+        try:
+            from .notifications import notify_schedule_disruption
+            notify_schedule_disruption(sched, "weather_hold")
+        except Exception:
+            pass
         held_details.append(
             f"#{sched.id} {sched.ferry.name} {sched.route} "
             f"@ {timezone.localtime(sched.departure_time):%b %d %H:%M} — {reason}"
