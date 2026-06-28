@@ -678,6 +678,7 @@ def view_ticket(request, qr_token):
         return HttpResponseForbidden("You are not authorized to view this ticket.")
     if not request.user.is_authenticated and ticket.booking.guest_email != request.session.get('guest_email'):
         return HttpResponseForbidden("You are not authorized to view this ticket.")
+    ticket.qr_data_uri = _ticket_qr_data_uri(request, ticket)
     return render(request, 'bookings/view_ticket.html', {'ticket': ticket})
 
 
@@ -2060,6 +2061,38 @@ def ticket_detail(request, ticket_id):
     return render(request, "ticket.html", {"ticket": ticket})
 
 
+def _ticket_qr_data_uri(request, ticket):
+    """Return a base64 PNG data-URI of the ticket QR, regenerating if needed.
+
+    Inlining the QR makes the ticket page independent of MEDIA file serving,
+    which Django/WhiteNoise do not provide when DEBUG=False (so /media/ QR URLs
+    404 in production, e.g. on Render). Self-healing: if the stored file is
+    missing it is regenerated from the ticket token and re-saved.
+    """
+    import base64
+    raw = None
+    try:
+        if ticket.qr_code and ticket.qr_code.name and default_storage.exists(ticket.qr_code.name):
+            with default_storage.open(ticket.qr_code.name, 'rb') as f:
+                raw = f.read()
+    except Exception:
+        raw = None
+    if not raw:
+        qr_data = request.build_absolute_uri(reverse('bookings:view_ticket', args=[ticket.qr_token]))
+        qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=10, border=4)
+        qr.add_data(qr_data)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+        buffer = BytesIO()
+        img.save(buffer, format='PNG')
+        raw = buffer.getvalue()
+        try:  # persist so next load can reuse it
+            ticket.qr_code.save(f"ticket_{ticket.id}.png", ContentFile(raw), save=True)
+        except Exception:
+            pass
+    return 'data:image/png;base64,' + base64.b64encode(raw).decode('ascii')
+
+
 @login_required_allow_anonymous
 def view_tickets(request, booking_id):
     booking = get_object_or_404(Booking, id=booking_id)
@@ -2069,6 +2102,9 @@ def view_tickets(request, booking_id):
         return HttpResponseForbidden("You are not authorized to view this booking.")
 
     tickets = Ticket.objects.filter(booking=booking).select_related('passenger')
+    # Inline each QR as a data-URI so it renders without MEDIA serving.
+    for _t in tickets:
+        _t.qr_data_uri = _ticket_qr_data_uri(request, _t)
     cargo = Cargo.objects.filter(booking=booking).first()
     addons = AddOn.objects.filter(booking=booking)
 

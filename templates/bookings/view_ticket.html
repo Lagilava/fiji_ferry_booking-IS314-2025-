@@ -25,9 +25,9 @@
 </div>
 
 <div>
-    {% if ticket.qr_code %}
+    {% if ticket.qr_data_uri %}
         <p>✅ Get this code scanned to board</p>
-        <img src="{{ ticket.qr_code.url }}" alt="QR Code">
+        <img src="{{ ticket.qr_data_uri }}" alt="QR Code">
     {% else %}
         <p>QR Code not available for this ticket.</p>
     {% endif %}

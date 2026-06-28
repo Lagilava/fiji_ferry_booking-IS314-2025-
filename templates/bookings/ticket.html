@@ -1418,9 +1418,9 @@
             </section>
 
             <section class="ticket-qr" aria-label="Boarding QR Code">
-                {% if ticket.qr_code %}
+                {% if ticket.qr_data_uri %}
                 <p><i class="fas fa-qrcode" aria-hidden="true"></i>Scan at Boarding</p>
-                <img src="{{ ticket.qr_code.url }}" alt="QR Code for {{ ticket.passenger.first_name }} {{ ticket.passenger.last_name }}" loading="lazy">
+                <img src="{{ ticket.qr_data_uri }}" alt="QR Code for {{ ticket.passenger.first_name }} {{ ticket.passenger.last_name }}">
                 {% else %}
                 <p style="color: var(--text-muted); font-weight: 500;"><i class="fas fa-exclamation-circle" aria-hidden="true"></i> QR Code not available</p>
                 {% endif %}
