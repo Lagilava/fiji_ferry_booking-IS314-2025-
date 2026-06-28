@@ -14,6 +14,18 @@ class BookingsConfig(AppConfig):
         """Initialize admin enhancements when app is ready - FIXED."""
         from django.conf import settings
 
+        # Visibility into the active email transport (shows in the free Logs tab).
+        # Lets us confirm whether Brevo (HTTP) or SMTP is in effect without a shell.
+        try:
+            logger.info(
+                "EMAIL CONFIG -> backend=%s | BREVO_API_KEY=%s | from=%s",
+                settings.EMAIL_BACKEND,
+                "set" if getattr(settings, "BREVO_API_KEY", "") else "NOT set",
+                getattr(settings, "DEFAULT_FROM_EMAIL", ""),
+            )
+        except Exception:
+            pass
+
         # Server status monitor: a daemon thread bound to the server lifecycle.
         # It self-guards so it only starts for real server processes (runserver /
         # daphne / asgi) and never for migrate/test/shell/etc.
