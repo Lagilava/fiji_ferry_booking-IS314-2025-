@@ -6,6 +6,7 @@ from django.core.validators import FileExtensionValidator, MinValueValidator, Ma
 from django.core.exceptions import ValidationError
 import uuid
 from datetime import time, date, timedelta
+from decimal import Decimal
 from django.db import transaction
 
 
@@ -36,6 +37,14 @@ class Ferry(models.Model):
     name = models.CharField(max_length=100, unique=True)
     operator = models.CharField(max_length=100, blank=True)
     capacity = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+    vehicle_capacity = models.PositiveIntegerField(
+        default=20, help_text="Number of vehicle slots on the car deck"
+    )
+    max_cargo_kg = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('10000.00'),
+        validators=[MinValueValidator(Decimal('0'))],
+        help_text="Maximum cargo weight the vessel can carry (kg)",
+    )
     description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
     home_port = models.ForeignKey(
@@ -142,6 +151,14 @@ class Schedule(models.Model):
         max_length=50, blank=True, help_text="Estimated travel duration (e.g., '12 hours')"
     )
     available_seats = models.PositiveIntegerField(validators=[MinValueValidator(0)])
+    available_vehicle_slots = models.PositiveIntegerField(
+        default=0, help_text="Remaining vehicle slots (seeded from the ferry's vehicle_capacity)"
+    )
+    available_cargo_kg = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0'),
+        validators=[MinValueValidator(Decimal('0'))],
+        help_text="Remaining cargo weight capacity in kg (seeded from the ferry's max_cargo_kg)",
+    )
     status = models.CharField(
         max_length=20,
         choices=[
@@ -169,6 +186,14 @@ class Schedule(models.Model):
             models.CheckConstraint(
                 check=models.Q(available_seats__gte=0),
                 name='schedule_available_seats_non_negative',
+            ),
+            models.CheckConstraint(
+                check=models.Q(available_vehicle_slots__gte=0),
+                name='schedule_available_vehicle_slots_non_negative',
+            ),
+            models.CheckConstraint(
+                check=models.Q(available_cargo_kg__gte=0),
+                name='schedule_available_cargo_kg_non_negative',
             ),
         ]
 

@@ -25,7 +25,7 @@ from decimal import Decimal
 import stripe
 from django.conf import settings
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, Sum
 from django.utils import timezone
 
 from .models import Booking, Schedule, Payment
@@ -108,6 +108,56 @@ def release_seats(schedule_id, qty):
 
 def passenger_count(booking):
     return (booking.passenger_adults or 0) + (booking.passenger_children or 0) + (booking.passenger_infants or 0)
+
+
+def reserve_vehicle_slots(schedule_id, count):
+    """Atomically reserve ``count`` vehicle slots under a row lock.
+
+    Returns True if reserved, False if insufficient. Call inside transaction.atomic().
+    """
+    if count <= 0:
+        return True
+    locked = Schedule.objects.select_for_update().get(pk=schedule_id)
+    if locked.available_vehicle_slots < count:
+        return False
+    Schedule.objects.filter(pk=schedule_id).update(
+        available_vehicle_slots=F('available_vehicle_slots') - count
+    )
+    return True
+
+
+def release_vehicle_slots(schedule_id, count):
+    """Atomically return ``count`` vehicle slots to a schedule."""
+    if count and schedule_id:
+        Schedule.objects.filter(pk=schedule_id).update(
+            available_vehicle_slots=F('available_vehicle_slots') + count
+        )
+
+
+def reserve_cargo(schedule_id, weight_kg):
+    """Atomically reserve ``weight_kg`` of cargo capacity under a row lock.
+
+    Returns True if reserved, False if insufficient. Call inside transaction.atomic().
+    """
+    weight_kg = Decimal(weight_kg or 0)
+    if weight_kg <= 0:
+        return True
+    locked = Schedule.objects.select_for_update().get(pk=schedule_id)
+    if locked.available_cargo_kg < weight_kg:
+        return False
+    Schedule.objects.filter(pk=schedule_id).update(
+        available_cargo_kg=F('available_cargo_kg') - weight_kg
+    )
+    return True
+
+
+def release_cargo(schedule_id, weight_kg):
+    """Atomically return ``weight_kg`` of cargo capacity to a schedule."""
+    weight_kg = Decimal(weight_kg or 0)
+    if weight_kg > 0 and schedule_id:
+        Schedule.objects.filter(pk=schedule_id).update(
+            available_cargo_kg=F('available_cargo_kg') + weight_kg
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -237,6 +287,10 @@ def cancel_booking(booking_id, *, do_refund=True):
         )
 
     release_seats(booking.schedule_id, seats)
+    # Return the vehicle slots and cargo weight this booking was holding.
+    release_vehicle_slots(booking.schedule_id, booking.vehicles.count())
+    cargo_kg = booking.cargo.aggregate(total=Sum('weight_kg'))['total'] or Decimal('0')
+    release_cargo(booking.schedule_id, cargo_kg)
     transition_booking(booking, BookingStatus.CANCELLED)
 
     booking.tickets.update(ticket_status='cancelled')
@@ -266,18 +320,34 @@ def rebook_booking(booking_id, new_schedule_id, *, moved_by=None):
         raise ValueError("Cannot rebook a cancelled booking.")
 
     seats = passenger_count(booking)
+    veh = booking.vehicles.count()
+    cargo_kg = booking.cargo.aggregate(total=Sum('weight_kg'))['total'] or Decimal('0')
+
     new_schedule = Schedule.objects.select_for_update().get(pk=new_schedule_id)
     if new_schedule.available_seats < seats:
         raise ValueError(
             f"New schedule only has {new_schedule.available_seats} seat(s); booking needs {seats}."
         )
+    if new_schedule.available_vehicle_slots < veh:
+        raise ValueError(
+            f"New schedule only has {new_schedule.available_vehicle_slots} vehicle slot(s); booking needs {veh}."
+        )
+    if new_schedule.available_cargo_kg < cargo_kg:
+        raise ValueError(
+            f"New schedule only has {new_schedule.available_cargo_kg} kg cargo capacity; booking needs {cargo_kg} kg."
+        )
 
     old_schedule_id = booking.schedule_id
 
-    # Release from old, reserve on new
+    # Release from old, reserve on new (seats + vehicle slots + cargo)
     release_seats(old_schedule_id, seats)
-    new_schedule.available_seats = F('available_seats') - seats
-    new_schedule.save(update_fields=['available_seats'])
+    release_vehicle_slots(old_schedule_id, veh)
+    release_cargo(old_schedule_id, cargo_kg)
+    Schedule.objects.filter(pk=new_schedule_id).update(
+        available_seats=F('available_seats') - seats,
+        available_vehicle_slots=F('available_vehicle_slots') - veh,
+        available_cargo_kg=F('available_cargo_kg') - cargo_kg,
+    )
 
     booking.schedule = new_schedule
     booking.save(update_fields=['schedule'])

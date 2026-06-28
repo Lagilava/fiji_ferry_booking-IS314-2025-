@@ -1751,7 +1751,8 @@ class CargoAdmin(EnhancedModelAdmin):
 
 @admin.register(Ferry, site=admin_site)
 class FerryAdmin(EnhancedModelAdmin):
-    list_display = ('name', 'operator', 'capacity', 'is_active', 'home_port', 'cruise_speed_knots')
+    list_display = ('name', 'operator', 'capacity', 'vehicle_capacity', 'max_cargo_kg',
+                    'is_active', 'home_port', 'cruise_speed_knots')
     list_filter = ('is_active', 'home_port')
     search_fields = ('name', 'operator')
     autocomplete_fields = ['home_port']
@@ -1841,7 +1842,8 @@ class WeatherConditionAdmin(EnhancedModelAdmin):
 
 @admin.register(Schedule, site=admin_site)
 class ScheduleAdmin(EnhancedModelAdmin):
-    list_display = ('ferry', 'route', 'departure_time', 'arrival_time', 'available_seats', 'status', 'real_time_status',
+    list_display = ('ferry', 'route', 'departure_time', 'arrival_time', 'available_seats',
+                    'available_vehicle_slots', 'available_cargo_kg', 'status', 'real_time_status',
                     'operational_day')
     list_filter = ('status', 'ferry', 'route', 'operational_day')
     search_fields = ('ferry__name', 'route__departure_port__name', 'route__destination_port__name')
@@ -1853,7 +1855,8 @@ class ScheduleAdmin(EnhancedModelAdmin):
     list_display_links = ('ferry', 'route')
     fieldsets = (
         ('Schedule Info', {'fields': ('ferry', 'route', 'departure_time', 'arrival_time'), 'classes': ('collapse',)}),
-        ('Details', {'fields': ('available_seats', 'status', 'operational_day'), 'classes': ('collapse',)}),
+        ('Details', {'fields': ('available_seats', 'available_vehicle_slots', 'available_cargo_kg',
+                                'status', 'operational_day'), 'classes': ('collapse',)}),
     )
 
     def real_time_status(self, obj):
@@ -1931,6 +1934,8 @@ class ScheduleAdmin(EnhancedModelAdmin):
                 arrival_time=s.arrival_time + timedelta(days=1),
                 estimated_duration=s.estimated_duration,
                 available_seats=s.ferry.capacity,
+                available_vehicle_slots=s.ferry.vehicle_capacity,
+                available_cargo_kg=s.ferry.max_cargo_kg,
                 status='scheduled',
                 operational_day=s.operational_day + timedelta(days=1),
                 created_by_auto=True,

@@ -977,17 +977,35 @@ def _assemble_booking(request):
 
     schedule = get_object_or_404(Schedule, id=schedule_id, status='scheduled')
 
-    # CON-1: reserve seats atomically via the service layer (row-locked).
+    cargo_weight = Decimal(str(weight_kg)) if (add_cargo and weight_kg and weight_kg > 0) else Decimal('0')
+    vehicle_slots = 1 if add_vehicle else 0
+
+    # CON-1: reserve seats + vehicle/cargo capacity atomically (all row-locked).
+    # If any leg fails, raising inside the atomic block rolls back the others so
+    # we never partially reserve.
     with transaction.atomic():
         if not services.reserve_seats(schedule.pk, total_passengers):
             locked = Schedule.objects.get(pk=schedule.pk)
             raise BookingError('schedule_id', f'Only {locked.available_seats} seats available')
+        if not services.reserve_vehicle_slots(schedule.pk, vehicle_slots):
+            locked = Schedule.objects.get(pk=schedule.pk)
+            raise BookingError('add_vehicle',
+                               f'Only {locked.available_vehicle_slots} vehicle slot(s) left on this sailing')
+        if not services.reserve_cargo(schedule.pk, cargo_weight):
+            locked = Schedule.objects.get(pk=schedule.pk)
+            raise BookingError('cargo_weight_kg',
+                               f'Only {locked.available_cargo_kg} kg of cargo capacity left on this sailing')
     schedule.refresh_from_db()
+
+    def _release_all():
+        services.release_seats(schedule.pk, total_passengers)
+        services.release_vehicle_slots(schedule.pk, vehicle_slots)
+        services.release_cargo(schedule.pk, cargo_weight)
 
     # --- Validate email ---
     customer_email = request.user.email if request.user.is_authenticated else guest_email
     if not customer_email or not re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', customer_email):
-        services.release_seats(schedule.pk, total_passengers)
+        _release_all()
         raise BookingError('email', 'Valid email required')
 
     booking = None
@@ -1087,10 +1105,10 @@ def _assemble_booking(request):
                 price=calculate_addon_price(addon['type'], addon['quantity'])
             )
     except Exception:
-        # Roll back seats + partial booking, then let the caller report the error.
+        # Roll back seats/vehicle/cargo + partial booking, then re-raise.
         if booking is not None:
             booking.delete()
-        services.release_seats(schedule.pk, total_passengers)
+        _release_all()
         raise
 
     return {
