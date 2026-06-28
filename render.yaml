@@ -31,6 +31,15 @@ services:
           type: keyvalue
           name: fiji-ferry-redis
           property: connectionString
+      # Email — Render blocks outbound SMTP, so production sends via Brevo's
+      # HTTPS API. Set the key's value in the Render dashboard (sync:false keeps
+      # the secret out of the repo). When present it overrides SMTP automatically.
+      - key: BREVO_API_KEY
+        sync: false
+      - key: DEFAULT_FROM_EMAIL
+        sync: false      # must match a verified sender in Brevo
+      - key: ADMIN_EMAIL
+        sync: false
       # ALLOWED_HOSTS / CSRF are auto-filled from RENDER_EXTERNAL_HOSTNAME,
       # but set your custom domain here if you add one:
       # - key: ALLOWED_HOSTS

@@ -200,7 +200,7 @@ EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
 # Fail fast instead of hanging if the SMTP host is unreachable (common on PaaS
 # where outbound SMTP can be slow/blocked) so a request never stalls for minutes.
 EMAIL_TIMEOUT = config('EMAIL_TIMEOUT', default=15, cast=int)
-DEFAULT_FROM_EMAIL = config('EMAIL_HOST_USER', default='admin@fijiferry.com')
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default=config('EMAIL_HOST_USER', default='admin@fijiferry.com'))
 ADMIN_EMAIL = config('ADMIN_EMAIL', default='admin@fijiferry.com')
 
 # Brevo (HTTP email API) — used in production where outbound SMTP is blocked
