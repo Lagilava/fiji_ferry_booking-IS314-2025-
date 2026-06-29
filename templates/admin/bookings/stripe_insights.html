@@ -5,61 +5,410 @@
 
 {% block extrahead %}
 <style>
-.si-intro { color: #6b7280; font-size: .875rem; margin-bottom: 1.5rem; }
-.si-error { background: #fee2e2; border: 1px solid #ef4444; border-radius: 10px; padding: .75rem 1rem; font-size: .83rem; color: #991b1b; font-weight: 600; margin-bottom: 1.25rem; }
-.si-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.75rem; }
-.si-kpi { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 1rem 1.25rem; }
-.si-kpi__val { font-size: 1.6rem; font-weight: 800; color: #0f172a; }
-.si-kpi__lbl { font-size: .72rem; text-transform: uppercase; letter-spacing: .5px; color: #6b7280; margin-top: .2rem; }
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+/* ─── Base ─── */
+.tool-page {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: #1e293b;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+/* ─── Alerts ─── */
+.si-error {
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  border: 1px solid #fca5a5;
+  border-radius: 14px;
+  padding: 1rem 1.25rem;
+  font-size: 0.875rem;
+  color: #991b1b;
+  font-weight: 600;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  box-shadow: 0 4px 6px -1px rgba(220, 38, 38, 0.08);
+}
+
+/* ─── KPI Grid ─── */
+.si-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.25rem;
+  margin-bottom: 2.5rem;
+}
+
+.si-kpi {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 1.25rem 1.5rem;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 8px 24px -8px rgba(15,23,42,0.06);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.si-kpi:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 12px 32px -10px rgba(15,23,42,0.1);
+}
+
+.si-kpi::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: #cbd5e1;
+  border-radius: 16px 16px 0 0;
+}
+
+.si-kpi--green::before { background: linear-gradient(90deg, #34d399, #059669); }
+.si-kpi--red::before   { background: linear-gradient(90deg, #f87171, #dc2626); }
+.si-kpi--amber::before { background: linear-gradient(90deg, #fbbf24, #d97706); }
+.si-kpi--blue::before  { background: linear-gradient(90deg, #60a5fa, #2563eb); }
+
+.si-kpi__val {
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+  margin-top: 0.25rem;
+}
+
 .si-kpi--green .si-kpi__val { color: #059669; }
 .si-kpi--red   .si-kpi__val { color: #dc2626; }
 .si-kpi--amber .si-kpi__val { color: #d97706; }
-.section-title { font-size: .95rem; font-weight: 700; margin: 1.5rem 0 .75rem; color: #374151; border-bottom: 2px solid #f3f4f6; padding-bottom: .4rem; }
-.si-table { width: 100%; border-collapse: collapse; font-size: .82rem; margin-bottom: 1.75rem; }
-.si-table th { background: #f8fafc; font-weight: 700; text-align: left; padding: .5rem .85rem; border-bottom: 2px solid #e5e7eb; white-space: nowrap; }
-.si-table td { padding: .5rem .85rem; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
-.si-table tr:hover td { background: #f8fafc; }
-.st-tag { display: inline-block; padding: .15rem .55rem; border-radius: 999px; font-size: .72rem; font-weight: 700; }
-.st-succeeded { background: #d1fae5; color: #065f46; }
-.st-failed    { background: #fee2e2; color: #991b1b; }
-.st-pending   { background: #fef3c7; color: #92400e; }
-.st-refunded  { background: #ede9fe; color: #5b21b6; }
-.dispute-row td { background: #fef2f2; }
-.summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: .75rem; margin-bottom: 1.75rem; }
-.summary-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: .75rem 1rem; }
-.summary-card__label { font-size: .72rem; color: #6b7280; text-transform: uppercase; letter-spacing: .4px; }
-.summary-card__count { font-size: 1.4rem; font-weight: 800; color: #0f172a; }
-.summary-card__total { font-size: .8rem; color: #6b7280; }
-.si-empty { color: #9ca3af; text-align: center; padding: 1.5rem; font-size: .85rem; }
-.stripe-note { font-size: .75rem; color: #9ca3af; margin-top: -.5rem; margin-bottom: 1.5rem; }
-a.receipt-link { font-size: .75rem; color: #2563eb; }
-.si-confirm-btn { border: none; cursor: pointer; }
+.si-kpi--blue  .si-kpi__val { color: #2563eb; }
+
+.si-kpi__lbl {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #64748b;
+  font-weight: 600;
+  margin-top: 0.375rem;
+}
+
+.si-kpi__icon {
+  position: absolute;
+  top: 1rem;
+  right: 1.25rem;
+  font-size: 1.25rem;
+  opacity: 0.15;
+}
+
+/* ─── Section Titles ─── */
+.section-title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  margin: 2.5rem 0 1rem;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  letter-spacing: -0.02em;
+}
+
+.section-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, #e2e8f0 0%, transparent 100%);
+  margin-left: 0.75rem;
+}
+
+/* ─── Summary Grid ─── */
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.summary-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 1rem 1.25rem;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.summary-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 12px -4px rgba(15,23,42,0.08);
+}
+
+.summary-card__label {
+  font-size: 0.75rem;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+
+.summary-card__count {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin-top: 0.25rem;
+  letter-spacing: -0.02em;
+}
+
+.summary-card__total {
+  font-size: 0.8125rem;
+  color: #94a3b8;
+  margin-top: 0.25rem;
+  font-weight: 500;
+}
+
+/* ─── Table Wrapper ─── */
+.si-table-wrap {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  margin-bottom: 2rem;
+}
+
+.si-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.875rem;
+}
+
+.si-table th {
+  background: #f8fafc;
+  font-weight: 600;
+  text-align: left;
+  padding: 0.875rem 1.25rem;
+  color: #475569;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-bottom: 2px solid #e2e8f0;
+  white-space: nowrap;
+}
+
+.si-table td {
+  padding: 0.875rem 1.25rem;
+  border-bottom: 1px solid #f1f5f9;
+  color: #334155;
+  vertical-align: middle;
+}
+
+.si-table tbody tr {
+  transition: background 0.15s ease;
+}
+
+.si-table tbody tr:hover td {
+  background: #f8fafc;
+}
+
+.si-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/* ─── Status Tags ─── */
+.st-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.875rem;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.st-tag::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.st-succeeded {
+  background: #ecfdf5;
+  color: #065f46;
+  border-color: #a7f3d0;
+}
+.st-succeeded::before { background: #10b981; }
+
+.st-failed {
+  background: #fef2f2;
+  color: #991b1b;
+  border-color: #fecaca;
+}
+.st-failed::before { background: #ef4444; }
+
+.st-pending {
+  background: #fffbeb;
+  color: #92400e;
+  border-color: #fde68a;
+}
+.st-pending::before { background: #f59e0b; }
+
+.st-refunded {
+  background: #f5f3ff;
+  color: #5b21b6;
+  border-color: #ddd6fe;
+}
+.st-refunded::before { background: #8b5cf6; }
+
+/* ─── Dispute Row ─── */
+.dispute-row td {
+  background: #fef2f2 !important;
+}
+
+.dispute-row:hover td {
+  background: #fee2e2 !important;
+}
+
+/* ─── Confirm Button ─── */
+.si-confirm-btn {
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.si-confirm-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px -4px rgba(5, 150, 105, 0.3);
+}
+
+.si-confirm-btn:active {
+  transform: translateY(0);
+}
+
 .si-inline-form { display: inline; }
-.si-id-code { font-size: .72rem; }
-.si-no-disputes { color: #059669; font-size: .85rem; font-weight: 600; }
+
+/* ─── Links & Code ─── */
+a.receipt-link {
+  font-size: 0.8125rem;
+  color: #2563eb;
+  text-decoration: none;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+a.receipt-link:hover {
+  background: #eff6ff;
+  text-decoration: none;
+}
+
+.si-id-code {
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 0.75rem;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+/* ─── Empty States ─── */
+.si-empty {
+  color: #94a3b8;
+  text-align: center;
+  padding: 3rem 1.5rem;
+  font-size: 0.9375rem;
+  background: #f8fafc;
+  border-radius: 16px;
+  border: 2px dashed #e2e8f0;
+  margin: 1rem 0 2rem;
+}
+
+.si-no-disputes {
+  color: #059669;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 0;
+}
+
+/* ─── Notes ─── */
+.stripe-note {
+  font-size: 0.8125rem;
+  color: #94a3b8;
+  margin: -0.5rem 0 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.si-intro {
+  color: #64748b;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  margin-bottom: 2rem;
+  max-width: 640px;
+}
+
+/* ─── Responsive ─── */
+@media (max-width: 768px) {
+  .si-kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  .summary-grid { grid-template-columns: repeat(2, 1fr); }
+  .si-table th, .si-table td { padding: 0.625rem 0.75rem; }
+  .section-title { font-size: 1rem; }
+}
 </style>
 {% endblock %}
 
 {% block content %}
 <div id="content-main" class="tool-page">
   {% include "admin/_tool_header.html" with icon="💳" subtitle="Live overview of Stripe transactions, disputes, and local payment records." %}
-  {% if stripe_error %}<div class="si-error">⚠️ Stripe API error: {{ stripe_error }}. Local payment data still shown below.</div>{% endif %}
+  
+  {% if stripe_error %}
+  <div class="si-error">
+    <span>⚠️</span>
+    <span>Stripe API error: {{ stripe_error }}. Local payment data still shown below.</span>
+  </div>
+  {% endif %}
 
   {# ── KPI row ─────────────────────────────────────────── #}
   <div class="si-kpi-grid">
     <div class="si-kpi si-kpi--green">
+      <span class="si-kpi__icon">💰</span>
       <div class="si-kpi__val">FJ${{ total_revenue|floatformat:2 }}</div>
       <div class="si-kpi__lbl">Total Revenue (confirmed)</div>
     </div>
     <div class="si-kpi si-kpi--red">
+      <span class="si-kpi__icon">↩️</span>
       <div class="si-kpi__val">FJ${{ total_refunded|floatformat:2 }}</div>
       <div class="si-kpi__lbl">Total Refunded</div>
     </div>
     <div class="si-kpi si-kpi--amber">
+      <span class="si-kpi__icon">⚠️</span>
       <div class="si-kpi__val">{{ disputes|length }}</div>
       <div class="si-kpi__lbl">Open Disputes</div>
     </div>
-    <div class="si-kpi">
+    <div class="si-kpi si-kpi--blue">
+      <span class="si-kpi__icon">⚡</span>
       <div class="si-kpi__val">{{ recent_charges|length }}</div>
       <div class="si-kpi__lbl">Recent Stripe Charges</div>
     </div>
@@ -84,53 +433,80 @@ a.receipt-link { font-size: .75rem; color: #2563eb; }
   {# ── Failed local payments ────────────────────────────── #}
   {% if failed_payments %}
   <h2 class="section-title">❌ Failed Payments — Action Required</h2>
-  <table class="si-table">
-    <thead>
-      <tr><th>Booking</th><th>Customer</th><th>Method</th><th>Amount</th><th>Date</th><th>Action</th></tr>
-    </thead>
-    <tbody>
-    {% for p in failed_payments %}
-    <tr>
-      <td><a href="{% url 'custom_admin:bookings_booking_change' p.booking_id %}">#{{ p.booking_id }}</a></td>
-      <td>{{ p.booking.user.email|default:"Guest" }}</td>
-      <td>{{ p.payment_method|title }}</td>
-      <td>FJ${{ p.amount|floatformat:2 }}</td>
-      <td>{{ p.payment_date|date:"M d, H:i" }}</td>
-      <td>
-        <form method="post" action="{% url 'custom_admin:manual_confirm' %}" class="si-inline-form">
-          {% csrf_token %}
-          <input type="hidden" name="booking_id" value="{{ p.booking_id }}">
-          <input type="hidden" name="reference" value="manual-retry">
-          <button type="submit" class="st-tag st-succeeded si-confirm-btn">✓ Confirm</button>
-        </form>
-      </td>
-    </tr>
-    {% endfor %}
-    </tbody>
-  </table>
+  <div class="si-table-wrap">
+    <table class="si-table">
+      <thead>
+        <tr>
+          <th>Booking</th>
+          <th>Customer</th>
+          <th>Method</th>
+          <th>Amount</th>
+          <th>Date</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for p in failed_payments %}
+      <tr>
+        <td><a href="{% url 'custom_admin:bookings_booking_change' p.booking_id %}">#{{ p.booking_id }}</a></td>
+        <td>{{ p.booking.user.email|default:"Guest" }}</td>
+        <td>{{ p.payment_method|title }}</td>
+        <td><strong>FJ${{ p.amount|floatformat:2 }}</strong></td>
+        <td>{{ p.payment_date|date:"M d, H:i" }}</td>
+        <td>
+          <form method="post" action="{% url 'custom_admin:manual_confirm' %}" class="si-inline-form">
+            {% csrf_token %}
+            <input type="hidden" name="booking_id" value="{{ p.booking_id }}">
+            <input type="hidden" name="reference" value="manual-retry">
+            <button type="submit" class="st-tag st-succeeded si-confirm-btn">✓ Confirm</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
   {% endif %}
 
   {# ── Stripe recent charges ───────────────────────────── #}
   {% if recent_charges %}
   <h2 class="section-title">⚡ Recent Stripe Charges</h2>
-  <p class="stripe-note">Last 25 charges. Cached 5 minutes.</p>
-  <table class="si-table">
-    <thead>
-      <tr><th>ID</th><th>Description</th><th>Amount</th><th>Status</th><th>Date</th><th>Receipt</th></tr>
-    </thead>
-    <tbody>
-    {% for c in recent_charges %}
-    <tr>
-      <td><code class="si-id-code">{{ c.id|slice:":16" }}…</code></td>
-      <td>{{ c.description }}</td>
-      <td>{{ c.currency }} {{ c.amount|floatformat:2 }}{% if c.refunded %} <span class="st-tag st-refunded">–{{ c.amount_refunded|floatformat:2 }} refunded</span>{% endif %}</td>
-      <td><span class="st-tag st-{{ c.status }}">{{ c.status|title }}</span></td>
-      <td>{{ c.created }}</td>
-      <td>{% if c.receipt_url %}<a href="{{ c.receipt_url }}" target="_blank" rel="noopener" class="receipt-link">View ↗</a>{% else %}—{% endif %}</td>
-    </tr>
-    {% endfor %}
-    </tbody>
-  </table>
+  <p class="stripe-note">Last 25 charges · Cached 5 minutes</p>
+  <div class="si-table-wrap">
+    <table class="si-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Description</th>
+          <th>Amount</th>
+          <th>Status</th>
+          <th>Date</th>
+          <th>Receipt</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for c in recent_charges %}
+      <tr>
+        <td><code class="si-id-code">{{ c.id|slice:":16" }}…</code></td>
+        <td>{{ c.description }}</td>
+        <td>
+          {{ c.currency }} {{ c.amount|floatformat:2 }}
+          {% if c.refunded %}
+          <span class="st-tag st-refunded">–{{ c.amount_refunded|floatformat:2 }} refunded</span>
+          {% endif %}
+        </td>
+        <td><span class="st-tag st-{{ c.status }}">{{ c.status|title }}</span></td>
+        <td>{{ c.created }}</td>
+        <td>
+          {% if c.receipt_url %}
+          <a href="{{ c.receipt_url }}" target="_blank" rel="noopener" class="receipt-link">View ↗</a>
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
   {% elif not stripe_error %}
     <p class="si-empty">No recent Stripe charges found.</p>
   {% endif %}
@@ -138,24 +514,32 @@ a.receipt-link { font-size: .75rem; color: #2563eb; }
   {# ── Disputes ────────────────────────────────────────── #}
   {% if disputes %}
   <h2 class="section-title">⚠️ Open Stripe Disputes</h2>
-  <table class="si-table">
-    <thead>
-      <tr><th>ID</th><th>Amount</th><th>Reason</th><th>Status</th><th>Created</th></tr>
-    </thead>
-    <tbody>
-    {% for d in disputes %}
-    <tr class="dispute-row">
-      <td><code class="si-id-code">{{ d.id|slice:":20" }}…</code></td>
-      <td>{{ d.currency }} {{ d.amount|floatformat:2 }}</td>
-      <td>{{ d.reason }}</td>
-      <td><span class="st-tag st-failed">{{ d.status|title }}</span></td>
-      <td>{{ d.created }}</td>
-    </tr>
-    {% endfor %}
-    </tbody>
-  </table>
+  <div class="si-table-wrap">
+    <table class="si-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Amount</th>
+          <th>Reason</th>
+          <th>Status</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for d in disputes %}
+      <tr class="dispute-row">
+        <td><code class="si-id-code">{{ d.id|slice:":20" }}…</code></td>
+        <td><strong>{{ d.currency }} {{ d.amount|floatformat:2 }}</strong></td>
+        <td>{{ d.reason }}</td>
+        <td><span class="st-tag st-failed">{{ d.status|title }}</span></td>
+        <td>{{ d.created }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
   {% elif not stripe_error %}
-    <p class="si-no-disputes">✅ No open disputes.</p>
+    <p class="si-no-disputes">✅ No open disputes</p>
   {% endif %}
 
 </div>
