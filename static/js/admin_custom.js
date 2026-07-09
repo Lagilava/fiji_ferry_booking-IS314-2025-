@@ -563,6 +563,88 @@ document.addEventListener('DOMContentLoaded', function() {
     const maxRetries = 5;
     const baseRetryDelay = 5000;
 
+    // ── HTTP polling fallback ────────────────────────────────────────────────
+    // Live updates must survive environments where the WebSocket can't hold —
+    // e.g. Render's free tier spinning down, restrictive proxies, or repeated
+    // socket errors. When the socket isn't OPEN we poll the same endpoints the
+    // live messages would refresh, and we stop the moment the socket recovers.
+    let livePollTimer = null;
+    const LIVE_POLL_MS = 20000;
+
+    function refreshDashboardLive() {
+        try {
+            if (typeof fetchRecentBookingsViaHttp === 'function') {
+                fetchRecentBookingsViaHttp();
+            }
+            if (window.fetchWidgetData) {
+                window.fetchWidgetData('/admin/widget-data/performance_metrics/', document.getElementById('performance_metrics'));
+                window.fetchWidgetData('/admin/widget-data/recent_activity/', document.getElementById('recent_activity'));
+                const weatherWidget = document.getElementById('weather_alerts');
+                if (weatherWidget) window.fetchWidgetData('/admin/widget-data/weather_alerts/', weatherWidget);
+            }
+            if (typeof activeChartId !== 'undefined' && activeChartId &&
+                typeof debouncedFetchAndUpdateChart === 'function') {
+                debouncedFetchAndUpdateChart(activeChartId, chartDays[activeChartId]);
+            }
+        } catch (e) {
+            console.error('Live poll refresh failed:', e);
+        }
+    }
+
+    function startLivePolling() {
+        if (livePollTimer) return;
+        console.warn(`Live updates: WebSocket unavailable → HTTP polling every ${LIVE_POLL_MS / 1000}s`);
+        refreshDashboardLive(); // immediate catch-up so the gap isn't visible
+        livePollTimer = setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) { stopLivePolling(); return; }
+            refreshDashboardLive();
+        }, LIVE_POLL_MS);
+    }
+
+    function stopLivePolling() {
+        if (!livePollTimer) return;
+        clearInterval(livePollTimer);
+        livePollTimer = null;
+        console.log('Live updates: WebSocket restored → HTTP polling stopped');
+    }
+
+    // Rebuild the "recent bookings" DataTable from a list of booking rows.
+    // (Previously called in the WS handlers but never defined — the missing
+    // definition meant the bookings table silently never refreshed live.)
+    function refreshRecentBookingsTable(list) {
+        if (!Array.isArray(list)) return;
+        const dataElement = document.getElementById('recent-bookings-data');
+        if (dataElement) dataElement.textContent = JSON.stringify(list);
+        try {
+            if (window.jQuery && window.jQuery.fn && typeof window.jQuery.fn.DataTable !== 'undefined') {
+                const table = window.jQuery('#recent-bookings-table').DataTable();
+                table.clear();
+                list.forEach(booking => {
+                    table.row.add([
+                        booking.id || 'N/A',
+                        booking.user_email || 'N/A',
+                        `<span title="${booking.route || 'N/A'}">${booking.route || 'N/A'}</span>`,
+                        booking.booking_date ? new Date(booking.booking_date).toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A',
+                        `<span data-status="${booking.status || 'N/A'}">${booking.status || 'N/A'}</span>`
+                    ]);
+                });
+                table.draw();
+            }
+        } catch (e) {
+            console.error('refreshRecentBookingsTable failed:', e);
+        }
+    }
+
+    // Fetch the latest recent bookings over HTTP and refresh the table.
+    function fetchRecentBookingsViaHttp() {
+        return fetch('/admin/analytics-data/?chart_type=recent_bookings', {
+            headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRFToken': getCookie('csrftoken') }
+        })
+        .then(r => r.json())
+        .then(d => refreshRecentBookingsTable(d.recent_bookings || []))
+        .catch(e => console.error('fetchRecentBookingsViaHttp failed:', e));
+    }
+
     function initializeWebSocket() {
         if (window.__IS_CHANGE_LIST__) {
             console.log('Skipping WebSocket initialization in change list page');
@@ -573,15 +655,12 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         if (wsRetryCount >= maxRetries) {
-            console.error('Max WebSocket retries reached. Falling back to HTTP polling.');
-            document.querySelectorAll('.jazzmin-widget').forEach(widget => {
-                const url = widget.getAttribute('data-widget-url');
-                if (url) window.fetchWidgetData(url, widget);
-            });
-            setInterval(() => {
-                const widget = document.getElementById('weather_alerts');
-                if (widget) window.fetchWidgetData('/admin/widget-data/weather_alerts/', widget);
-            }, 60000);
+            // Socket can't hold — keep the dashboard live via HTTP polling and
+            // keep probing the socket at a capped interval so it self-heals the
+            // moment the WebSocket becomes available again (e.g. Render wakes up).
+            console.warn('Max WebSocket retries reached — using HTTP polling and probing for recovery.');
+            startLivePolling();
+            setTimeout(() => { wsRetryCount = 0; initializeWebSocket(); }, 60000);
             return;
         }
 
@@ -592,6 +671,7 @@ document.addEventListener('DOMContentLoaded', function() {
         ws.onopen = () => {
             console.log('WebSocket connected to admin dashboard');
             wsRetryCount = 0;
+            stopLivePolling(); // socket is authoritative again
             ws.send(JSON.stringify({ action: 'refresh_weather' }));
             document.dispatchEvent(new CustomEvent('admin-ws-connected'));
         };
@@ -764,9 +844,13 @@ document.addEventListener('DOMContentLoaded', function() {
         ws.onclose = (event) => {
             console.log(`WebSocket disconnected: Code ${event.code}, Reason: ${event.reason}`);
             document.dispatchEvent(new CustomEvent('admin-ws-disconnected'));
+            // Cover the gap immediately with polling so the dashboard stays live
+            // while we attempt to reconnect (capped backoff).
+            startLivePolling();
             wsRetryCount++;
-            console.log(`Reconnecting in ${baseRetryDelay * (wsRetryCount + 1)}ms... (${wsRetryCount}/${maxRetries})`);
-            setTimeout(initializeWebSocket, baseRetryDelay * (wsRetryCount + 1));
+            const delay = Math.min(baseRetryDelay * (wsRetryCount + 1), 30000);
+            console.log(`Reconnecting in ${delay}ms... (attempt ${wsRetryCount})`);
+            setTimeout(initializeWebSocket, delay);
         };
 
         ws.onerror = (error) => {
