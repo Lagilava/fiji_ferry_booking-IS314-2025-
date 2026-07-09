@@ -100,23 +100,31 @@
   color: var(--text) !important;
 }
 .jazzmin-admin .main-sidebar .user-panel { border-bottom: 1px solid var(--border); }
+/* Colours use !important to beat AdminLTE's .sidebar-dark-primary selectors,
+   which out-specify plain token rules and would leave faint low-contrast text. */
 .jazzmin-admin .nav-sidebar .nav-link {
-  color: var(--text);
+  color: var(--text) !important;
   border-radius: 8px;
   margin: 1px .5rem;
 }
-.jazzmin-admin .nav-sidebar .nav-link .nav-icon { color: var(--text-muted); }
+.jazzmin-admin .nav-sidebar .nav-link .nav-icon,
+.jazzmin-admin .nav-sidebar .nav-link p { color: var(--text) !important; }
 .jazzmin-admin .nav-sidebar .nav-link:hover {
   background: var(--hover-bg);
-  color: var(--primary);
+  color: var(--primary) !important;
 }
-.jazzmin-admin .nav-sidebar .nav-link:hover .nav-icon { color: var(--primary); }
+.jazzmin-admin .nav-sidebar .nav-link:hover .nav-icon,
+.jazzmin-admin .nav-sidebar .nav-link:hover p { color: var(--primary) !important; }
 .jazzmin-admin .nav-sidebar .nav-link.active,
-.jazzmin-admin .nav-sidebar .nav-link.active .nav-icon {
+.jazzmin-admin .nav-sidebar .nav-link.active .nav-icon,
+.jazzmin-admin .nav-sidebar .nav-link.active p {
   background: var(--primary);
-  color: #fff;
+  color: #fff !important;
 }
-.jazzmin-admin .nav-header { color: var(--text-muted); }
+.jazzmin-admin .nav-header { color: var(--text-muted) !important; }
+.jazzmin-admin .brand-text,
+.jazzmin-admin .user-panel .info a,
+.jazzmin-admin .user-panel .info span { color: var(--text) !important; }
 
 /* ── Typography & rhythm ────────────────────────────────────────────────── */
 .content-wrapper,

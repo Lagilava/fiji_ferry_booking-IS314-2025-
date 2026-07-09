@@ -107,17 +107,19 @@
    4. DARK MODE AUTO-ADAPT
    -------------------------------------------------------------- */
 @media (prefers-color-scheme: dark) {
+    /* Values are tokens so charts still honour the light/dark TOGGLE even
+       though this block triggers on the OS setting. */
     .jazzmin-admin .chart-wrapper {
-        background: #374151;
-        border-color: #4b5563;
+        background: var(--card-bg);
+        border-color: var(--border);
         box-shadow:
           0 0 0 1px rgba(255,255,255,.05),
           0 1px 0 0 rgba(0,0,0,.35);
     }
     .jazzmin-admin .chart-loading,
     .jazzmin-admin .chart-error {
-        background: #374151;
-        color: #e5e7eb;
+        background: var(--card-bg);
+        color: var(--text);
     }
     .chartjs-tooltip {
         background: rgba(255,255,255,0.92) !important;

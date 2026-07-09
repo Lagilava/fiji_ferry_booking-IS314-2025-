@@ -2,58 +2,16 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto:wght@400;500&display=swap');
 
 /* ==============================
-   Theme Variables (Aligned with admin_custom.css)
+   Theme Variables
+   ------------------------------
+   MOVED to css/admin_tokens.css (the single source of truth). This file used
+   to redeclare :root tokens AND an ungated @media(prefers-color-scheme:dark)
+   :root block — which overrode the toggle-gated tokens and forced --background
+   dark whenever the OS was dark (dark canvas behind white cards). Only the
+   local --advanced-glow (used by the scan overlay) is kept.
    ============================== */
 :root {
-    --primary: #1e40af;
-    --primary-hover: #2563eb;
-    --primary-active: #1e3a8a;
-    --secondary: #e5e7eb;
-    --secondary-hover: #d1d5db;
-    --secondary-active: #9ca3af;
-    --accent: #26a69a;
-    --warning: #b91c1c;
-    --success: #047857;
-    --text: #1f2937;
-    --background: #f8fafc;
-    --chart-bg: #ffffff;
-    --border: #d1d5db;
-    --muted: #6b7280;
-    --shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.1);
-    --gradient: linear-gradient(135deg, #1e40af, #2563eb);
-    --info: #0288d1;
-    --info-hover: #4fc3f7;
-    --info-active: #0277bd;
-    --success-hover: #059669;
-    --success-active: #065f46;
     --advanced-glow: 0 0 0.5rem rgba(38, 166, 154, 0.3);
-}
-
-@media (prefers-color-scheme: dark) {
-    :root {
-        --primary: #60a5fa;
-        --primary-hover: #93c5fd;
-        --primary-active: #3b82f6;
-        --secondary: #374151;
-        --secondary-hover: #4b5563;
-        --secondary-active: #6b7280;
-        --accent: #26a69a;
-        --warning: #f87171;
-        --success: #10b981;
-        --text: #e5e7eb;
-        --background: #1f2937;
-        --chart-bg: #374151;
-        --border: #4b5563;
-        --muted: #9ca3af;
-        --shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.2);
-        --gradient: linear-gradient(135deg, #60a5fa, #93c5fd);
-        --info: #4fc3f7;
-        --info-hover: #81d4fa;
-        --info-active: #0288d1;
-        --success-hover: #34d399;
-        --success-active: #059669;
-        --advanced-glow: 0 0 0.5rem rgba(38, 166, 154, 0.5);
-    }
 }
 
 /* ==============================
