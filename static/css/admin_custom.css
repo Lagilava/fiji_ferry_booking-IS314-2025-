@@ -2094,5 +2094,5 @@
 }
 
 .layout-navbar-fixed .wrapper .sidebar-dark-primary .brand-link:not([class*=navbar]) {
-    background-color: #1f2937 !important;
+    background-color: var(--card-bg) !important;   /* token-driven so it follows the toggle */
 }
