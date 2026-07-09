@@ -54,6 +54,19 @@
 .jazzmin-admin .content-wrapper h1,
 .jazzmin-admin .breadcrumb { color: var(--text); background: transparent; }
 
+/* Beat AdminLTE's dark chrome classes (.navbar-dark / .sidebar-dark-primary),
+   which paint the header & sidebar #343a40 and out-rank plain overrides on
+   pages that don't load the dashboard CSS (e.g. tool pages). Target the actual
+   AdminLTE classes so these win everywhere, in both themes. */
+body.jazzmin-admin .main-header.navbar-dark,
+body.jazzmin-admin nav.main-header {
+  background-color: var(--card-bg) !important;
+}
+body.jazzmin-admin .main-sidebar.sidebar-dark-primary,
+body.jazzmin-admin aside.main-sidebar {
+  background-color: var(--card-bg) !important;
+}
+
 /* ── Navbar (top header) — clean, themed, subtle border ─────────────────── */
 .jazzmin-admin .main-header.navbar {
   background: var(--card-bg) !important;
@@ -138,13 +151,33 @@
 .content-wrapper h3,
 .content-wrapper .section-title,
 .content-wrapper .card-title {
-  color: var(--text);
+  /* Inherit the themed text colour (from .content-wrapper) rather than forcing
+     it — so elements with their own colour (e.g. white titles on the gradient
+     hero banners) are not clobbered. */
   font-weight: 700;
   letter-spacing: -0.01em;
 }
 .content-wrapper h1 { font-size: 1.5rem; }
 .content-wrapper h2 { font-size: 1.25rem; }
 .content-wrapper h3 { font-size: 1.05rem; }
+
+/* Gradient hero banners (main dashboard + tool pages) are always a dark
+   gradient, so their text stays light in BOTH themes. */
+.jazzmin-admin .dashboard-header,
+.jazzmin-admin .dashboard-title,
+.jazzmin-admin .dashboard-subtitle,
+.jazzmin-admin .welcome-text,
+.jazzmin-admin .welcome-subtitle,
+.jazzmin-admin .stat-badge,
+.jazzmin-admin .stat-badge span,
+.jazzmin-admin .stat-badge i,
+.tool-hero .tool-hero__title,
+.tool-hero .tool-hero__subtitle {
+  color: #fff !important;
+}
+.jazzmin-admin .dashboard-subtitle,
+.jazzmin-admin .welcome-subtitle,
+.tool-hero .tool-hero__subtitle { color: rgba(255, 255, 255, .88) !important; }
 
 /* Section label used across dashboards */
 .section-title {
