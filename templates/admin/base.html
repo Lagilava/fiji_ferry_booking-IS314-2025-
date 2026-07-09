@@ -37,6 +37,11 @@
         <!-- Inter Font – consistent with dashboard -->
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
+        <!-- Canonical design tokens — single source of truth, MUST load first
+             so every downstream stylesheet and dashboard resolves the same
+             colours, radii, shadows, spacing and dark-mode values. -->
+        <link rel="stylesheet" href="{% static 'css/admin_tokens.css' %}">
+
         <!-- Modern Navbar Override -->
         <link rel="stylesheet" href="{% static 'css/admin_header_modern.css' %}">
 

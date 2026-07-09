@@ -6,75 +6,12 @@
 
 /* ==============================
    Theme Variables
+   ------------------------------
+   MOVED to css/admin_tokens.css (the single source of truth, loaded first on
+   every admin page). All tokens this file previously declared — colours,
+   typography, spacing, radii, transitions, and their dark-mode values — now
+   live there. Do not reintroduce a :root palette here; it only causes drift.
    ============================== */
-:root {
-    /* Colors - Ocean-inspired blue theme */
-    --primary: #1e40af; /* Deep blue for primary actions */
-    --primary-hover: #2563eb; /* Lighter blue for hover */
-    --primary-active: #1e3a8a; /* Darker blue for active */
-    --secondary: #e5e7eb; /* Light gray for secondary */
-    --secondary-hover: #d1d5db; /* Medium gray for hover */
-    --secondary-active: #9ca3af; /* Darker gray for active */
-    --success: #047857; /* Green for success */
-    --success-hover: #059669; /* Lighter green */
-    --warning: #b91c1c; /* Red for warnings */
-    --info: #0288d1; /* Info blue */
-    --text: #1f2937; /* Dark text */
-    --text-light: #6b7280; /* Muted text */
-    --background: #f8fafc; /* Light background */
-    --card-bg: #ffffff; /* White cards */
-    --border: #d1d5db; /* Light border */
-    --shadow: 0 4px 12px rgba(0, 0, 0, 0.1); /* Soft shadow */
-    --shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.15); /* Hover shadow */
-    --gradient-primary: linear-gradient(135deg, var(--primary), var(--primary-hover)); /* Primary gradient */
-
-    /* Typography */
-    --font-family: 'Inter', sans-serif;
-    --font-size-base: 1rem;
-    --font-size-sm: 0.875rem;
-    --font-size-lg: 1.125rem;
-    --font-size-xl: 1.25rem;
-    --font-weight-light: 300;
-    --font-weight-normal: 400;
-    --font-weight-medium: 500;
-    --font-weight-semibold: 600;
-    --font-weight-bold: 700;
-
-    /* Spacing */
-    --spacing-xs: 0.25rem;
-    --spacing-sm: 0.5rem;
-    --spacing-md: 1rem;
-    --spacing-lg: 1.5rem;
-    --spacing-xl: 2rem;
-    --spacing-2xl: 2.5rem;
-
-    /* Border Radius */
-    --border-radius-sm: 0.375rem;
-    --border-radius-md: 0.5rem;
-    --border-radius-lg: 0.75rem;
-    --border-radius-xl: 1rem;
-
-    /* Transitions */
-    --transition-fast: 0.2s ease;
-    --transition-normal: 0.3s ease;
-    --transition-slow: 0.5s ease;
-}
-
-@media (prefers-color-scheme: dark) {
-    :root {
-        --primary: #60a5fa; /* Lighter blue for dark mode */
-        --secondary: #374151;
-        --secondary-hover: #4b5563;
-        --text: #e5e7eb;
-        --text-light: #9ca3af;
-        --background: #1f2937;
-        --card-bg: #374151;
-        --border: #4b5563;
-        --shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-        --shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.4);
-        --gradient-primary: linear-gradient(135deg, var(--primary), #93c5fd);
-    }
-}
 
 /* ==============================
    Global Styles

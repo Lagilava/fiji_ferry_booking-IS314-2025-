@@ -2,66 +2,10 @@
    Jazzmin Color Overrides for Light and Dark Modes
    ============================== */
 
-/* Ensure all Jazzmin admin elements use the defined color variables for consistency */
-:root {
-    --primary: #1e40af;
-    --primary-rgb: 30, 64, 175;
-    --primary-hover: #2563eb;
-    --primary-active: #1e3a8a;
-    --secondary: #e5e7eb;
-    --secondary-hover: #d1d5db;
-    --secondary-active: #9ca3af;
-    --accent: #26a69a;
-    --warning: #b91c1c;
-    --warning-rgb: 185, 28, 28;
-    --success: #047857;
-    --success-rgb: 4, 120, 87;
-    --text: #1f2937;
-    --background: #f8fafc;
-    --chart-bg: #ffffff;
-    --border: #d1d5db;
-    --muted: #6b7280;
-    --shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    --shadow-hover: 0 12px 32px rgba(0, 0, 0, 0.15);
-    --gradient: linear-gradient(135deg, #1e40af, #2563eb);
-    --info: #0288d1;
-    --info-rgb: 2, 136, 209;
-    --info-hover: #4fc3f7;
-    --info-active: #0277bd;
-    --success-hover: #059669;
-    --success-active: #065f46;
-}
-
-@media (prefers-color-scheme: dark) {
-    :root {
-        --primary: #60a5fa;
-        --primary-rgb: 96, 165, 250;
-        --primary-hover: #93c5fd;
-        --primary-active: #3b82f6;
-        --secondary: #374151;
-        --secondary-hover: #4b5563;
-        --secondary-active: #6b7280;
-        --accent: #26a69a;
-        --warning: #f87171;
-        --warning-rgb: 248, 113, 113;
-        --success: #10b981;
-        --success-rgb: 16, 185, 129;
-        --text: #e5e7eb;
-        --background: #1f2937;
-        --chart-bg: #374151;
-        --border: #4b5563;
-        --muted: #9ca3af;
-        --shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-        --shadow-hover: 0 12px 32px rgba(0, 0, 0, 0.25);
-        --gradient: linear-gradient(135deg, #60a5fa, #93c5fd);
-        --info: #4fc3f7;
-        --info-rgb: 79, 195, 247;
-        --info-hover: #81d4fa;
-        --info-active: #0288d1;
-        --success-hover: #34d399;
-        --success-active: #059669;
-    }
-}
+/* Design tokens (colours, dark-mode palette, shadows, gradient) MOVED to
+   css/admin_tokens.css — the single source of truth loaded first on every
+   admin page. The .jazzmin-admin rules below consume those tokens via var().
+   Do not reintroduce a :root palette here; it only causes drift. */
 
 /* ==============================
    Base HTML and Wrapper Elements

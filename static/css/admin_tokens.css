@@ -1,0 +1,287 @@
+/* ============================================================================
+   admin_tokens.css — CANONICAL DESIGN TOKENS (single source of truth)
+   ----------------------------------------------------------------------------
+   Load this FIRST on every admin page (wired via templates/admin/base.html).
+   It reconciles the design tokens that were previously duplicated and drifting
+   across admin_dashboard.css, jazzmin_color_overrides.css, and inline <style>
+   blocks in the dashboards, and it collapses the synonym sprawl
+   (--text / --text-primary, --border / --border-color, --card-bg / --chart-bg
+   / --bg-surface / --background, --muted / --text-muted / --text-light, ...)
+   onto one value per concept.
+
+   Rules for maintainers:
+     • Change a colour/size ONCE, here. Do not reintroduce :root palettes in
+       other files.
+     • Every alias below points at a primitive so old class names keep working.
+     • Light values live in :root; dark values are mirrored in BOTH the
+       prefers-color-scheme media query and the .theme-dark class that Jazzmin
+       stamps on <body>, so manual and OS dark mode agree.
+   ========================================================================== */
+
+:root {
+  /* ---- Brand / primary ------------------------------------------------- */
+  --primary: #1e40af;
+  --primary-hover: #2563eb;
+  --primary-active: #1e3a8a;
+  --primary-rgb: 30, 64, 175;
+  --primary-color: var(--primary);      /* alias */
+  --primary-bg: rgba(30, 64, 175, 0.10);
+
+  /* ---- Secondary / neutral surfaces ----------------------------------- */
+  --secondary: #e5e7eb;
+  --secondary-hover: #d1d5db;
+  --secondary-active: #9ca3af;
+  --secondary-color: var(--secondary);  /* alias */
+  --secondary-bg: var(--secondary);     /* alias */
+
+  /* ---- Accent ---------------------------------------------------------- */
+  --accent: #26a69a;
+  --accent-color: var(--accent);        /* alias */
+
+  /* ---- Semantic status ------------------------------------------------- */
+  /* Vivid marks (dots, stripes, fills) — match the tailwind-ish hexes the
+     KPI cards and dashboards already use. */
+  --success: #047857;
+  --success-hover: #059669;
+  --success-active: #065f46;
+  --success-rgb: 4, 120, 87;
+  --success-solid: #10b981;             /* vivid dot/stripe */
+  --success-fg: #047857;                /* text on tint */
+  --success-bg: rgba(16, 185, 129, 0.12);
+
+  --danger: #ef4444;
+  --danger-hover: #dc2626;
+  --danger-rgb: 239, 68, 68;
+  --danger-fg: #b91c1c;
+  --danger-bg: rgba(239, 68, 68, 0.12);
+
+  --warning: #b91c1c;                   /* kept: existing code treats warning as red */
+  --warning-hover: #991b1b;
+  --warning-rgb: 185, 28, 28;
+  --amber: #f59e0b;                     /* true amber for advisories */
+  --amber-hover: #d97706;
+  --amber-fg: #b45309;
+  --amber-bg: rgba(245, 158, 11, 0.12);
+
+  --info: #0288d1;
+  --info-hover: #4fc3f7;
+  --info-active: #0277bd;
+  --info-rgb: 2, 136, 209;
+  --info-bg: rgba(2, 136, 209, 0.12);
+
+  --purple: #8b5cf6;
+  --purple-bg: rgba(139, 92, 246, 0.12);
+  --teal: #06b6d4;
+  --teal-bg: rgba(6, 182, 212, 0.12);
+
+  /* ---- Text ------------------------------------------------------------ */
+  --text: #1f2937;
+  --text-primary: var(--text);          /* alias */
+  --text-secondary: #4b5563;
+  --text-muted: #6b7280;
+  --text-light: var(--text-muted);      /* alias */
+  --muted: var(--text-muted);           /* alias */
+
+  /* ---- Surfaces (page vs card) ---------------------------------------- */
+  --background: #f8fafc;
+  --bg-primary: var(--background);      /* alias */
+  --bg-secondary: #eef2f7;
+  --card-bg: #ffffff;
+  --chart-bg: var(--card-bg);           /* alias */
+  --bg-surface: var(--card-bg);         /* alias */
+  --surface: var(--card-bg);            /* alias */
+  --hover-bg: var(--secondary-hover);   /* alias */
+
+  /* ---- Borders --------------------------------------------------------- */
+  --border: #d1d5db;
+  --border-color: var(--border);        /* alias */
+  --border-hover: #9ca3af;
+
+  /* ---- Shadows --------------------------------------------------------- */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow: 0 4px 12px rgba(0, 0, 0, 0.10);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.10);
+  --shadow-hover: 0 8px 28px rgba(0, 0, 0, 0.12);
+
+  /* ---- Radii (unified scale) ------------------------------------------ */
+  --border-radius-sm: 0.375rem;   /* 6px  */
+  --border-radius-md: 0.5rem;     /* 8px  */
+  --border-radius-lg: 0.75rem;    /* 12px */
+  --border-radius-xl: 1rem;       /* 16px */
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;              /* canonical card radius */
+  --md-radius: 16px;              /* alias for admin_dashboard_modern */
+  --md-radius-sm: 12px;
+  --tool-radius: 14px;
+
+  /* ---- Spacing --------------------------------------------------------- */
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+  --spacing-2xl: 2.5rem;
+
+  /* ---- Typography ------------------------------------------------------ */
+  --font-family: 'Inter', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-size-base: 1rem;
+  --font-size-sm: 0.875rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.25rem;
+  --font-weight-light: 300;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* ---- Gradients ------------------------------------------------------- */
+  --gradient: linear-gradient(135deg, var(--primary), var(--primary-hover));
+  --gradient-primary: var(--gradient);  /* alias */
+
+  /* ---- Transitions ----------------------------------------------------- */
+  --transition-fast: 0.2s ease;
+  --transition-normal: 0.3s ease;
+  --transition-slow: 0.5s ease;
+
+  /* ---- Booking-wizard step accents (used by change/booking flows) ------ */
+  --step-2-accent: var(--info);
+  --step-3-accent: var(--accent);
+  --step-4-accent: var(--success-solid);
+  --step-4-bg: var(--success-bg);
+}
+
+/* ---------------------------------------------------------------------------
+   DARK MODE — mirror every value that changes. Applied via OS preference and
+   via Jazzmin's .theme-dark body class so both paths look identical.
+   ------------------------------------------------------------------------- */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --primary: #60a5fa;
+    --primary-hover: #93c5fd;
+    --primary-active: #3b82f6;
+    --primary-rgb: 96, 165, 250;
+    --primary-bg: rgba(96, 165, 250, 0.14);
+
+    --secondary: #374151;
+    --secondary-hover: #4b5563;
+    --secondary-active: #6b7280;
+
+    --accent: #2dd4bf;
+
+    --success: #10b981;
+    --success-hover: #34d399;
+    --success-active: #059669;
+    --success-rgb: 16, 185, 129;
+    --success-solid: #34d399;
+    --success-fg: #6ee7b7;
+    --success-bg: rgba(16, 185, 129, 0.18);
+
+    --danger: #f87171;
+    --danger-hover: #ef4444;
+    --danger-rgb: 248, 113, 113;
+    --danger-fg: #fca5a5;
+    --danger-bg: rgba(248, 113, 113, 0.18);
+
+    --warning: #f87171;
+    --warning-hover: #ef4444;
+    --warning-rgb: 248, 113, 113;
+    --amber: #fbbf24;
+    --amber-hover: #f59e0b;
+    --amber-fg: #fcd34d;
+    --amber-bg: rgba(251, 191, 36, 0.18);
+
+    --info: #4fc3f7;
+    --info-hover: #81d4fa;
+    --info-active: #0288d1;
+    --info-rgb: 79, 195, 247;
+    --info-bg: rgba(79, 195, 247, 0.18);
+
+    --purple: #a78bfa;
+    --purple-bg: rgba(167, 139, 250, 0.18);
+    --teal: #22d3ee;
+    --teal-bg: rgba(34, 211, 238, 0.18);
+
+    --text: #e5e7eb;
+    --text-secondary: #cbd5e1;
+    --text-muted: #9ca3af;
+
+    --background: #1f2937;
+    --bg-secondary: #111827;
+    --card-bg: #374151;
+    --hover-bg: #4b5563;
+
+    --border: #4b5563;
+    --border-hover: #6b7280;
+
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.30);
+    --shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+    --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.40);
+    --shadow-hover: 0 8px 28px rgba(0, 0, 0, 0.45);
+  }
+}
+
+/* Manual/forced dark mode (Jazzmin stamps body.theme-dark). Same values. */
+body.theme-dark {
+  --primary: #60a5fa;
+  --primary-hover: #93c5fd;
+  --primary-active: #3b82f6;
+  --primary-rgb: 96, 165, 250;
+  --primary-bg: rgba(96, 165, 250, 0.14);
+
+  --secondary: #374151;
+  --secondary-hover: #4b5563;
+  --secondary-active: #6b7280;
+
+  --accent: #2dd4bf;
+
+  --success: #10b981;
+  --success-hover: #34d399;
+  --success-active: #059669;
+  --success-rgb: 16, 185, 129;
+  --success-solid: #34d399;
+  --success-fg: #6ee7b7;
+  --success-bg: rgba(16, 185, 129, 0.18);
+
+  --danger: #f87171;
+  --danger-hover: #ef4444;
+  --danger-rgb: 248, 113, 113;
+  --danger-fg: #fca5a5;
+  --danger-bg: rgba(248, 113, 113, 0.18);
+
+  --warning: #f87171;
+  --warning-hover: #ef4444;
+  --warning-rgb: 248, 113, 113;
+  --amber: #fbbf24;
+  --amber-hover: #f59e0b;
+  --amber-fg: #fcd34d;
+  --amber-bg: rgba(251, 191, 36, 0.18);
+
+  --info: #4fc3f7;
+  --info-hover: #81d4fa;
+  --info-active: #0288d1;
+  --info-rgb: 79, 195, 247;
+  --info-bg: rgba(79, 195, 247, 0.18);
+
+  --purple: #a78bfa;
+  --purple-bg: rgba(167, 139, 250, 0.18);
+  --teal: #22d3ee;
+  --teal-bg: rgba(34, 211, 238, 0.18);
+
+  --text: #e5e7eb;
+  --text-secondary: #cbd5e1;
+  --text-muted: #9ca3af;
+
+  --background: #1f2937;
+  --bg-secondary: #111827;
+  --card-bg: #374151;
+  --hover-bg: #4b5563;
+
+  --border: #4b5563;
+  --border-hover: #6b7280;
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.30);
+  --shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.40);
+  --shadow-hover: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
