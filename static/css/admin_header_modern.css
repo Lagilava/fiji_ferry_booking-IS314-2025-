@@ -5,21 +5,15 @@
 
 /* === Core Navbar Reset === */
 .jazzmin-admin .navbar {
-    background: linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border);
+    box-shadow: var(--shadow-sm);
     padding: 0.75rem 1.5rem;
     height: auto;
     min-height: 3.75rem;
     z-index: 1030;
     font-family: 'Inter', sans-serif;
-    transition: all 0.3s ease;
-}
-
-.jazzmin-admin .navbar:hover {
-    background: linear-gradient(135deg, rgba(30, 41, 59, 0.98) 0%, rgba(15, 23, 42, 1) 100%);
+    transition: background 0.3s ease;
 }
 
 /* === Brand Logo === */
@@ -29,7 +23,7 @@
     gap: 0.75rem;
     font-weight: 600;
     font-size: 1.25rem;
-    color: #ffffff !important;
+    color: var(--text) !important;
     text-decoration: none;
     padding: 0.5rem 0;
     transition: all 0.3s ease;
@@ -38,9 +32,7 @@
 }
 
 .jazzmin-admin .navbar-brand:hover {
-    background: rgba(255, 255, 255, 0.1);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    background: var(--hover-bg);
 }
 
 .jazzmin-admin .navbar-brand img,
@@ -64,7 +56,7 @@
 }
 
 .jazzmin-admin .navbar-nav .nav-link {
-    color: rgba(255, 255, 255, 0.85) !important;
+    color: var(--text) !important;
     font-weight: 500;
     font-size: 0.9375rem;
     padding: 0.5rem 1rem;
@@ -72,31 +64,26 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    transition: all 0.3s ease;
-    position: relative;
-    overflow: hidden;
+    transition: all 0.2s ease;
 }
 
 .jazzmin-admin .navbar-nav .nav-link:hover {
-    color: #ffffff !important;
-    background: rgba(255, 255, 255, 0.12);
-    transform: translateY(-1px);
+    color: var(--primary) !important;
+    background: var(--hover-bg);
 }
 
 .jazzmin-admin .navbar-nav .nav-link:focus {
-    outline: 2px solid #60A5FA;
+    outline: 2px solid var(--primary);
     outline-offset: 2px;
-    background: rgba(96, 165, 250, 0.15);
+    background: var(--primary-bg);
 }
 
 /* Dropdown Menu */
 .jazzmin-admin .dropdown-menu {
-    background: rgba(30, 41, 59, 0.98);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: var(--card-bg);
+    border: 1px solid var(--border);
     border-radius: 0.75rem;
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-hover);
     margin-top: 0.5rem;
     padding: 0.5rem 0;
     min-width: 12rem;
@@ -109,7 +96,7 @@
 }
 
 .jazzmin-admin .dropdown-item {
-    color: rgba(255, 255, 255, 0.9) !important;
+    color: var(--text) !important;
     padding: 0.625rem 1.25rem;
     font-size: 0.875rem;
     border-radius: 0.5rem;
@@ -122,13 +109,12 @@
 
 .jazzmin-admin .dropdown-item:hover,
 .jazzmin-admin .dropdown-item:focus {
-    background: rgba(96, 165, 250, 0.2);
-    color: #ffffff !important;
-    transform: translateX(4px);
+    background: var(--hover-bg);
+    color: var(--primary) !important;
 }
 
 .jazzmin-admin .dropdown-divider {
-    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    border-top: 1px solid var(--border);
     margin: 0.5rem 0;
 }
 
@@ -164,34 +150,32 @@
 
 /* === Breadcrumbs === */
 .jazzmin-admin .breadcrumb {
-    background: rgba(255, 255, 255, 0.08);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
     border-radius: 0.75rem;
     padding: 0.75rem 1.25rem;
     margin: 0 0 1.5rem;
     font-size: 0.875rem;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .jazzmin-admin .breadcrumb-item {
-    color: rgba(255, 255, 255, 0.8);
+    color: var(--text-muted);
 }
 
 .jazzmin-admin .breadcrumb-item a {
-    color: #60A5FA;
+    color: var(--primary);
     text-decoration: none;
     font-weight: 500;
     transition: color 0.2s ease;
 }
 
 .jazzmin-admin .breadcrumb-item a:hover {
-    color: #93C5FD;
+    color: var(--primary-hover);
     text-decoration: underline;
 }
 
 .jazzmin-admin .breadcrumb-item.active {
-    color: #ffffff;
+    color: var(--text);
     font-weight: 600;
 }
 

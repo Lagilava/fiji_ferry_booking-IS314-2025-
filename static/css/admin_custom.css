@@ -515,46 +515,27 @@
     margin-top: 1rem;
 }
 
-/* ───── Light mode ───── */
+/* ───── Sidebar chrome — token-driven so the light/dark TOGGLE controls it.
+   (Previously this hardcoded light/dark via @media prefers-color-scheme, which
+   ignored the toggle and fought the token system. Colours now live in
+   admin_tokens.css and the final look is set in admin_modern.css.) ───── */
 .jazzmin-admin .main-sidebar {
-    background: #f8fafc;                     /* light page background */
+    background: var(--card-bg);
 }
 .jazzmin-admin .brand-link {
-    background: #1e40af;                     /* primary */
-    color: #fff;
+    background: var(--card-bg);
+    color: var(--text);
 }
 .jazzmin-admin .nav-sidebar .nav-link {
-    color: #1f2937;                          /* dark text */
+    color: var(--text);
 }
 .jazzmin-admin .nav-sidebar .nav-link:hover,
 .jazzmin-admin .nav-sidebar .nav-link.active {
-    background: #dbeafe;                     /* light primary‑tint */
-    color: #1e40af;
+    background: var(--primary-bg);
+    color: var(--primary);
 }
 .jazzmin-admin .nav-header {
-    color: #6b7280;                          /* muted */
-}
-
-/* ───── Dark mode ───── */
-@media (prefers-color-scheme: dark) {
-    .jazzmin-admin .main-sidebar {
-        background: #1f2937;                 /* dark page background */
-    }
-    .jazzmin-admin .brand-link {
-        background: #60a5fa;                 /* primary‑light */
-        color: #1f2937;
-    }
-    .jazzmin-admin .nav-sidebar .nav-link {
-        color: #e5e7eb;                      /* light text */
-    }
-    .jazzmin-admin .nav-sidebar .nav-link:hover,
-    .jazzmin-admin .nav-sidebar .nav-link.active {
-        background: #1e40af33;               /* subtle primary tint */
-        color: #60a5fa;
-    }
-    .jazzmin-admin .nav-header {
-        color: #9ca3af;                      /* muted‑light */
-    }
+    color: var(--text-muted);
 }
 
 /* ───── Scrollbar colour (optional) ───── */

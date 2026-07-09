@@ -13,7 +13,7 @@
 .admin-theme-toggle {
   background: transparent;
   border: 0;
-  color: #fff;
+  color: var(--text);
   cursor: pointer;
   width: 40px;
   height: 40px;
@@ -21,11 +21,102 @@
   align-items: center;
   justify-content: center;
   border-radius: 10px;
-  transition: background .15s ease;
+  transition: background .15s ease, color .15s ease;
 }
-.admin-theme-toggle:hover { background: rgba(255, 255, 255, .15); }
-.admin-theme-toggle:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
-.admin-theme-toggle .fa-sun { color: #fcd34d; }
+.admin-theme-toggle:hover { background: var(--hover-bg); color: var(--primary); }
+.admin-theme-toggle:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.admin-theme-toggle .fa-sun { color: #f59e0b; }
+.admin-theme-toggle .fa-moon { color: var(--text-secondary); }
+
+/* ════════════════════════════════════════════════════════════════════════
+   APP SHELL — make the ENTIRE admin follow light/dark on every page.
+   Previously the themed background lived only in files loaded on the
+   dashboard/changelist, so pages like /ops/ kept AdminLTE's fixed light
+   shell while their cards went dark. These token-driven rules load globally
+   (admin_modern.css is on every page) and win via load order.
+   ════════════════════════════════════════════════════════════════════════ */
+.jazzmin-admin,
+.jazzmin-admin body,
+.jazzmin-admin .wrapper,
+.jazzmin-admin .content-wrapper,
+.jazzmin-admin .content,
+.jazzmin-admin .content-wrapper .container-fluid {
+  background: var(--background) !important;
+  color: var(--text);
+}
+
+/* Page-title / breadcrumb strip under the navbar */
+.jazzmin-admin .content-wrapper > .content.border-bottom,
+.jazzmin-admin .content-header {
+  background: var(--background);
+  border-color: var(--border) !important;
+}
+.jazzmin-admin .content-wrapper h1,
+.jazzmin-admin .breadcrumb { color: var(--text); background: transparent; }
+
+/* ── Navbar (top header) — clean, themed, subtle border ─────────────────── */
+.jazzmin-admin .main-header.navbar {
+  background: var(--card-bg) !important;
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+}
+/* plain (non-button) nav links + icons follow the theme */
+.jazzmin-admin .main-header .navbar-nav .nav-link:not(.btn),
+.jazzmin-admin .main-header .nav-link:not(.btn),
+.jazzmin-admin .main-header .navbar-nav .nav-link:not(.btn) > i {
+  color: var(--text);
+}
+.jazzmin-admin .main-header .nav-link:not(.btn):hover {
+  background: var(--hover-bg);
+  color: var(--primary);
+  border-radius: 8px;
+}
+/* Navbar search box */
+.jazzmin-admin .form-control-navbar,
+.jazzmin-admin .main-header input[type="search"] {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.jazzmin-admin .form-control-navbar::placeholder { color: var(--text-muted); }
+.jazzmin-admin .btn-navbar {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+/* ── Sidebar — themed surface with clear active state ───────────────────── */
+.jazzmin-admin .main-sidebar {
+  background: var(--card-bg) !important;
+  border-right: 1px solid var(--border);
+}
+.jazzmin-admin .main-sidebar .brand-link {
+  background: var(--card-bg) !important;
+  border-bottom: 1px solid var(--border);
+}
+.jazzmin-admin .brand-text,
+.jazzmin-admin .main-sidebar .user-panel .info a,
+.jazzmin-admin .main-sidebar .user-panel .info span {
+  color: var(--text) !important;
+}
+.jazzmin-admin .main-sidebar .user-panel { border-bottom: 1px solid var(--border); }
+.jazzmin-admin .nav-sidebar .nav-link {
+  color: var(--text);
+  border-radius: 8px;
+  margin: 1px .5rem;
+}
+.jazzmin-admin .nav-sidebar .nav-link .nav-icon { color: var(--text-muted); }
+.jazzmin-admin .nav-sidebar .nav-link:hover {
+  background: var(--hover-bg);
+  color: var(--primary);
+}
+.jazzmin-admin .nav-sidebar .nav-link:hover .nav-icon { color: var(--primary); }
+.jazzmin-admin .nav-sidebar .nav-link.active,
+.jazzmin-admin .nav-sidebar .nav-link.active .nav-icon {
+  background: var(--primary);
+  color: #fff;
+}
+.jazzmin-admin .nav-header { color: var(--text-muted); }
 
 /* ── Typography & rhythm ────────────────────────────────────────────────── */
 .content-wrapper,
