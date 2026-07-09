@@ -14,6 +14,19 @@
 
     <title>{% block title %}{{ title }} | {{ jazzmin_settings.site_title }}{% endblock %}</title>
 
+    <!-- Theme init — runs before paint so there is no flash of the wrong theme.
+         Applies the saved preference; if none, the OS setting is used by CSS. -->
+    <script>
+        (function () {
+            try {
+                var saved = localStorage.getItem('admin-theme');
+                if (saved === 'dark' || saved === 'light') {
+                    document.documentElement.setAttribute('data-admin-theme', saved);
+                }
+            } catch (e) {}
+        })();
+    </script>
+
     <!-- Font Awesome Icons -->
     <link rel="stylesheet" href="{% static "vendor/fontawesome-free/css/all.min.css" %}">
 
@@ -63,6 +76,11 @@
     {% endif %}
 
     {% block extrastyle %}{% endblock %}
+
+    <!-- Clean-enterprise modern layer — loaded LAST so it is the final word on
+         look & feel (cards, buttons, tables, QR scanner, theme toggle). Driven
+         entirely by admin_tokens.css, so it follows light/dark automatically. -->
+    <link rel="stylesheet" href="{% static 'css/admin_modern.css' %}">
 </head>
 
 <body class="hold-transition{% if not jazzmin_settings.show_sidebar %} no-sidebar{% else %} sidebar-mini{% endif %} {% sidebar_status request %} {% if is_popup %}popup {% endif %}{% block bodyclass %}{% endblock %} {{ jazzmin_ui.body_classes }} {% if jazzmin_ui.dark_mode_theme %}theme-dark{% endif %}" data-admin-utc-offset="{% now "Z" %}">
@@ -120,6 +138,12 @@
             {% endif %}
 
             <ul class="navbar-nav ml-auto">
+                <li class="nav-item">
+                    <button type="button" id="admin-theme-toggle" class="nav-link btn admin-theme-toggle"
+                            title="Toggle light / dark mode" aria-label="Toggle light or dark mode">
+                        <i class="fas fa-moon" aria-hidden="true" data-theme-icon></i>
+                    </button>
+                </li>
                 {% if jazzmin_settings.show_ui_builder %}
                 <li class="nav-item">
                     <a class="nav-link" data-widget="control-sidebar" data-slide="true" href="#" role="button">
@@ -389,6 +413,47 @@
 {% endif %}
 
 {% block extrajs %}{% endblock %}
+
+<!-- Light / dark mode toggle -->
+<script>
+    (function () {
+        var btn = document.getElementById('admin-theme-toggle');
+        if (!btn) return;
+        var icon = btn.querySelector('[data-theme-icon]');
+
+        function currentTheme() {
+            var attr = document.documentElement.getAttribute('data-admin-theme');
+            if (attr === 'dark' || attr === 'light') return attr;
+            // No explicit choice yet — reflect the OS setting.
+            return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+
+        function syncIcon() {
+            if (!icon) return;
+            var dark = currentTheme() === 'dark';
+            icon.classList.toggle('fa-moon', !dark);
+            icon.classList.toggle('fa-sun', dark);
+        }
+
+        syncIcon();
+
+        btn.addEventListener('click', function () {
+            var next = currentTheme() === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-admin-theme', next);
+            try { localStorage.setItem('admin-theme', next); } catch (e) {}
+            syncIcon();
+        });
+
+        // Follow OS changes only while the user hasn't made an explicit choice.
+        if (window.matchMedia) {
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
+                var saved;
+                try { saved = localStorage.getItem('admin-theme'); } catch (e) {}
+                if (saved !== 'dark' && saved !== 'light') syncIcon();
+            });
+        }
+    })();
+</script>
 
 <!-- Global Toast Notification Container -->
 <div id="toast-container" aria-live="polite" aria-atomic="true"></div>

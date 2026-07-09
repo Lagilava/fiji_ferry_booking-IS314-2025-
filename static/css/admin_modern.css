@@ -1,0 +1,283 @@
+/* ============================================================================
+   admin_modern.css — Clean-enterprise visual layer for the Fiji Ferry admin.
+   ----------------------------------------------------------------------------
+   Loaded LAST (after tokens, jazzmin overrides, dashboard + QR css) so it sets
+   the final, cohesive look: flat surfaces, generous whitespace, soft shadows,
+   one confident accent, clear typographic hierarchy. Everything is driven by
+   the canonical tokens in admin_tokens.css, so it follows light/dark
+   automatically. Chrome (navbar/sidebar) is refined, not rebuilt; the content
+   area, cards, buttons, tables and QR scanner get the real modern treatment.
+   ========================================================================== */
+
+/* ── Theme toggle button (navbar) ───────────────────────────────────────── */
+.admin-theme-toggle {
+  background: transparent;
+  border: 0;
+  color: #fff;
+  cursor: pointer;
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  transition: background .15s ease;
+}
+.admin-theme-toggle:hover { background: rgba(255, 255, 255, .15); }
+.admin-theme-toggle:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.admin-theme-toggle .fa-sun { color: #fcd34d; }
+
+/* ── Typography & rhythm ────────────────────────────────────────────────── */
+.content-wrapper,
+.content,
+.dashboard-container {
+  font-family: var(--font-family);
+  color: var(--text);
+}
+.content-wrapper h1,
+.content-wrapper h2,
+.content-wrapper h3,
+.content-wrapper .section-title,
+.content-wrapper .card-title {
+  color: var(--text);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.content-wrapper h1 { font-size: 1.5rem; }
+.content-wrapper h2 { font-size: 1.25rem; }
+.content-wrapper h3 { font-size: 1.05rem; }
+
+/* Section label used across dashboards */
+.section-title {
+  position: relative;
+  color: var(--text) !important;
+}
+
+/* ── Cards / modules — flat, bordered, soft shadow, no gimmicky hover ────── */
+.card,
+.module,
+.jazzmin-widget,
+.dashboard-card,
+.widget-card,
+.results-container,
+.chart-wrapper,
+.activity-feed,
+.qr-scanner-section {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Kill the "float up on hover" effect — reads as gimmicky in an ops tool. */
+.card:hover,
+.module:hover,
+.jazzmin-widget:hover,
+.dashboard-card:hover,
+.qr-scanner-section:hover,
+.kpi-card:hover {
+  transform: none;
+  box-shadow: var(--shadow-md);
+}
+
+/* KPI / stat tiles — consistent, calm, aligned. */
+.kpi-card,
+.stat-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow .15s ease;
+}
+
+/* ── Buttons — flat enterprise ──────────────────────────────────────────── */
+.content-wrapper .btn,
+.content-wrapper button.btn {
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  letter-spacing: .01em;
+  padding: .5rem .9rem;
+  box-shadow: none;
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+.content-wrapper .btn:hover { transform: none; }
+
+.btn-primary-custom,
+.content-wrapper .btn-primary {
+  background: var(--primary);
+  border: 1px solid var(--primary);
+  color: #fff;
+}
+.btn-primary-custom:hover,
+.content-wrapper .btn-primary:hover {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+}
+.btn-secondary-custom,
+.content-wrapper .btn-secondary {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.btn-secondary-custom:hover,
+.content-wrapper .btn-secondary:hover {
+  background: var(--hover-bg);
+  border-color: var(--border-hover);
+  color: var(--text);
+}
+.btn-success-custom { background: var(--success-solid); border: 1px solid var(--success-solid); color: #fff; }
+.btn-success-custom:hover { background: var(--success-active); border-color: var(--success-active); }
+.btn-info-custom { background: var(--info); border: 1px solid var(--info); color: #fff; }
+.btn-info-custom:hover { background: var(--info-active); border-color: var(--info-active); }
+
+/* ── Tables — clean, readable, aligned ──────────────────────────────────── */
+.content-wrapper table.table,
+.content-wrapper .results-table,
+.content-wrapper #recent-bookings-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+}
+.content-wrapper .table thead th,
+.content-wrapper .results-table thead th {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: .75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  padding: .7rem .85rem;
+  border-bottom: 1px solid var(--border);
+}
+.content-wrapper .table tbody td,
+.content-wrapper .results-table tbody td {
+  padding: .7rem .85rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.content-wrapper .table tbody tr:hover td { background: var(--hover-bg); }
+
+/* ── QR SCANNER — modernised, professional ──────────────────────────────── */
+/* Remove the dated flourishes: dotted-grid overlay, pulsing ripple, hover lift. */
+.qr-scanner-section { margin: 1.25rem 0; padding: 0; overflow: hidden; }
+.qr-scanner-section::before,
+.qr-scanner-section::after { display: none !important; content: none !important; }
+
+.qr-scanner-section .section-header {
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--border);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  padding: 1rem 1.25rem;
+}
+.qr-scanner-section .section-title { font-size: 1.05rem; margin: 0; }
+.qr-scanner-section .section-title::after { display: none; }
+
+.qr-video-container {
+  padding: 1.25rem;
+  background: var(--bg-secondary);
+}
+#qr-video {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+  max-height: 360px;
+  background: #0f172a;
+}
+
+/* Crisp 4-corner bracket scan frame (like a phone scanner) instead of a
+   pulsing glowing box. Built from 8 gradient slices — no pseudo-elements. */
+#qr-scan-overlay {
+  --qr-c: var(--primary);
+  --qr-t: 3px;   /* bracket thickness */
+  --qr-l: 28px;  /* bracket arm length */
+  width: 62%;
+  max-width: 240px;
+  aspect-ratio: 1 / 1;
+  height: auto;
+  border: 0;
+  border-radius: 4px;
+  animation: none;
+  background:
+    linear-gradient(var(--qr-c), var(--qr-c)) 0 0 / var(--qr-l) var(--qr-t) no-repeat,
+    linear-gradient(var(--qr-c), var(--qr-c)) 0 0 / var(--qr-t) var(--qr-l) no-repeat,
+    linear-gradient(var(--qr-c), var(--qr-c)) 100% 0 / var(--qr-l) var(--qr-t) no-repeat,
+    linear-gradient(var(--qr-c), var(--qr-c)) 100% 0 / var(--qr-t) var(--qr-l) no-repeat,
+    linear-gradient(var(--qr-c), var(--qr-c)) 0 100% / var(--qr-l) var(--qr-t) no-repeat,
+    linear-gradient(var(--qr-c), var(--qr-c)) 0 100% / var(--qr-t) var(--qr-l) no-repeat,
+    linear-gradient(var(--qr-c), var(--qr-c)) 100% 100% / var(--qr-l) var(--qr-t) no-repeat,
+    linear-gradient(var(--qr-c), var(--qr-c)) 100% 100% / var(--qr-t) var(--qr-l) no-repeat;
+}
+
+/* Feedback pill */
+.qr-feedback {
+  background: var(--card-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: .3rem .8rem;
+  font-size: .8rem;
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+}
+
+/* Result: clean two-column label/value grid. */
+#qr-result { padding: 1.25rem; }
+.qr-result-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: .25rem .5rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 1rem 1.25rem;
+}
+.qr-result-grid p {
+  display: flex;
+  flex-direction: column;
+  gap: .15rem;
+  margin: 0;
+  padding: .5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.qr-result-grid p strong {
+  font-size: .68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--text-muted);
+}
+.qr-result-grid p span {
+  font-size: .95rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* Action buttons — aligned, consistent, wrap gracefully. */
+.qr-action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  padding: 1rem 0 0;
+}
+.qr-action-buttons .btn { flex: 0 0 auto; }
+
+/* Scan history */
+.qr-scan-history { padding: 0 1.25rem 1.25rem; }
+.qr-scan-history .list-group-item {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+/* The big "Scan QR Code" launcher button in quick actions. */
+#scan-qr-code {
+  font-weight: 600;
+}
+
+/* ── Focus visibility for accessibility ─────────────────────────────────── */
+.content-wrapper .btn:focus-visible,
+.content-wrapper a:focus-visible,
+.content-wrapper button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}

@@ -152,11 +152,16 @@
 }
 
 /* ---------------------------------------------------------------------------
-   DARK MODE — mirror every value that changes. Applied via OS preference and
-   via Jazzmin's .theme-dark body class so both paths look identical.
+   DARK MODE — mirror every value that changes.
+   Precedence, so an explicit user toggle always wins over the OS setting:
+     1. OS dark  → applies unless the user explicitly chose light
+     2. data-admin-theme="dark" on <html> → force dark (set by the toggle)
+     3. data-admin-theme="light" on <html> → force light (falls back to :root)
+   The toggle sets data-admin-theme on <html>; body.theme-dark is kept for
+   Jazzmin compatibility.
    ------------------------------------------------------------------------- */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-admin-theme="light"]) {
     --primary: #60a5fa;
     --primary-hover: #93c5fd;
     --primary-active: #3b82f6;
@@ -221,7 +226,9 @@
   }
 }
 
-/* Manual/forced dark mode (Jazzmin stamps body.theme-dark). Same values. */
+/* Manual/forced dark mode — the toggle sets :root[data-admin-theme="dark"];
+   body.theme-dark is kept for Jazzmin compatibility. Same values. */
+:root[data-admin-theme="dark"],
 body.theme-dark {
   --primary: #60a5fa;
   --primary-hover: #93c5fd;
