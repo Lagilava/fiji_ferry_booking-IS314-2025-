@@ -1421,8 +1421,16 @@
                 {% if ticket.qr_data_uri %}
                 <p><i class="fas fa-qrcode" aria-hidden="true"></i>Scan at Boarding</p>
                 <img src="{{ ticket.qr_data_uri }}" alt="QR Code for {{ ticket.passenger.first_name }} {{ ticket.passenger.last_name }}">
+                {% elif ticket.qr_token %}
+                <p><i class="fas fa-qrcode" aria-hidden="true"></i>Scan at Boarding</p>
+                <img src="{% url 'bookings:ticket_qr_png' ticket.qr_token %}" loading="lazy"
+                     alt="QR Code for {{ ticket.passenger.first_name }} {{ ticket.passenger.last_name }}">
+                {% elif booking.status == 'confirmed' %}
+                <p style="color: var(--text-muted); font-weight: 500;"><i class="fas fa-info-circle" aria-hidden="true"></i>
+                    Your boarding QR code is being generated. Please refresh this page in a moment, or contact support if it does not appear.</p>
                 {% else %}
-                <p style="color: var(--text-muted); font-weight: 500;"><i class="fas fa-exclamation-circle" aria-hidden="true"></i> QR Code not available</p>
+                <p style="color: var(--text-muted); font-weight: 500;"><i class="fas fa-info-circle" aria-hidden="true"></i>
+                    Your boarding QR code will appear here once your booking is confirmed and payment is complete.</p>
                 {% endif %}
             </section>
         </div>
