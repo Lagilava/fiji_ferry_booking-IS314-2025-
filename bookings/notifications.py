@@ -83,7 +83,25 @@ def send_booking_cancellation_email(booking):
       <p>Vinaka,<br>Fiji Ferry</p>
     </div>
     """
+    # Fire a parallel SMS/WhatsApp so travellers who don't check email still hear.
+    _send_sms_for_booking(
+        booking,
+        f"Fiji Ferry: booking #{booking.id} ({dep}->{dest}, {depart}) is cancelled. "
+        + (f"Refund FJD {refunded_total} to your card in 5-10 days." if refunded_total > 0
+           else "See our cancellation policy for refund details."),
+    )
     return _send(subject, text, [to], html)
+
+
+def _send_sms_for_booking(booking, body):
+    """Best-effort SMS/WhatsApp to a booking's contact number. Never raises."""
+    try:
+        from .sms import booking_phone, notify as sms_notify
+        phone = booking_phone(booking)
+        if phone:
+            sms_notify(phone, body)
+    except Exception:
+        logger.exception("notifications: SMS send failed for booking %s", getattr(booking, "id", "?"))
 
 
 # --------------------------------------------------------------------------- #
@@ -194,6 +212,7 @@ def notify_schedule_disruption(schedule, kind):
         # For cancellations, offer a free one-click move to the next sailing
         # on the same route that fits this booking (seats/vehicles/cargo).
         rebook_html = rebook_text = ""
+        one_click_url = ""
         if kind == "cancelled":
             try:
                 from .waitlist import rebook_offer_for
@@ -244,6 +263,18 @@ def notify_schedule_disruption(schedule, kind):
         """
         if _send(subject, text, [to], html):
             sent += 1
+
+        # SMS/WhatsApp counterpart — short, actionable, links to rebooking.
+        sms_body = (
+            f"Fiji Ferry: {copy['subject'].lower()} — {dep}->{dest} on {depart} "
+            f"(booking #{booking.id}). "
+        )
+        if kind == "cancelled" and one_click_url:
+            sms_body += f"Move free to the next sailing: {one_click_url}"
+        elif manage:
+            sms_body += f"Manage: {manage}"
+        _send_sms_for_booking(booking, sms_body)
+
     if kind == "cancelled":
         # Close out the sailing's waitlist too (suggests the next sailing).
         try:

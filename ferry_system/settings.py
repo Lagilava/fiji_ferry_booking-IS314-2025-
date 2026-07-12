@@ -672,6 +672,19 @@ REFUND_FULL_HOURS = config('REFUND_FULL_HOURS', default=24, cast=int)
 REFUND_PARTIAL_HOURS = config('REFUND_PARTIAL_HOURS', default=2, cast=int)
 REFUND_PARTIAL_PCT = config('REFUND_PARTIAL_PCT', default=50, cast=int)
 
+# SMS / WhatsApp notifications (Twilio REST API, called via `requests`).
+# Leave the credentials blank to disable — bookings.sms then quietly no-ops, so
+# email remains the only channel in dev/CI. In Fiji, SMS/WhatsApp reach
+# travellers far more reliably than email, so wire these up in production.
+#   SMS_CHANNELS: "sms" | "whatsapp" | "both"
+TWILIO_ACCOUNT_SID = config('TWILIO_ACCOUNT_SID', default='')
+TWILIO_AUTH_TOKEN = config('TWILIO_AUTH_TOKEN', default='')
+TWILIO_SMS_FROM = config('TWILIO_SMS_FROM', default='')          # e.g. +14155550100
+TWILIO_WHATSAPP_FROM = config('TWILIO_WHATSAPP_FROM', default='')  # e.g. +14155550100
+SMS_CHANNELS = config('SMS_CHANNELS', default='sms')
+SMS_DEFAULT_COUNTRY_CODE = config('SMS_DEFAULT_COUNTRY_CODE', default='679')  # Fiji
+SMS_TIMEOUT = config('SMS_TIMEOUT', default=10, cast=int)
+
 # Weather review-holds: automatically move upcoming sailings to 'weather_hold'
 # (non-bookable, needs staff review) when the route's current weather breaches
 # these limits. Sailings are never auto-cancelled or auto-released.

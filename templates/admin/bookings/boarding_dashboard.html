@@ -1,0 +1,121 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block title %}Boarding — Live Check-in — {{ site_header }}{% endblock %}
+
+{% block extrahead %}
+<style>
+.boarding-wrap { max-width: 1100px; }
+.boarding-head { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.25rem; }
+.boarding-head h1 { margin: 0; }
+.live-dot { width: 10px; height: 10px; border-radius: 50%; background: #10b981; display: inline-block;
+  box-shadow: 0 0 0 0 rgba(16,185,129,.6); animation: pulse 1.8s infinite; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(16,185,129,.55); } 70% { box-shadow: 0 0 0 10px rgba(16,185,129,0); } 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); } }
+.live-label { font-size: .78rem; color: #6b7280; }
+.board-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1rem; }
+.board-card { border: 1px solid #e5e7eb; border-radius: 14px; padding: 1.1rem 1.2rem; background: #fff; }
+.board-card__top { display: flex; justify-content: space-between; align-items: flex-start; gap: .5rem; margin-bottom: .35rem; }
+.board-route { font-weight: 800; font-size: 1.02rem; color: #0f172a; }
+.board-ferry { color: #64748b; font-size: .8rem; }
+.board-time { text-align: right; }
+.board-time__val { font-weight: 800; font-size: 1.1rem; color: #0e7490; }
+.board-status { display: inline-block; padding: .12rem .5rem; border-radius: 999px; font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; }
+.st-scheduled { background: #d1fae5; color: #065f46; }
+.st-delayed { background: #fef3c7; color: #92400e; }
+.st-departed { background: #e0e7ff; color: #3730a3; }
+.board-count { display: flex; align-items: baseline; gap: .4rem; margin: .8rem 0 .5rem; }
+.board-count__big { font-size: 2rem; font-weight: 800; color: #0f172a; }
+.board-count__tot { color: #94a3b8; font-weight: 700; }
+.board-count__lbl { margin-left: auto; font-size: .74rem; color: #6b7280; text-transform: uppercase; letter-spacing: .5px; }
+.bar { height: 12px; border-radius: 999px; background: #eef2f7; overflow: hidden; }
+.bar__fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg,#10b981,#0ea5e9); transition: width .5s ease; }
+.bar__fill.full { background: linear-gradient(90deg,#059669,#10b981); }
+.board-remaining { margin-top: .55rem; font-size: .8rem; color: #475569; }
+.board-remaining b { color: #b45309; }
+.board-remaining.done b { color: #059669; }
+.board-empty { color: #6b7280; padding: 2rem 0; }
+@media (prefers-color-scheme: dark) {
+  .board-card { background: #0f172a; border-color: #1e293b; }
+  .board-route, .board-count__big { color: #f1f5f9; }
+  .bar { background: #1e293b; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="boarding-wrap">
+  <div class="boarding-head">
+    <h1>Boarding — Live Check-in</h1>
+    <span class="live-dot"></span>
+    <span class="live-label">Auto-refreshing · <span id="board-updated">now</span></span>
+  </div>
+
+  {% if rows %}
+  <div class="board-grid" id="board-grid">
+    {% for r in rows %}
+    <div class="board-card" data-schedule="{{ r.schedule.id }}">
+      <div class="board-card__top">
+        <div>
+          <div class="board-route">{{ r.schedule.route.departure_port.name }} → {{ r.schedule.route.destination_port.name }}</div>
+          <div class="board-ferry">{{ r.schedule.ferry.name }}</div>
+        </div>
+        <div class="board-time">
+          <div class="board-time__val">{{ r.schedule.departure_time|time:"H:i" }}</div>
+          <span class="board-status st-{{ r.schedule.status }}">{{ r.schedule.get_status_display }}</span>
+        </div>
+      </div>
+      <div class="board-count">
+        <span class="board-count__big" data-role="boarded">{{ r.boarded }}</span>
+        <span class="board-count__tot" data-role="total">/ {{ r.total }}</span>
+        <span class="board-count__lbl">checked in</span>
+      </div>
+      <div class="bar">
+        <div class="bar__fill {% if r.pct == 100 %}full{% endif %}" data-role="fill" style="width: {{ r.pct }}%;"></div>
+      </div>
+      <div class="board-remaining {% if r.remaining == 0 %}done{% endif %}" data-role="remaining">
+        {% if r.remaining == 0 and r.total > 0 %}All aboard ✓{% else %}<b>{{ r.remaining }}</b> still to board{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="board-empty">No departures in the boarding window (2 hours before to 12 hours after now).</p>
+  {% endif %}
+</div>
+
+<script>
+(function () {
+  const grid = document.getElementById('board-grid');
+  if (!grid) return;
+  const url = "{% url 'custom_admin:boarding_data' %}";
+
+  async function refresh() {
+    try {
+      const res = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+      if (!res.ok) return;
+      const data = await res.json();
+      (data.rows || []).forEach(function (row) {
+        const card = grid.querySelector('[data-schedule="' + row.schedule_id + '"]');
+        if (!card) return;
+        card.querySelector('[data-role="boarded"]').textContent = row.boarded;
+        card.querySelector('[data-role="total"]').textContent = '/ ' + row.total;
+        const fill = card.querySelector('[data-role="fill"]');
+        fill.style.width = row.pct + '%';
+        fill.classList.toggle('full', row.pct === 100);
+        const rem = card.querySelector('[data-role="remaining"]');
+        if (row.remaining === 0 && row.total > 0) {
+          rem.innerHTML = 'All aboard ✓';
+          rem.classList.add('done');
+        } else {
+          rem.innerHTML = '<b>' + row.remaining + '</b> still to board';
+          rem.classList.remove('done');
+        }
+      });
+      const stamp = document.getElementById('board-updated');
+      if (stamp) stamp.textContent = new Date().toLocaleTimeString();
+    } catch (e) { /* best-effort; keep last view on transient errors */ }
+  }
+  setInterval(refresh, 10000);
+})();
+</script>
+{% endblock %}

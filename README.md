@@ -1,272 +1,201 @@
-# Fiji Ferry Booking System - IS314 Project
+# 🛥️ Fiji Ferry Booking System
 
-**Team**: Group 10  
-**Supervisor**: Mr. Ravneil Nand  
-**Semester**: 2, 2025
+> A production-grade, real-time ferry reservation and fleet-operations platform for inter-island travel in Fiji — online booking, Stripe payments, QR boarding passes, live schedules, automated refunds, weather-aware operations, and a full operations control centre for staff.
 
-## Project Overview
+Built with **Django 5**, **Django Channels (WebSockets)**, **Celery**, **PostgreSQL/MySQL**, **Redis**, and **Stripe**. Designed for the realities of the Fiji market: intermittent connectivity, mobile-first travellers, and safety-critical maritime operations.
 
-The Fiji Ferry Booking System is a web platform to streamline ferry travel in Fiji. It enables users to book tickets, make payments, view real-time schedules, and manage bookings, reducing reliance on physical ticket counters. The system improves accessibility for residents in suburbs, interiors, and outer islands.
+<p align="center">
+  <img src="docs/screenshots/homepage.png" alt="Fiji Ferry homepage with live departures, weather and trip search" width="80%">
+</p>
 
-## Key Features
+---
 
-- **Online Ticket Booking**: Choose routes, dates, and passenger numbers.
-- **Secure Payments**: Integrated with Stripe for safe transactions.
-- **Real-Time Schedules**: Live updates on ferry availability and seats.
-- **QR Code Ticketing**: Scannable QR codes for tickets and cargo.
-- **Booking Management**: View history and cancel bookings online.
-- **Weather Updates**: Real-time route weather (e.g., "Patchy rain nearby, 25°C, Wind 29.5kph").
+## ✨ Highlights
 
-## Technology Stack
+| | |
+|---|---|
+| 🎫 **End-to-end booking** | Multi-step wizard (schedule → passengers → add-ons → review), guest & account checkout, vehicles + cargo, group bookings, unaccompanied minors |
+| 💳 **Real payments** | Stripe Checkout + webhooks, plus mock Fiji-local rails (ANZ, BSP, M-PAiSA, MyCash). **Idempotent** confirmation safe against webhook re-delivery |
+| 💸 **Automated refunds** | Tiered, time-based cancellation policy with **idempotent Stripe refunds** and a full payment audit trail |
+| 📱 **SMS / WhatsApp alerts** | Disruption, cancellation and boarding notifications over Twilio — because in Fiji, SMS reaches travellers when email doesn't |
+| 🚨 **One-button disruption broadcast** | Cancel a sailing → auto-cancel + refund every booking → notify all passengers (email + SMS) → offer free one-click rebooking |
+| 🛳️ **Live boarding board** | Gate-side "X of Y checked in" per departure, auto-refreshing, driven by QR ticket scans |
+| 📡 **Real-time everything** | WebSocket-pushed schedule/seat/booking updates to both the customer site and the admin control hub, with a polling fallback |
+| ⛅ **Weather-aware ops** | Live route weather; sailings auto-flagged to *weather hold* when wind/precipitation breach safety thresholds |
+| 🤖 **Ops automation** | Auto-scheduler (fleet turnaround, berth & maintenance constraints), waitlist engine, offline self-test agent, server monitor |
+| 🧾 **QR boarding passes** | Per-passenger tickets with unique QR tokens, PDF generation, and admin-side scan validation |
 
-- **Backend**: Python, Django
-- **Database**: MySQL (SQLite for development)
-- **Frontend**: HTML, CSS, JavaScript
-- **APIs**: WeatherAPI, Stripe
-- **Methodology**: Agile
+---
 
-## Setup Instructions
+## 📸 Screenshots
 
-Follow these beginner-friendly steps to set up the project locally with MySQL Workbench. Each step includes verification and troubleshooting tips.
+### Customer experience
+| Homepage & live search | Booking wizard | Live departures |
+|---|---|---|
+| ![Homepage](docs/screenshots/homepage.png) | ![Booking flow](docs/screenshots/booking-flow.png) | ![Live departures](docs/screenshots/live-departures.png) |
 
-### Step 1: Install Prerequisites
+| Destinations | Mobile (PWA-installable) |
+|---|---|
+| ![Destinations](docs/screenshots/destinations.png) | <img src="docs/screenshots/homepage-mobile.png" width="260"> |
 
-Install and verify the following tools:
+### Operations control centre (staff)
+| Control Hub dashboard | Live boarding board |
+|---|---|
+| ![Admin dashboard](docs/screenshots/admin-dashboard.png) | ![Boarding board](docs/screenshots/boarding-board.png) |
 
-1. **Python 3.8+**:
-   - Download: [python.org](https://www.python.org/downloads/)
-   - Verify: `python --version` (Windows) or `python3 --version` (Mac/Linux)
-   - **Troubleshooting**: Ensure Python is added to PATH during installation.
+| Operations dashboard | Departure manifest |
+|---|---|
+| ![Ops dashboard](docs/screenshots/ops-dashboard.png) | ![Manifest](docs/screenshots/manifest.png) |
 
-2. **Git**:
-   - Download: [git-scm.com](https://git-scm.com/downloads)
-   - Verify: `git --version`
-   - **Troubleshooting**: Install Git if not found and add to PATH.
+---
 
-3. **MySQL and MySQL Workbench**:
-   - Download: [mysql.com](https://www.mysql.com/products/community/)
-   - Start MySQL Server:
-     - **Windows**: Use MySQL Installer
-     - **Mac**: `brew install mysql; brew services start mysql`
-     - **Linux**: `sudo apt-get install mysql-server; sudo service mysql start`
-   - Verify: Connect in Workbench to `localhost:3306` with username `root` and password
-   - **Troubleshooting**:
-     - Connection error: Check server status (`mysqladmin -u root -p status`)
-     - Password reset: `ALTER USER 'root'@'localhost' IDENTIFIED BY 'new_password';`
+## 🏗️ Architecture
 
-4. **MySQL Client Library**:
-   - Install: `pip install mysqlclient`
-   - **Troubleshooting**:
-     - `mysql_config not found`:
-       - **Windows**: Install MySQL Connector/C
-       - **Mac**: `brew install mysql-connector-c`
-       - **Linux**: `sudo apt-get install libmysqlclient-dev`
+```mermaid
+flowchart LR
+    subgraph Client
+      W[Web + PWA] 
+      M[Mobile browser]
+    end
+    subgraph Edge[Django / Daphne ASGI]
+      V[Views &amp; REST APIs]
+      WS[Channels WebSocket consumers]
+      A[Custom Admin Control Hub]
+    end
+    subgraph Core[Service layer]
+      SVC[services.py<br/>atomic inventory · payments · refunds · rebooking]
+      NOTIF[notifications.py + sms.py<br/>email · SMS · WhatsApp]
+      SCHED[scheduling.py<br/>auto-scheduler · weather holds]
+      WAIT[waitlist.py]
+    end
+    subgraph Async[Celery workers + beat]
+      T[Tasks: expiry, weather refresh, self-tests]
+    end
+    DB[(PostgreSQL / MySQL)]
+    R[(Redis<br/>cache · channel layer · broker)]
+    STRIPE{{Stripe}}
+    TWILIO{{Twilio}}
+    WX{{Weather API}}
 
-### Step 2: Clone Repository
-
-Clone and navigate to the project directory:
-
-```bash
-git clone <repository-url>
-cd fiji_ferry_booking
+    W & M --> V & WS
+    V --> SVC --> DB
+    A --> SVC
+    WS <--> R
+    V <--> STRIPE
+    SVC --> NOTIF --> TWILIO
+    SCHED --> WX
+    T --> DB
+    Edge <--> R
+    Async <--> R
 ```
 
-- Replace `<repository-url>` with the actual URL.
-- Verify: Ensure `manage.py` and `requirements.txt` are in the directory.
-- **Troubleshooting**: Confirm Git is installed and repository access is granted.
+The **service layer** (`bookings/services.py`) is the heart of the system: every money- or inventory-critical operation (seat reservation, payment confirmation, cancellation/refund, rebooking, disruption broadcast) runs there under row-level locks (`SELECT … FOR UPDATE`) with atomic `F()` inventory updates. Views handle HTTP only. This guarantees **no overbooking and no double-refunds under concurrency**, and idempotency against Stripe webhook re-delivery.
 
-### Step 3: Set Up Virtual Environment
+📖 **Deep dive:** see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the concurrency model, state machines, and design guarantees.
 
-Isolate dependencies with a virtual environment:
+---
 
-- **Windows**:
-  ```bash
-  python -m venv venv
-  venv\Scripts\activate
-  ```
-- **Mac/Linux**:
-  ```bash
-  python3 -m venv venv
-  source venv/bin/activate
-  ```
+## 🧰 Tech stack
 
-- Verify: Prompt shows `(venv)`; `pip --version` confirms virtual environment `pip`.
-- **Troubleshooting**: Ensure Python version matches (`python3` for Mac/Linux).
+| Layer | Technology |
+|---|---|
+| **Backend** | Python 3.11+, Django 5.2, Django REST-style JSON APIs |
+| **Real-time** | Django Channels 4, Daphne (ASGI), WebSockets |
+| **Async tasks** | Celery 5 + django-celery-beat |
+| **Data** | PostgreSQL (prod) / MySQL / SQLite (dev), Redis (cache · channel layer · broker) |
+| **Payments** | Stripe Checkout + webhooks; mock Fiji-local gateways |
+| **Messaging** | Email (SMTP / Brevo HTTP API), SMS + WhatsApp (Twilio) |
+| **Frontend** | Server-rendered templates, vanilla JS, PWA (installable, offline-aware), Jazzmin-based admin |
+| **PDF / QR** | ReportLab, qrcode |
+| **Testing** | Django test suite, pytest, coverage (~100 tests) |
+| **Deploy** | Render (Docker-free), WhiteNoise, Gunicorn/Daphne |
 
-### Step 4: Install Dependencies
+---
 
-Install required packages:
+## 🔬 Engineering highlights (the interesting bits)
+
+- **Concurrency-safe inventory** — seats, vehicle slots and cargo weight are all reserved under a single locked `Schedule` row; DB `CheckConstraint`s act as a last-line backstop that makes overselling physically impossible even if application logic is bypassed.
+- **Idempotent payments & refunds** — payment confirmation keys off a unique `(booking, session_id)` row; refunds carry a Stripe `idempotency_key`. Safe to call from both the webhook and the success redirect, repeatedly.
+- **Explicit booking state machine** — `transition_booking()` rejects illegal transitions (e.g. `cancelled → confirmed`), so there is no bypass path to a paid/void state.
+- **One-button disruption broadcast** — `services.disrupt_schedule()` cancels a sailing and every booking on it, refunds per policy, releases inventory, voids tickets, and fans out email + SMS with a free one-click rebooking link — all idempotent and safe to retry.
+- **Graceful degradation** — SMS/WhatsApp, weather, and websockets all **no-op cleanly when unconfigured or unreachable**; a down SMTP server or Redis instance never breaks a booking.
+
+---
+
+## 🚀 Quick start (local, SQLite — zero external services)
 
 ```bash
+git clone <repository-url> && cd fiji_ferry_booking
+python -m venv venv && source venv/Scripts/activate    # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-```
-
-- Includes Django, `mysqlclient`, `stripe`, `requests`, `celery`, etc.
-- Verify: `pip list` shows all packages.
-- **Troubleshooting**:
-  - Fix `mysqlclient` errors (see Step 1).
-  - Reinstall: `pip install --force-reinstall -r requirements.txt`.
-
-### Step 5: Configure MySQL Database
-
-Set up the database using MySQL Workbench:
-
-1. **Connect to MySQL**:
-   - Open Workbench, connect to `localhost:3306` (username: `root`, your password).
-   - Verify: “Test Connection” succeeds.
-
-2. **Create Database**:
-   - Run in a new query tab:
-     ```sql
-     CREATE DATABASE fiji_ferry_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-     ```
-   - Verify: `SHOW DATABASES;` lists `fiji_ferry_db`.
-
-3. **Set Environment Variables**:
-   - Copy `.env`:
-     ```bash
-     cp .env.example .env
-     ```
-   - Edit `.env`:
-     ```
-     SECRET_KEY=your-secret-key
-     DEBUG=True
-     ALLOWED_HOSTS=localhost,127.0.0.1
-     DB_NAME=fiji_ferry_db
-     DB_USER=root
-     DB_PASSWORD=your_mysql_password
-     DB_HOST=localhost
-     DB_PORT=3306
-     EMAIL_HOST=smtp.gmail.com
-     EMAIL_PORT=587
-     EMAIL_USE_TLS=True
-     EMAIL_HOST_USER=your_email@gmail.com
-     EMAIL_HOST_PASSWORD=your_app_password
-     STRIPE_PUBLISHABLE_KEY=pk_test_...
-     STRIPE_SECRET_KEY=sk_test_...
-     STRIPE_WEBHOOK_SECRET=whsec_...
-     WEATHER_API_KEY=your_weather_api_key
-     ```
-   - Replace:
-     - `your_mysql_password`: MySQL root password
-     - `your_email@gmail.com`, `your_app_password`: Gmail and app-specific password
-     - `SECRET_KEY`: Generate with `python -c "import secrets; print(secrets.token_urlsafe(50))"`
-     - API keys: Obtain from team lead or API dashboards
-
-4. **Run Migrations**:
-   - Activate virtual environment.
-   - Generate: `python manage.py makemigrations`
-   - Apply: `python manage.py migrate`
-   - Verify: In Workbench, check `fiji_ferry_db` for tables (`auth_user`, `bookings_schedule`).
-
-5. **Create Superuser**:
-   - Run: `python manage.py createsuperuser`
-   - Enter username (e.g., `admin`), email, and password.
-   - Verify: Log in at `http://127.0.0.1:8000/admin/` after server start.
-
-6. **Troubleshooting**:
-   - Connection error: Verify MySQL server (`mysqladmin -u root -p status`), `DB_HOST`, `DB_PORT`.
-   - Access denied: Check `DB_PASSWORD`. Reset in Workbench if needed.
-   - No tables: Ensure `fiji_ferry_db` exists; rerun migrations.
-   - SQLite fallback: Edit `settings.py` to use SQLite, then migrate.
-
-### Step 6: Run Development Server
-
-Start the server:
-
-```bash
+cp .env.example .env                                   # fill in as needed
+python manage.py migrate
+python manage.py ensure_demo_data                      # seed ports, routes, ferries, schedules
+python manage.py createsuperuser
 python manage.py runserver
 ```
 
-- Visit: `http://127.0.0.1:8000/`
-- Verify: Homepage shows slideshow, schedules, and weather data.
-- **Troubleshooting**:
-  - Page fails: Check `DEBUG=True` and server logs.
-  - Weather missing: Verify `WEATHER_API_KEY`; check `/api/weather/` in browser console (F12).
-  - Images missing: Ensure `static/images/` exists; run `python manage.py collectstatic` for production.
+Visit **http://127.0.0.1:8000/** for the traveller site and **/admin/** for the operations control hub.
 
-### Step 7: Access Admin Panel
+> Full production setup (PostgreSQL/MySQL, Redis, Celery, Stripe & Twilio keys) is documented in [`DEPLOY.md`](DEPLOY.md) and [`OPERATIONS.md`](OPERATIONS.md).
 
-- Visit: `http://127.0.0.1:8000/admin/`
-- Log in with superuser credentials.
-- Manage schedules, bookings, and users.
-- **Troubleshooting**:
-  - Login fails: Recreate superuser.
-  - Blank page: Check server logs for template errors.
+### Configuration you may want
 
-## Development Workflow
+| Env var | Purpose |
+|---|---|
+| `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | Real card payments & refunds |
+| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_SMS_FROM` | SMS/WhatsApp alerts (blank = email only) |
+| `REFUND_FULL_HOURS` / `REFUND_PARTIAL_HOURS` / `REFUND_PARTIAL_PCT` | Tune the refund policy |
+| `WEATHER_HOLD_WIND_KMH` / `WEATHER_HOLD_PRECIP_PCT` | Safety thresholds for auto weather-holds |
 
-Use Agile methodology with sprints:
+---
 
-1. **Create Branch**:
-   ```bash
-   git checkout -b feature/feature-name
-   ```
-2. **Code and Test**:
-   - Edit `accounts` or `bookings` apps.
-   - Test: `python manage.py test`, `python manage.py runserver`
-3. **Commit**:
-   ```bash
-   git add .
-   git commit -m "Add: feature description"
-   ```
-4. **Push and Pull Request**:
-   ```bash
-   git push origin feature/feature-name
-   ```
-   - Create pull request on repository platform.
+## ✅ Testing
 
-## Django Commands
+```bash
+python manage.py test bookings --settings=ferry_system.test_settings
+```
 
-- New app: `python manage.py startapp app_name`
-- Migrations: `python manage.py makemigrations`, `python manage.py migrate`
-- Superuser: `python manage.py createsuperuser`
-- Tests: `python manage.py test`
-- Static files: `python manage.py collectstatic`
-- Help: `python manage.py help`
+The suite runs fully offline — Stripe and email are mocked, channels use an in-memory layer — and covers the state machine, seat-inventory concurrency, payment/refund flows, the disruption broadcast, SMS routing, weather holds, and API/authorization boundaries.
 
-## Project Structure
+---
+
+## 📁 Project structure
 
 ```
 fiji_ferry_booking/
-├── ferry_system/           # Core settings
-│   ├── settings.py        # Django config
-│   ├── urls.py           # URL routing
-│   └── wsgi.py           # WSGI app
-├── accounts/              # User management
-│   ├── models.py         # User models
-│   ├── views.py          # Auth views
-│   └── admin.py          # Admin config
-├── bookings/              # Booking logic
-│   ├── models.py         # Booking models
-│   ├── views.py          # Booking views
-│   └── admin.py          # Admin config
-├── templates/             # HTML templates
-├── static/               # CSS, JS, images
-├── media/                # Uploads (QR codes, documents)
-├── requirements.txt      # Dependencies
-├── .env                 # Environment variables
-└── manage.py            # Management script
+├── ferry_system/          # Project config, ASGI, Celery, settings
+├── accounts/              # Custom user model, auth, profiles
+├── bookings/
+│   ├── models.py          # Ports, Ferries, Routes, Schedules, Bookings, Tickets, Waitlist…
+│   ├── services.py        # ⭐ Authoritative money/inventory service layer
+│   ├── notifications.py   # Email senders
+│   ├── sms.py             # ⭐ SMS / WhatsApp channel (Twilio)
+│   ├── scheduling.py      # Auto-scheduler + weather holds
+│   ├── waitlist.py        # Waitlist + one-click rebooking
+│   ├── admin.py           # Custom admin site: dashboards, boarding, ops, manifest
+│   ├── consumers.py       # WebSocket consumers
+│   ├── tasks.py           # Celery tasks
+│   └── tests.py           # Test suite
+├── templates/             # Customer site + admin control hub
+├── docs/screenshots/      # README imagery
+└── manage.py
 ```
 
-## Contributing
+---
 
-- Follow Agile sprints.
-- Use feature branches.
-- Write tests in `app/tests.py`.
-- Update this README for major changes.
-- Adhere to Django best practices (DRY, MVT separation).
+## 👥 Team & origin
 
-## Team Members
+Originally built for **IS314** (University of the South Pacific, Semester 2 2025, supervised by Mr. Ravneil Nand) and since extended into a full operations platform.
 
-| Student ID | Name                     |
-|------------|--------------------------|
-| S11210953  | Lagilava Paulo           |
-| S11221892  | Pene Konousi             |
-| S11223573  | Rigieta Nagera           |
-| S11221570  | Sekove Koroi             |
-| S11196578  | Kesaia Waqavakatoga      |
+| Student ID | Name |
+|------------|------|
+| S11210953  | Lagilava Paulo |
+| S11221892  | Pene Konousi |
+| S11223573  | Rigieta Nagera |
+| S11221570  | Sekove Koroi |
+| S11196578  | Kesaia Waqavakatoga |
 
-## License
+## 📄 License
 
-Educational project for IS314 Course.
+Educational project (IS314). Not affiliated with any real ferry operator.

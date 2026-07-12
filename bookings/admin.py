@@ -1495,6 +1495,88 @@ class CustomAdminSite(admin.AdminSite):
         return TemplateResponse(request, 'admin/bookings/departure_manifest.html', context)
 
     # ------------------------------------------------------------------ #
+    # Boarding headcount — live check-in progress per departure
+    # ------------------------------------------------------------------ #
+    def _boarding_stats(self, schedule):
+        """Boarding counts for one sailing: (boarded, total, pct, remaining names).
+
+        A passenger counts as *boarded* once their ticket has been scanned to
+        'used' or 'boarding'. Totals are drawn from active (non-cancelled)
+        tickets on confirmed bookings.
+        """
+        from django.db.models import Count, Q
+        agg = Ticket.objects.filter(
+            booking__schedule=schedule,
+            booking__status='confirmed',
+        ).exclude(ticket_status='cancelled').aggregate(
+            total=Count('id'),
+            boarded=Count('id', filter=Q(ticket_status__in=['used', 'boarding'])),
+        )
+        total = agg['total'] or 0
+        boarded = agg['boarded'] or 0
+        pct = round((boarded / total) * 100) if total else 0
+        return boarded, total, pct
+
+    def boarding_dashboard(self, request):
+        """Gate-side live boarding board: X of Y checked in per departure."""
+        from django.template.response import TemplateResponse
+        now = timezone.now()
+        window_start = now - timedelta(hours=2)
+        window_end = now + timedelta(hours=12)
+        schedules = Schedule.objects.select_related(
+            'ferry', 'route__departure_port', 'route__destination_port'
+        ).filter(
+            status__in=['scheduled', 'delayed', 'departed'],
+            departure_time__gte=window_start,
+            departure_time__lte=window_end,
+        ).order_by('departure_time')
+
+        rows = []
+        for s in schedules:
+            boarded, total, pct = self._boarding_stats(s)
+            rows.append({
+                'schedule': s,
+                'boarded': boarded,
+                'total': total,
+                'pct': pct,
+                'remaining': total - boarded,
+                'capacity': s.ferry.capacity,
+            })
+
+        context = {
+            **self.each_context(request),
+            'title': 'Boarding — Live Check-in',
+            'rows': rows,
+        }
+        return TemplateResponse(request, 'admin/bookings/boarding_dashboard.html', context)
+
+    def boarding_data(self, request):
+        """JSON feed powering the boarding board's live refresh."""
+        now = timezone.now()
+        schedules = Schedule.objects.select_related(
+            'ferry', 'route__departure_port', 'route__destination_port'
+        ).filter(
+            status__in=['scheduled', 'delayed', 'departed'],
+            departure_time__gte=now - timedelta(hours=2),
+            departure_time__lte=now + timedelta(hours=12),
+        ).order_by('departure_time')
+        data = []
+        for s in schedules:
+            boarded, total, pct = self._boarding_stats(s)
+            data.append({
+                'schedule_id': s.id,
+                'ferry': s.ferry.name,
+                'route': f"{s.route.departure_port.name} → {s.route.destination_port.name}",
+                'departure': timezone.localtime(s.departure_time).strftime('%H:%M'),
+                'status': s.status,
+                'boarded': boarded,
+                'total': total,
+                'pct': pct,
+                'remaining': total - boarded,
+            })
+        return JsonResponse({'rows': data, 'updated': now.isoformat()})
+
+    # ------------------------------------------------------------------ #
     # Bulk rebook — move all confirmed bookings from one schedule to another
     # ------------------------------------------------------------------ #
     def bulk_rebook_view(self, request):
@@ -1666,16 +1748,20 @@ class CustomAdminSite(admin.AdminSite):
             else:
                 messages.info(request, f"Schedule is not on weather hold: {label}")
         elif action == 'cancel':
-            schedule.status = 'cancelled'
-            schedule.save(update_fields=['status', 'last_updated'])
-            notified = 0
+            # Full disruption broadcast: cancel the sailing AND cancel + refund
+            # every booking on it, notifying each customer by email + SMS.
+            from bookings import services
             try:
-                from .notifications import notify_schedule_disruption
-                notified = notify_schedule_disruption(schedule, 'cancelled')
-            except Exception:
-                pass
-            note = f" — {notified} passenger(s) emailed" if notified else ""
-            messages.warning(request, f"Cancelled: {label}{note}")
+                summary = services.disrupt_schedule(
+                    schedule.id, 'cancelled', do_refund=True, actor=request.user.email,
+                )
+                note = (
+                    f" — {summary['bookings_affected']} booking(s) cancelled, "
+                    f"{summary['refunded_count']} refunded (FJD {summary['refunded_total']})"
+                )
+                messages.warning(request, f"Cancelled + refunded: {label}{note}")
+            except Exception as e:
+                messages.error(request, f"Could not broadcast cancellation for {label}: {e}")
         else:
             messages.error(request, "Unknown action.")
         clear_analytics_cache()
@@ -1735,6 +1821,8 @@ class CustomAdminSite(admin.AdminSite):
                  name='export_changelist'),
             # New operational tools
             path('manifest/', self.admin_view(self.departure_manifest), name='departure_manifest'),
+            path('boarding/', self.admin_view(self.boarding_dashboard), name='boarding_dashboard'),
+            path('boarding/data/', self.admin_view(self.boarding_data), name='boarding_data'),
             path('bulk-rebook/', self.admin_view(self.bulk_rebook_view), name='bulk_rebook'),
             path('ops/', self.admin_view(self.ops_dashboard), name='ops_dashboard'),
             path('manual-confirm/', self.admin_view(self.manual_confirm_view), name='manual_confirm'),
@@ -1981,8 +2069,42 @@ class ScheduleAdmin(EnhancedModelAdmin):
 
     real_time_status.short_description = "Real-Time Status"
 
-    actions = ['mark_scheduled', 'mark_delayed', 'mark_cancelled',
+    actions = ['broadcast_cancel_refund', 'mark_scheduled', 'mark_delayed', 'mark_cancelled',
                'release_weather_hold', 'duplicate_next_day']
+
+    @admin.action(description="🚨 Broadcast CANCELLATION (cancel + refund all bookings + notify)")
+    def broadcast_cancel_refund(self, request, queryset):
+        """One-button disruption broadcast for whole sailings.
+
+        Unlike "Mark as Cancelled" (which only flips the sailing's status and
+        emails passengers), this cancels **and refunds every booking** on each
+        selected sailing per the tiered refund policy, releases the seats/vehicle/
+        cargo inventory, voids the tickets, and notifies each customer by email +
+        SMS/WhatsApp with a free one-click rebooking offer.
+        """
+        from bookings import services
+        sailings = affected = refunded = 0
+        total_refunded = 0
+        for schedule in queryset:
+            try:
+                summary = services.disrupt_schedule(
+                    schedule.id, 'cancelled', do_refund=True, actor=request.user.email,
+                )
+            except Exception as e:
+                self.message_user(request, f"Schedule {schedule.id}: {e}", messages.ERROR)
+                continue
+            self._broadcast_schedule(schedule)
+            sailings += 1
+            affected += summary['bookings_affected']
+            refunded += summary['refunded_count']
+            total_refunded += summary['refunded_total']
+        clear_analytics_cache()
+        self.message_user(
+            request,
+            f"{sailings} sailing(s) cancelled: {affected} booking(s) cancelled, "
+            f"{refunded} refunded (FJD {total_refunded}). Passengers notified by email + SMS.",
+            messages.WARNING,
+        )
 
     def _broadcast_schedule(self, obj):
         if get_channel_layer():

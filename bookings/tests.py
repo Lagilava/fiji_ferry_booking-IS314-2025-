@@ -882,3 +882,93 @@ class DisruptionEmailTests(TestCase):
         self.assertEqual(len(mail.outbox), 2)
         recipients = {addr for m in mail.outbox for addr in m.to}
         self.assertEqual(recipients, {"a@x.com", "b@x.com"})
+
+
+# --------------------------------------------------------------------------- #
+# SMS / WhatsApp channel
+# --------------------------------------------------------------------------- #
+class SmsTests(TestCase):
+    def test_normalize_phone_local_and_international(self):
+        from bookings import sms
+        with override_settings(SMS_DEFAULT_COUNTRY_CODE="679"):
+            self.assertEqual(sms.normalize_phone("9990000"), "+6799990000")
+            self.assertEqual(sms.normalize_phone("+64 21 555 0000"), "+64215550000")
+            self.assertEqual(sms.normalize_phone("6799990000"), "+6799990000")
+            self.assertIsNone(sms.normalize_phone(""))
+            self.assertIsNone(sms.normalize_phone("   "))
+
+    @override_settings(TWILIO_ACCOUNT_SID="", TWILIO_AUTH_TOKEN="", TWILIO_SMS_FROM="")
+    def test_unconfigured_is_noop(self):
+        from bookings import sms
+        self.assertFalse(sms.is_configured())
+        self.assertFalse(sms.send_sms("+6799990000", "hi"))  # no exception, just False
+
+    @override_settings(TWILIO_ACCOUNT_SID="AC1", TWILIO_AUTH_TOKEN="tok",
+                       TWILIO_SMS_FROM="+14155550100", SMS_CHANNELS="sms")
+    @mock.patch("bookings.sms.requests.post")
+    def test_send_sms_posts_to_twilio(self, mpost):
+        from bookings import sms
+        mpost.return_value = SimpleNamespace(status_code=201, text="ok")
+        self.assertTrue(sms.send_sms("9990000", "Bula"))
+        mpost.assert_called_once()
+        payload = mpost.call_args.kwargs["data"]
+        self.assertEqual(payload["To"], "+6799990000")
+        self.assertEqual(payload["From"], "+14155550100")
+
+    def test_booking_phone_prefers_account_then_passenger(self):
+        from bookings import sms
+        sch = make_schedule()
+        user = make_user("acct@x.com")
+        user.phone_number = "8887777"
+        user.save()
+        b = make_booking(sch, user=user)
+        self.assertEqual(sms.booking_phone(b), "8887777")
+        # Without an account number, fall back to a passenger's number.
+        b2 = make_booking(sch, guest_email="g@x.com")
+        Passenger.objects.create(
+            booking=b2, first_name="A", last_name="B", passenger_type="adult",
+            age=30, phone="7776666",
+            document="passenger_documents/x.pdf",
+        )
+        self.assertEqual(sms.booking_phone(b2), "7776666")
+
+
+# --------------------------------------------------------------------------- #
+# Disruption broadcast (cancel + refund + notify, one action)
+# --------------------------------------------------------------------------- #
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class DisruptScheduleTests(TestCase):
+    @mock.patch("bookings.services.stripe.Refund.create")
+    def test_cancel_broadcast_cancels_refunds_and_releases(self, mrefund):
+        # Distinct refund ids per call (transaction_id is unique in the DB).
+        mrefund.side_effect = [SimpleNamespace(id="re_1"), SimpleNamespace(id="re_2")]
+        sch = make_schedule(seats=10, departs_in_hours=48)  # 100% refund tier
+        b1 = make_booking(sch, guest_email="a@x.com", status="confirmed",
+                          payment_intent_id="pi_1", adults=2)
+        b2 = make_booking(sch, guest_email="b@x.com", status="confirmed",
+                          payment_intent_id="pi_2", adults=3)
+        before = sch.available_seats
+        summary = services.disrupt_schedule(sch.id, "cancelled", do_refund=True, actor="ops@x.com")
+        sch.refresh_from_db(); b1.refresh_from_db(); b2.refresh_from_db()
+        self.assertEqual(sch.status, "cancelled")
+        self.assertEqual(b1.status, "cancelled")
+        self.assertEqual(b2.status, "cancelled")
+        self.assertEqual(summary["bookings_affected"], 2)
+        self.assertEqual(summary["refunded_count"], 2)
+        self.assertEqual(summary["refunded_total"], Decimal("200.00"))
+        # 5 passenger seats released back to inventory.
+        self.assertEqual(sch.available_seats, before + 5)
+
+    def test_delay_broadcast_keeps_bookings(self):
+        sch = make_schedule()
+        b = make_booking(sch, guest_email="a@x.com", status="confirmed")
+        summary = services.disrupt_schedule(sch.id, "delayed", actor="ops@x.com")
+        sch.refresh_from_db(); b.refresh_from_db()
+        self.assertEqual(sch.status, "delayed")
+        self.assertEqual(b.status, "confirmed")  # not cancelled on a delay
+        self.assertEqual(summary["kind"], "delayed")
+
+    def test_unknown_kind_rejected(self):
+        sch = make_schedule()
+        with self.assertRaises(ValueError):
+            services.disrupt_schedule(sch.id, "sunk")

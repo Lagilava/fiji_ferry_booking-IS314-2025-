@@ -356,6 +356,87 @@ def cancel_booking(booking_id, *, do_refund=True):
 
 
 # --------------------------------------------------------------------------- #
+# Disruption broadcast — one action to disrupt a whole sailing
+# --------------------------------------------------------------------------- #
+def disrupt_schedule(schedule_id, kind, *, do_refund=True, actor=None):
+    """Apply a disruption to an entire sailing in one operation.
+
+    ``kind`` is one of ``'cancelled'``, ``'delayed'``, ``'weather_hold'``.
+
+    For a cancellation this is the "big red button": it flips the schedule to
+    cancelled, then cancels **and refunds** every active booking on it (via the
+    idempotent :func:`cancel_booking`, which releases inventory, voids tickets,
+    and emails/SMSes each customer with a free one-click rebooking offer). For a
+    delay or weather-hold the bookings are left intact — only the schedule status
+    changes and passengers are notified.
+
+    Returns a summary dict: ``{'schedule_id', 'kind', 'bookings_affected',
+    'refunded_count', 'refunded_total', 'notified'}``. Idempotent and safe to
+    retry: already-cancelled bookings are skipped and Stripe refunds are keyed.
+    """
+    from .models import Booking
+    from .notifications import notify_schedule_disruption
+
+    valid = {'cancelled', 'delayed', 'weather_hold'}
+    if kind not in valid:
+        raise ValueError(f"Unknown disruption kind {kind!r}; expected one of {sorted(valid)}")
+
+    status_map = {'cancelled': 'cancelled', 'delayed': 'delayed', 'weather_hold': 'weather_hold'}
+
+    with transaction.atomic():
+        schedule = Schedule.objects.select_for_update().get(pk=schedule_id)
+        schedule.status = status_map[kind]
+        schedule.save(update_fields=['status', 'last_updated'])
+        active_ids = list(
+            Booking.objects.filter(schedule_id=schedule_id, status__in=['pending', 'confirmed'])
+            .values_list('id', flat=True)
+        )
+
+    refunded_count = 0
+    refunded_total = Decimal('0')
+
+    if kind == 'cancelled':
+        # Cancel + refund each booking. cancel_booking handles its own atomic
+        # block, refund idempotency, inventory release, and per-customer email +
+        # SMS on commit, so we don't double-notify below.
+        for bid in active_ids:
+            try:
+                booking, changed = cancel_booking(bid, do_refund=do_refund)
+            except Exception:
+                logger.exception("disrupt_schedule: failed to cancel booking %s", bid)
+                continue
+            if changed:
+                r = abs(
+                    booking.payments.filter(payment_status=PaymentStatus.REFUNDED)
+                    .aggregate(t=Sum('amount'))['t'] or Decimal('0')
+                )
+                if r > 0:
+                    refunded_count += 1
+                    refunded_total += r
+        notified = len(active_ids)
+    else:
+        # Delay / weather-hold: keep bookings, just notify (email + SMS).
+        try:
+            notified = notify_schedule_disruption(schedule, kind)
+        except Exception:
+            logger.exception("disrupt_schedule: notify failed for schedule %s", schedule_id)
+            notified = 0
+
+    logger.info(
+        "disrupt_schedule: schedule=%s kind=%s bookings=%s refunded=%s (FJD %s) by %s",
+        schedule_id, kind, len(active_ids), refunded_count, refunded_total, actor or 'system',
+    )
+    return {
+        'schedule_id': schedule_id,
+        'kind': kind,
+        'bookings_affected': len(active_ids),
+        'refunded_count': refunded_count,
+        'refunded_total': refunded_total,
+        'notified': notified,
+    }
+
+
+# --------------------------------------------------------------------------- #
 # Rebook — move all confirmed passengers to a different schedule
 # --------------------------------------------------------------------------- #
 @transaction.atomic
