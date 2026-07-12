@@ -11,7 +11,7 @@ Dismissal is remembered for 14 days so it doesn't nag returning visitors.
 {% endcomment %}
 <style>
   .pwa-install-btn {
-    position: fixed; bottom: 1.5rem; left: 1.5rem; z-index: 11400;
+    position: fixed; bottom: calc(1.5rem + env(safe-area-inset-bottom)); left: 1.5rem; z-index: 11400;
     display: none; align-items: center; gap: .55rem;
     background: var(--gradient-primary); color: #fff; border: none;
     padding: .75rem 1.1rem; border-radius: 999px; cursor: pointer;
@@ -23,8 +23,8 @@ Dismissal is remembered for 14 days so it doesn't nag returning visitors.
   .pwa-install-btn svg { width: 18px; height: 18px; flex-shrink: 0; }
   .pwa-install-btn__close {
     display: inline-flex; align-items: center; justify-content: center;
-    width: 18px; height: 18px; border-radius: 50%; margin-left: .15rem;
-    background: rgba(255,255,255,.22); font-size: .7rem; line-height: 1;
+    width: 26px; height: 26px; border-radius: 50%; margin-left: .15rem;
+    background: rgba(255,255,255,.22); font-size: .9rem; line-height: 1;
     border: none; color: #fff; cursor: pointer; flex-shrink: 0;
   }
   .pwa-install-btn__close:hover { background: rgba(255,255,255,.4); }

@@ -270,6 +270,12 @@ h1,h2,h3{ font-family:'Playfair Display',serif; line-height:1.15; }
 .legend .lg-selected{ background: linear-gradient(135deg, var(--secondary), var(--primary)); }
 .legend .lg-available{ background: var(--primary); }
 
+@media (max-width: 480px) {
+  .calendar-wrap { padding: 12px; }
+  .cal-grid, .cal-head { gap: 4px; }
+  .day { height: 40px; }
+}
+
 /* =========================================================
    SCHEDULE CARD & BADGES
    ========================================================= */

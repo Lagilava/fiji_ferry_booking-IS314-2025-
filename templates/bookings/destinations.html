@@ -17,6 +17,9 @@
     .dest-hero p { font-size: 1.1rem; opacity: .96; max-width: 640px; margin: 0 auto; }
 
     .dest-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.5rem; }
+    @media (max-width: 600px) {
+        .dest-grid { grid-template-columns: 1fr; }
+    }
     .dest-card {
         background: var(--bg-primary); border: 1px solid var(--border); border-radius: 18px;
         overflow: hidden; box-shadow: var(--shadow-sm); transition: transform .25s, box-shadow .25s;
