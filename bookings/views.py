@@ -358,7 +358,7 @@ def privacy_policy(request):
 # Pricing calculations live in bookings/pricing.py.
 from .pricing import (
     calculate_cargo_price, calculate_addon_price, calculate_passenger_price,
-    calculate_vehicle_price, calculate_total_price,
+    calculate_vehicle_price, calculate_total_price, addon_max_quantity,
 )
 
 
@@ -1061,6 +1061,27 @@ def validate_step(request):
         add_vehicle = request.POST.get('add_vehicle') in ('true', 'on', '1')
         add_cargo   = request.POST.get('add_cargo') in ('true', 'on', '1')
 
+        # Add-on quantities must not exceed the passenger count (an add-on is
+        # per-passenger) or the add-on's own hard cap. The client mirrors this
+        # for instant feedback, but mobile keyboards bypass the number
+        # input's spinner-only max, so this server check is what actually
+        # stops an over-typed value from reaching checkout.
+        total_passengers = (safe_int(request.POST.get('adults', 0))
+                             + safe_int(request.POST.get('children', 0))
+                             + safe_int(request.POST.get('infants', 0)))
+        for addon_type in dict(AddOn.ADD_ON_TYPE_CHOICES).keys():
+            quantity = safe_int(request.POST.get(f'{addon_type}_quantity', 0))
+            if quantity <= 0:
+                continue
+            cap = min(addon_max_quantity(addon_type), total_passengers)
+            if quantity > cap:
+                errors.append({
+                    'field': f'{addon_type}_quantity',
+                    'message': (f'{addon_type.replace("_", " ").title()} quantity ({quantity}) exceeds the '
+                                f'limit of {cap} for {total_passengers} passenger'
+                                f'{"s" if total_passengers != 1 else ""}.'),
+                })
+
         if add_vehicle:
             vehicle_type = (request.POST.get('vehicle_type') or '').strip()
             if not vehicle_type:
@@ -1159,16 +1180,29 @@ def _assemble_booking(request):
         if not vehicle_license_plate:
             raise BookingError('vehicle_license_plate', 'License plate is required for vehicles')
 
-    # --- Addons ---
-    addons = []
-    for addon_type in dict(AddOn.ADD_ON_TYPE_CHOICES).keys():
-        quantity = safe_int(request.POST.get(f'{addon_type}_quantity', 0))
-        if quantity > 0:
-            addons.append({'type': addon_type, 'quantity': quantity})
-
     total_passengers = adults + children + infants
     if not schedule_id or total_passengers == 0:
         raise BookingError('general', 'Invalid booking data')
+
+    # --- Addons ---
+    # Authoritative gate: quantities can never exceed either the addon's own
+    # hard cap or the passenger count (an add-on is per-passenger — e.g. you
+    # can't order 5 meals for 2 travellers). The client clamps the same way
+    # for UX, but that's JS and trivially bypassed, so this is what actually
+    # protects pricing/capacity.
+    addons = []
+    for addon_type in dict(AddOn.ADD_ON_TYPE_CHOICES).keys():
+        quantity = safe_int(request.POST.get(f'{addon_type}_quantity', 0))
+        if quantity <= 0:
+            continue
+        cap = min(addon_max_quantity(addon_type), total_passengers)
+        if quantity > cap:
+            raise BookingError(
+                f'{addon_type}_quantity',
+                f'{addon_type.replace("_", " ").title()} quantity ({quantity}) exceeds the limit '
+                f'of {cap} for {total_passengers} passenger{"s" if total_passengers != 1 else ""}.'
+            )
+        addons.append({'type': addon_type, 'quantity': quantity})
 
     schedule = get_object_or_404(Schedule, id=schedule_id, status='scheduled')
 
@@ -1241,12 +1275,15 @@ def _assemble_booking(request):
                 if not first_name or not last_name:
                     raise ValueError(f"{p_type.capitalize()} {i + 1} missing name")
 
+                phone = request.POST.get(f'{p_type}_phone_{i}', '').strip()[:30]
+
                 passenger_data = {
                     'booking': booking,
                     'first_name': first_name,
                     'last_name': last_name,
                     'passenger_type': p_type,
-                    'document': document
+                    'document': document,
+                    'phone': phone,
                 }
 
                 if p_type != 'infant':
@@ -1570,12 +1607,18 @@ def get_pricing(request):
         add_vehicle = request.POST.get('add_vehicle') == 'true' or request.POST.get('add_vehicle') == 'on'
         vehicle_type = request.POST.get('vehicle_type', '')
 
-        # Handle addons as individual quantity fields
+        # Handle addons as individual quantity fields. This is a live preview,
+        # not the booking gate, so an over-typed value is clamped (not
+        # rejected) — the quote should stay honest about what will actually
+        # be charged even before the user finishes adjusting the field.
+        total_passengers = adults + children + infants
         addons = []
         for addon_type in dict(AddOn.ADD_ON_TYPE_CHOICES).keys():
             quantity = safe_int(request.POST.get(f'{addon_type}_quantity', 0))
             if quantity > 0:
-                addons.append({'type': addon_type, 'quantity': quantity})
+                cap = min(addon_max_quantity(addon_type), total_passengers) if total_passengers else 0
+                addons.append({'type': addon_type, 'quantity': min(quantity, cap) if cap else 0})
+        addons = [a for a in addons if a['quantity'] > 0]
 
         if not schedule_id:
             return JsonResponse({'error': 'Schedule ID required'}, status=400)
@@ -1691,13 +1734,20 @@ def book_ticket(request):
 
     # === DEFINE ADD-ONS (unchanged) ===
     add_ons = [
-        {'id': 'premium_seating', 'label': 'Premium Seating', 'price': 20.00, 'max_quantity': 20},
-        {'id': 'priority_boarding', 'label': 'Priority Boarding', 'price': 10.00, 'max_quantity': 20},
-        {'id': 'cabin', 'label': 'Cabin', 'price': 50.00, 'max_quantity': 5},
-        {'id': 'meal_breakfast', 'label': 'Breakfast', 'price': 15.00, 'max_quantity': 50},
-        {'id': 'meal_lunch', 'label': 'Lunch', 'price': 15.00, 'max_quantity': 50},
-        {'id': 'meal_dinner', 'label': 'Dinner', 'price': 15.00, 'max_quantity': 50},
-        {'id': 'meal_snack', 'label': 'Snack', 'price': 5.00, 'max_quantity': 100},
+        {'id': 'premium_seating', 'label': 'Premium Seating', 'price': 20.00,
+         'max_quantity': addon_max_quantity('premium_seating')},
+        {'id': 'priority_boarding', 'label': 'Priority Boarding', 'price': 10.00,
+         'max_quantity': addon_max_quantity('priority_boarding')},
+        {'id': 'cabin', 'label': 'Cabin', 'price': 50.00,
+         'max_quantity': addon_max_quantity('cabin')},
+        {'id': 'meal_breakfast', 'label': 'Breakfast', 'price': 15.00,
+         'max_quantity': addon_max_quantity('meal_breakfast')},
+        {'id': 'meal_lunch', 'label': 'Lunch', 'price': 15.00,
+         'max_quantity': addon_max_quantity('meal_lunch')},
+        {'id': 'meal_dinner', 'label': 'Dinner', 'price': 15.00,
+         'max_quantity': addon_max_quantity('meal_dinner')},
+        {'id': 'meal_snack', 'label': 'Snack', 'price': 5.00,
+         'max_quantity': addon_max_quantity('meal_snack')},
     ]
 
     # === GET REQUEST: RENDER EITHER LIST OR BOOKING FORM ===

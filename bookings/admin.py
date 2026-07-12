@@ -1752,7 +1752,7 @@ class PassengerInline(admin.TabularInline):
     model = Passenger
     extra = 1
     autocomplete_fields = ['linked_adult']
-    fields = ('first_name', 'last_name', 'passenger_type', 'age', 'date_of_birth', 'linked_adult')
+    fields = ('first_name', 'last_name', 'passenger_type', 'age', 'date_of_birth', 'phone', 'linked_adult')
     readonly_fields = ('age', 'date_of_birth')
 
     def get_queryset(self, request):
@@ -2360,7 +2360,7 @@ class BookingAdmin(EnhancedModelAdmin):
 class PassengerAdmin(EnhancedModelAdmin):
     list_display = (
         'booking', 'first_name', 'last_name',
-        'passenger_type', 'age', 'date_of_birth',
+        'passenger_type', 'age', 'date_of_birth', 'phone',
         'linked_adult_display', 'document_link',
     )
     list_filter = ('passenger_type', 'verification_status')

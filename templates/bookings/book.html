@@ -1386,6 +1386,27 @@ window.isAuthenticated = {% if user.is_authenticated %}true{% else %}false{% end
         }
     });
 
+    /* ---- Addon qty: clamp on direct typing, not just on blur ----
+       The HTML `max` attribute only constrains the native +/- spinner
+       arrows — desktop users mostly click those, so typing past the cap
+       looked "validated" by accident. Mobile's numeric keyboard has no
+       spinner at all, so typing was the ONLY input path and nothing ever
+       clamped it. Listening on 'input' (fires per keystroke, including the
+       on-screen keyboard) fixes both; the server enforces the same cap
+       regardless, since this is convenience, not the real gate. */
+    document.addEventListener('input', function (e) {
+        var input = e.target;
+        if (!input || !input.classList || !input.classList.contains('addon-qty-input')) return;
+        var card = input.closest('.addon-card');
+        if (!card) return;
+        var hardMax = parseInt(card.dataset.addonMax || 10);
+        var cap = Math.min(hardMax, getTotalPassengers());
+        var val = parseInt(input.value, 10);
+        if (isNaN(val) || val < 0) return; // let the user clear/backspace freely
+        if (val > cap) input.value = String(cap);
+        card.classList.toggle('qty-active', parseInt(input.value) > 0);
+    });
+
     /* ---- Counter +/- buttons ------------------------------------ */
     document.addEventListener('click', function (e) {
         var btn = e.target.closest('[data-counter]');

@@ -332,6 +332,7 @@ class Passenger(models.Model):
     last_name = models.CharField(max_length=50)
     age = models.PositiveIntegerField(null=True, blank=True)
     date_of_birth = models.DateField(null=True, blank=True, help_text="Required for infants")
+    phone = models.CharField(max_length=30, blank=True, help_text="Optional contact number")
     passenger_type = models.CharField(max_length=20, choices=PASSENGER_TYPE_CHOICES)
     document = models.FileField(
         upload_to='passenger_documents/%Y/%m/%d/',

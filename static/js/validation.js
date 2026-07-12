@@ -851,12 +851,29 @@
                     }
                 }
                 if (window.bookingConfig?.addOns) {
+                    // Add-ons are per-passenger (one meal per traveller, one seat
+                    // upgrade per traveller, etc.), so the real ceiling is
+                    // whichever is smaller: the add-on's own hard cap, or the
+                    // passenger count. Checking only the hard cap here let a
+                    // typed-in quantity above the passenger count pass client
+                    // validation — most visible on mobile, where the on-screen
+                    // keyboard is the only way to set the value (no spinner
+                    // arrows to rely on the `max` attribute).
+                    const totalPassengers =
+                        (parseInt(formData.get('adults'), 10) || 0) +
+                        (parseInt(formData.get('children'), 10) || 0) +
+                        (parseInt(formData.get('infants'), 10) || 0);
                     window.bookingConfig.addOns.forEach(addon => {
                         const qtyRaw = formData.get(`${addon.id}_quantity`);
                         if (qtyRaw !== null && qtyRaw !== undefined && qtyRaw !== '') {
                             const qty = parseInt(qtyRaw, 10);
-                            if (!Number.isFinite(qty) || qty < 0 || qty > (addon.max_quantity || 10)) {
-                                errors.push({ field: `${addon.id}_quantity`, message: `Invalid quantity for ${addon.label}` });
+                            const cap = Math.min(addon.max_quantity || 10, totalPassengers);
+                            if (!Number.isFinite(qty) || qty < 0 || qty > cap) {
+                                errors.push({
+                                    field: `${addon.id}_quantity`,
+                                    message: `${addon.label} quantity (${qty}) exceeds the limit of ${cap} `
+                                        + `for ${totalPassengers} passenger${totalPassengers !== 1 ? 's' : ''}.`,
+                                });
                             }
                         }
                     });

@@ -11,6 +11,23 @@ from .models import AddOn
 
 logger = logging.getLogger(__name__)
 
+# Single source of truth for per-addon hard caps (independent of passenger
+# count). Used by pricing, the booking-creation gate, and step validation, so
+# the three can never drift out of sync with each other or with the template.
+ADD_ON_MAX_QUANTITY = {
+    'premium_seating': 20,
+    'priority_boarding': 20,
+    'cabin': 5,
+    'meal_breakfast': 50,
+    'meal_lunch': 50,
+    'meal_dinner': 50,
+    'meal_snack': 100,
+}
+
+
+def addon_max_quantity(addon_type):
+    return ADD_ON_MAX_QUANTITY.get(addon_type, 10)
+
 
 def calculate_cargo_price(weight_kg, cargo_type):
     try:
