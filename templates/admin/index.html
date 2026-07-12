@@ -405,7 +405,9 @@
     <h2 class="section-title"><i class="fas fa-exclamation-triangle"></i> Critical Alerts</h2>
     <div class="alerts-list" aria-live="polite">
       {% for a in alerts %}
-        <div class="activity-item">{{ a }}</div>
+        <div class="activity-item alert-item{% if a.severity %} alert-item--{{ a.severity }}{% endif %}">
+          {% if a.link %}<a href="{{ a.link }}">{{ a.message }}</a>{% else %}{{ a.message }}{% endif %}
+        </div>
       {% endfor %}
     </div>
   </section>
