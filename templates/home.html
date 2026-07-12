@@ -857,10 +857,10 @@
 
 [data-theme="dark"] {
   --bg:       #0a162800;
-  --bg-card:  #0e2040;
-  --bg-surf:  #152d4a;
-  --border:   #000000;
-  --border-md:#2a4d70;
+  --bg-card:  #16233c;
+  --bg-surf:  #1c2f4d;
+  --border:   rgba(148,180,214,.14);
+  --border-md:rgba(148,180,214,.26);
   --txt:      #e8f0fe;
   --txt-2:    #8aadcc;
   --txt-3:    #4a6a8a;
@@ -1404,7 +1404,7 @@ img { display: block; max-width: 100%; }
 .schedules { padding: 3.5rem 0 4rem; background: var(--bg); }
 
 .next-dep {
-  background: var(--ocean-mid);
+  background: linear-gradient(120deg, rgba(0,201,167,.16) 0%, var(--ocean-mid) 45%, rgba(245,166,35,.14) 100%);
   border-radius: var(--r); padding: .9rem 1.5rem;
   margin-bottom: 2rem; border: 1px solid rgba(0,201,167,.2);
   box-shadow: 0 0 0 1px rgba(0,201,167,.05), var(--sh2);
@@ -1443,6 +1443,8 @@ img { display: block; max-width: 100%; }
 /* Sidebar */
 .schedule-sidebar {
   background: var(--bg-card); border: 1px solid var(--border);
+  border-top: 3px solid transparent;
+  border-image: linear-gradient(90deg, var(--lagoon), var(--amber)) 1;
   border-radius: var(--r); padding: 1.4rem 1.2rem; box-shadow: var(--sh1);
 }
 .schedule-sidebar h3 { font-size: .95rem; font-weight: 600; margin-bottom: 1.2rem; color: var(--txt); }
@@ -1526,9 +1528,16 @@ img { display: block; max-width: 100%; }
   background: var(--bg-card); border: 1px solid var(--border);
   border-radius: var(--r); overflow: hidden;
   box-shadow: var(--sh1); transition: var(--t) var(--ease);
+  position: relative;
+}
+.bp-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg, var(--lagoon), var(--amber));
+  opacity: .55; transition: opacity var(--t) var(--ease);
 }
 .bp-card[data-filter-hidden="true"] { display: none !important; }
 .bp-card:hover { box-shadow: var(--sh2); transform: translateY(-2px); border-color: var(--border-md); }
+.bp-card:hover::before { opacity: 1; }
 
 .bp-main {
   flex: 1; padding: 1.2rem 1.4rem;
