@@ -1,0 +1,77 @@
+{% extends 'base.html' %}
+
+{% block title %}Move my booking - Fiji Ferry Booking{% endblock %}
+
+{% block content %}
+<div style="max-width:560px;margin:4rem auto;padding:0 1rem">
+  <div class="glass-card" style="padding:2.5rem 2rem;border-radius:16px;background:var(--card-bg,#fff);box-shadow:0 10px 30px rgba(0,0,0,.08);text-align:center">
+
+    {% if state == 'confirm' %}
+      <i class="fas fa-exchange-alt" style="font-size:48px;color:var(--secondary,#3B82F6)"></i>
+      <h1 style="font-family:'Playfair Display',serif;font-size:1.7rem;margin:1rem 0 .5rem">Move your booking — free of charge</h1>
+      <p style="color:var(--text-secondary,#64748b)">
+        Your original sailing was cancelled. We'll move booking
+        <strong>#{{ booking.id }}</strong> ({{ booking.passenger_adults|add:booking.passenger_children|add:booking.passenger_infants }} passenger{{ booking.passenger_adults|add:booking.passenger_children|add:booking.passenger_infants|pluralize }}) to:
+      </p>
+      <div style="margin:1.25rem 0;padding:1rem 1.25rem;border:1px solid var(--border,#e2e8f0);border-radius:12px;text-align:left">
+        <div style="font-weight:700;font-size:1.1rem">
+          {{ new_schedule.route.departure_port.name }} → {{ new_schedule.route.destination_port.name }}
+        </div>
+        <div style="color:var(--text-secondary,#64748b);margin-top:4px">
+          <i class="fas fa-ship"></i> {{ new_schedule.ferry.name }} &nbsp;•&nbsp;
+          <i class="fas fa-clock"></i> {{ new_schedule.departure_time|date:"D, M d Y \a\t H:i" }}
+        </div>
+      </div>
+      <form method="post" action="{% url 'bookings:rebook_oneclick' token %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:.9rem">
+          <i class="fas fa-check"></i> Confirm — move my booking
+        </button>
+      </form>
+      <p style="color:var(--text-muted,#94a3b8);font-size:.85rem;margin-top:1rem">
+        No fees apply. Your existing tickets and QR codes remain valid for the new sailing.
+      </p>
+
+    {% elif state == 'done' %}
+      <i class="fas fa-check-circle" style="font-size:52px;color:var(--primary,#10B981)"></i>
+      <h1 style="font-family:'Playfair Display',serif;font-size:1.7rem;margin:1rem 0 .5rem">You're all set!</h1>
+      <p style="color:var(--text-secondary,#64748b)">
+        Booking <strong>#{{ booking.id }}</strong> is now on
+        <strong>{{ new_schedule.route.departure_port.name }} → {{ new_schedule.route.destination_port.name }}</strong>,
+        departing <strong>{{ new_schedule.departure_time|date:"D, M d Y \a\t H:i" }}</strong>
+        on {{ new_schedule.ferry.name }}. A confirmation with your updated tickets is on its way to your inbox.
+      </p>
+      <a href="{% url 'bookings:view_tickets' booking.id %}" class="btn btn-primary" style="margin-top:1.5rem;display:inline-block">
+        <i class="fas fa-ticket-alt"></i> View my tickets
+      </a>
+
+    {% elif state == 'no_room' %}
+      <i class="fas fa-users-slash" style="font-size:48px;color:var(--error,#EF4444)"></i>
+      <h1 style="font-family:'Playfair Display',serif;font-size:1.6rem;margin:1rem 0 .5rem">That sailing filled up</h1>
+      <p style="color:var(--text-secondary,#64748b)">{{ error }}</p>
+      <a href="{% url 'bookings:live_departures' %}" class="btn btn-primary" style="margin-top:1.5rem;display:inline-block">Find another sailing</a>
+
+    {% elif state == 'expired' %}
+      <i class="fas fa-hourglass-end" style="font-size:48px;color:var(--warning,#F59E0B)"></i>
+      <h1 style="font-family:'Playfair Display',serif;font-size:1.6rem;margin:1rem 0 .5rem">This link has expired</h1>
+      <p style="color:var(--text-secondary,#64748b)">Rebooking links are valid for 7 days. Please contact our team and we'll sort you out.</p>
+
+    {% elif state == 'booking_cancelled' %}
+      <i class="fas fa-ban" style="font-size:48px;color:var(--error,#EF4444)"></i>
+      <h1 style="font-family:'Playfair Display',serif;font-size:1.6rem;margin:1rem 0 .5rem">This booking was cancelled</h1>
+      <p style="color:var(--text-secondary,#64748b)">The booking on this link has since been cancelled, so there's nothing to move.</p>
+
+    {% elif state == 'gone' %}
+      <i class="fas fa-calendar-times" style="font-size:48px;color:var(--warning,#F59E0B)"></i>
+      <h1 style="font-family:'Playfair Display',serif;font-size:1.6rem;margin:1rem 0 .5rem">That sailing is no longer available</h1>
+      <p style="color:var(--text-secondary,#64748b)">The replacement sailing has departed or been changed. Please pick another departure.</p>
+      <a href="{% url 'bookings:live_departures' %}" class="btn btn-primary" style="margin-top:1.5rem;display:inline-block">Browse departures</a>
+
+    {% else %}
+      <i class="fas fa-question-circle" style="font-size:48px;color:var(--warning,#F59E0B)"></i>
+      <h1 style="font-family:'Playfair Display',serif;font-size:1.6rem;margin:1rem 0 .5rem">Link not recognised</h1>
+      <p style="color:var(--text-secondary,#64748b)">This rebooking link is invalid.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -520,6 +520,53 @@ class Ticket(models.Model):
         return f"Ticket for {self.passenger} (Booking {self.booking.id})"
 
 
+class WaitlistEntry(models.Model):
+    """A request to be notified (FIFO) when seats free up on a sold-out sailing.
+
+    Seats are never held for the waitlist — an offer email is first-come,
+    first-served, which keeps inventory honest and the flow simple. Entries are
+    keyed by email so guests can join without an account.
+    """
+    STATUS_CHOICES = [
+        ('waiting', 'Waiting'),
+        ('notified', 'Notified'),      # offer email sent, seats currently available
+        ('converted', 'Converted'),    # booked after being notified
+        ('expired', 'Expired'),        # sailing departed/cancelled before seats freed
+        ('cancelled', 'Cancelled'),    # customer left the waitlist
+    ]
+
+    schedule = models.ForeignKey('Schedule', on_delete=models.CASCADE, related_name='waitlist_entries')
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    email = models.EmailField()
+    seats_requested = models.PositiveIntegerField(default=1, validators=[MinValueValidator(1)])
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='waiting')
+    token = models.CharField(max_length=64, unique=True, editable=False, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    notified_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['schedule', 'status', 'created_at']),
+            models.Index(fields=['email', 'status']),
+        ]
+        constraints = [
+            # One live entry per email per sailing.
+            models.UniqueConstraint(
+                fields=['schedule', 'email'],
+                condition=models.Q(status__in=['waiting', 'notified']),
+                name='waitlist_one_active_per_email_per_schedule',
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self.token:
+            self.token = uuid.uuid4().hex
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"Waitlist: {self.email} x{self.seats_requested} on schedule {self.schedule_id} ({self.status})"
+
+
 class MaintenanceLog(models.Model):
     ferry = models.ForeignKey('Ferry', on_delete=models.CASCADE, related_name='maintenance_logs')
     maintenance_date = models.DateField()

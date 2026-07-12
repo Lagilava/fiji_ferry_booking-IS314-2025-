@@ -1,109 +1,480 @@
 {% extends 'base.html' %}
 {% load static %}
 
-{% block content %}
-<section class="container mx-auto px-4 sm:px-6 lg:px-8 py-12" data-aos="fade-up">
-    <h2 class="text-3xl font-bold text-center mb-8 font-['Playfair_Display'] text-[var(--text-color)]">Modify Booking #{{ booking.id|default:"Unknown" }}</h2>
-
-    {% if form.non_field_errors %}
-        <div class="messages">
-            <div class="alert bg-[var(--alert-bg)] text-[var(--alert-text)] border-[var(--border-color)] animate__animated animate__fadeIn" role="alert">{{ form.non_field_errors }}</div>
-        </div>
-    {% endif %}
-
-    <form method="post" action="{% url 'bookings:modify_booking' booking.id|default:0 %}" class="max-w-2xl mx-auto bg-[var(--dropdown-bg)] p-8 rounded-lg shadow-lg" data-aos="fade-up" data-aos-delay="100">
-        {% csrf_token %}
-        <div class="mb-6">
-            <label for="{{ form.passenger_adults.id_for_label|default:'passenger_adults' }}" class="block text-lg font-semibold mb-2 text-[var(--text-color)]">Adults</label>
-            {{ form.passenger_adults|default:"<input type='number' name='passenger_adults' id='passenger_adults' min='0' value='0' class='w-full p-3 border rounded-lg bg-[var(--bg-color)] text-[var(--text-color)] border-[var(--border-color)] focus:outline-none focus:ring-2 focus:ring-[var(--button-bg)]'>" }}
-        </div>
-
-        <div class="mb-6">
-            <label for="{{ form.passenger_children.id_for_label|default:'passenger_children' }}" class="block text-lg font-semibold mb-2 text-[var(--text-color)]">Children</label>
-            {{ form.passenger_children|default:"<input type='number' name='passenger_children' id='passenger_children' min='0' value='0' class='w-full p-3 border rounded-lg bg-[var(--bg-color)] text-[var(--text-color)] border-[var(--border-color)] focus:outline-none focus:ring-2 focus:ring-[var(--button-bg)]'>" }}
-        </div>
-
-        <div class="mb-6">
-            <label for="{{ form.passenger_infants.id_for_label|default:'passenger_infants' }}" class="block text-lg font-semibold mb-2 text-[var(--text-color)]">Infants</label>
-            {{ form.passenger_infants|default:"<input type='number' name='passenger_infants' id='passenger_infants' min='0' value='0' class='w-full p-3 border rounded-lg bg-[var(--bg-color)] text-[var(--text-color)] border-[var(--border-color)] focus:outline-none focus:ring-2 focus:ring-[var(--button-bg)]'>" }}
-        </div>
-
-        <div class="mb-6">
-            <h3 class="text-xl font-semibold mb-4 font-['Playfair_Display'] text-[var(--text-color)]">Modify Cargo</h3>
-            <div class="border-t border-[var(--border-color)] pt-4">
-                <label for="{{ cargo_form.cargo_type.id_for_label|default:'cargo_type' }}" class="block text-lg font-semibold mb-2 text-[var(--text-color)]">Cargo Type</label>
-                {{ cargo_form.cargo_type|default:"<select name='cargo_type' id='cargo_type' class='w-full p-3 border rounded-lg bg-[var(--bg-color)] text-[var(--text-color)] border-[var(--border-color)] focus:outline-none focus:ring-2 focus:ring-[var(--button-bg)]'><option value=''>Select cargo type</option><option value='general'>General</option><option value='perishable'>Perishable</option><option value='hazardous'>Hazardous</option><option value='vehicle'>Vehicle</option></select>" }}
-
-                <label for="{{ cargo_form.weight_kg.id_for_label|default:'weight_kg' }}" class="block text-lg font-semibold mt-4 mb-2 text-[var(--text-color)]">Weight (kg)</label>
-                {{ cargo_form.weight_kg|default:"<input type='number' name='weight_kg' id='weight_kg' min='0' step='0.1' class='w-full p-3 border rounded-lg bg-[var(--bg-color)] text-[var(--text-color)] border-[var(--border-color)] focus:outline-none focus:ring-2 focus:ring-[var(--button-bg)]'>" }}
-            </div>
-        </div>
-
-        <div class="flex justify-center gap-4">
-            <button type="submit" class="bg-[var(--button-bg)] text-white font-semibold px-6 py-3 rounded-lg hover:bg-[var(--button-hover)] transition-colors duration-300 modify-button">Update Booking</button>
-            <a href="{% url 'bookings:booking_history' %}" class="text-[var(--link-color)] hover:text-[var(--link-hover)] font-semibold px-6 py-3">Cancel</a>
-        </div>
-    </form>
-</section>
-{% endblock %}
+{% block title %}Modify Booking #{{ booking.id }} - Fiji Ferry Booking{% endblock %}
 
 {% block extra_css %}
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&family=Playfair+Display:wght@400;700&display=swap');
+  /* ══════════════════════════════════════════════════════════
+     Glass surfaces: translucent so the ocean backdrop stays
+     visible in both themes, while text keeps solid contrast.
+     ══════════════════════════════════════════════════════════ */
+  .mb-page {
+    --glass-bg: rgba(255, 255, 255, 0.84);
+    --glass-brd: rgba(255, 255, 255, 0.65);
+    --glass-txt: #0f172a;
+    --glass-mut: #475569;
+    --glass-sub: rgba(15, 23, 42, 0.05);
+    max-width: 940px;
+    margin: 0 auto;
+  }
+  [data-theme="dark"] .mb-page {
+    --glass-bg: rgba(9, 17, 32, 0.74);
+    --glass-brd: rgba(148, 197, 255, 0.20);
+    --glass-txt: #f1f5f9;
+    --glass-mut: #b2c0d4;
+    --glass-sub: rgba(255, 255, 255, 0.06);
+  }
 
-form {
-    font-family: 'Poppins', sans-serif;
-}
+  .mb-card {
+    background: var(--glass-bg);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    backdrop-filter: blur(18px) saturate(140%);
+    border: 1px solid var(--glass-brd);
+    border-radius: 18px;
+    padding: 1.6rem;
+    margin-bottom: 1.35rem;
+    color: var(--glass-txt);
+    box-shadow: 0 18px 45px -22px rgba(0, 0, 0, 0.65);
+  }
 
-input, select {
-    width: 100%;
-    padding: 0.75rem;
-    border: 1px solid var(--border-color);
-    border-radius: 0.5rem;
-    background-color: var(--bg-color);
-    color: var(--text-color);
-    font-size: 1rem;
-    transition: border-color 0.3s ease, box-shadow 0.3s ease;
-}
+  /* Header ------------------------------------------------- */
+  .mb-head { text-align: center; margin-bottom: 1.75rem; }
+  .mb-eyebrow {
+    font-size: .72rem; font-weight: 700; letter-spacing: .14em;
+    text-transform: uppercase; color: #7dd3fc; margin: 0 0 .4rem;
+    text-shadow: 0 1px 10px rgba(0,0,0,.55);
+  }
+  .mb-title {
+    font-family: 'Playfair Display', serif; font-size: 2.1rem; font-weight: 700;
+    color: #fff; margin: 0 0 .4rem; text-shadow: 0 2px 18px rgba(0,0,0,.6);
+  }
+  .mb-route { color: rgba(255,255,255,.92); font-size: .97rem; text-shadow: 0 1px 12px rgba(0,0,0,.6); }
 
-input:focus, select:focus {
-    outline: none;
-    border-color: var(--button-bg);
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
-}
+  .mb-card h2 {
+    font-size: 1.05rem; font-weight: 700; margin: 0 0 1rem;
+    display: flex; align-items: center; gap: .55rem; color: var(--glass-txt);
+  }
+  .mb-card h2 i { color: var(--primary); }
+  .mb-hint { font-size: .84rem; color: var(--glass-mut); margin: -.55rem 0 1rem; line-height: 1.5; }
 
-.modify-button {
-    background-color: var(--button-bg);
-    color: white !important;
-    font-weight: 600;
-}
+  /* Trip facts --------------------------------------------- */
+  .mb-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: .9rem; margin: 0; }
+  .mb-fact { background: var(--glass-sub); border-radius: 11px; padding: .8rem .9rem; }
+  .mb-fact dt { font-size: .68rem; text-transform: uppercase; letter-spacing: .08em; color: var(--glass-mut); margin-bottom: .3rem; }
+  .mb-fact dd { margin: 0; font-weight: 700; font-size: .95rem; }
 
-.modify-button:hover {
-    background-color: var(--button-hover);
-}
+  /* Deadline notice ---------------------------------------- */
+  .mb-deadline {
+    display: flex; gap: .7rem; align-items: flex-start;
+    background: rgba(245, 158, 11, .14); border: 1px solid rgba(245, 158, 11, .5);
+    border-radius: 12px; padding: .85rem 1rem; font-size: .875rem; line-height: 1.5;
+  }
+  .mb-deadline i { color: var(--accent); margin-top: .15rem; }
+
+  /* Errors -------------------------------------------------- */
+  .mb-errors {
+    background: rgba(239, 68, 68, .14); border: 1px solid rgba(239, 68, 68, .55);
+    border-radius: 12px; padding: 1rem 1.15rem; margin-bottom: 1.35rem;
+    color: var(--glass-txt);
+    -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  }
+  .mb-errors strong { display: flex; align-items: center; gap: .5rem; margin-bottom: .5rem; color: #ef4444; }
+  .mb-errors ul { margin: 0; padding-left: 1.3rem; font-size: .875rem; line-height: 1.6; }
+
+  /* Passenger roster --------------------------------------- */
+  .pax { display: flex; align-items: center; gap: .9rem; padding: .85rem .95rem;
+         border: 1px solid var(--glass-brd); border-radius: 12px; margin-bottom: .65rem;
+         background: var(--glass-sub); transition: opacity .2s, border-color .2s; cursor: pointer; }
+  .pax.removing { opacity: .45; border-color: rgba(239,68,68,.6); }
+  .pax input[type="checkbox"] { width: 19px; height: 19px; accent-color: var(--primary); flex-shrink: 0; cursor: pointer; }
+  .pax-body { flex: 1; min-width: 0; }
+  .pax-name { font-weight: 700; font-size: .95rem; }
+  .pax-meta { font-size: .78rem; color: var(--glass-mut); margin-top: .15rem; }
+  .pax-tag {
+    font-size: .66rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+    padding: .2rem .5rem; border-radius: 999px; background: var(--primary); color: #fff; flex-shrink: 0;
+  }
+  .pax-tag.child { background: var(--secondary); }
+  .pax-tag.infant { background: var(--accent); }
+
+  /* Add-passenger blocks ------------------------------------ */
+  .adder { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  .adder-label { font-weight: 600; font-size: .9rem; flex: 1; min-width: 120px; }
+  .stepper { display: flex; align-items: center; gap: .35rem; }
+  .stepper button {
+    width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--glass-brd);
+    background: var(--glass-sub); color: var(--glass-txt); font-size: 1rem; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; transition: all .15s;
+  }
+  .stepper button:hover:not(:disabled) { background: var(--primary); color: #fff; border-color: var(--primary); }
+  .stepper button:disabled { opacity: .4; cursor: not-allowed; }
+  .stepper output { min-width: 2ch; text-align: center; font-weight: 700; font-size: 1rem; }
+
+  .new-pax {
+    border: 1px dashed var(--glass-brd); border-radius: 12px; padding: 1rem;
+    margin-bottom: .8rem; background: var(--glass-sub);
+  }
+  .new-pax-head { font-weight: 700; font-size: .85rem; margin-bottom: .85rem; color: var(--primary); }
+  .fld-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap: .8rem; }
+  .fld label { display: block; font-size: .74rem; font-weight: 600; color: var(--glass-mut); margin-bottom: .3rem; }
+  .fld input, .fld select {
+    width: 100%; padding: .6rem .7rem; border-radius: 9px;
+    border: 1px solid var(--glass-brd); background: var(--bg-primary);
+    color: var(--text-primary); font-size: .9rem; font-family: inherit;
+  }
+  .fld input:focus, .fld select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(16,185,129,.18); }
+  .fld input[type="file"] { padding: .45rem; font-size: .8rem; }
+
+  /* Price panel -------------------------------------------- */
+  .price-row { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; padding: .5rem 0; font-size: .9rem; }
+  .price-row + .price-row { border-top: 1px solid var(--glass-brd); }
+  .price-row span:last-child { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+  .price-total { font-size: 1.12rem; font-weight: 800; padding-top: .8rem; margin-top: .3rem; border-top: 2px solid var(--primary); }
+  .price-total .amt.charge { color: #ef4444; }
+  .price-total .amt.refund { color: var(--success); }
+  .price-note { font-size: .78rem; color: var(--glass-mut); margin-top: .7rem; line-height: 1.5; }
+
+  /* Actions ------------------------------------------------- */
+  .mb-actions { display: flex; gap: .8rem; flex-wrap: wrap; margin-bottom: 2rem; }
+  .mb-actions .btn { flex: 1; justify-content: center; min-width: 150px; }
+
+  @media (max-width: 640px) {
+    .mb-title { font-size: 1.55rem; }
+    .mb-card { padding: 1.15rem; border-radius: 15px; }
+    .mb-actions .btn { flex-basis: 100%; }
+  }
 </style>
 {% endblock %}
 
+{% block content %}
+<div class="mb-page">
+
+  <div class="mb-head">
+    <p class="mb-eyebrow">Manage your trip</p>
+    <h1 class="mb-title">Modify Booking #{{ booking.id }}</h1>
+    <p class="mb-route">
+      {{ booking.schedule.route.departure_port.name }}
+      <i class="fas fa-arrow-right-long" style="margin:0 .35rem;"></i>
+      {{ booking.schedule.route.destination_port.name }}
+      &nbsp;·&nbsp; {{ booking.schedule.departure_time|date:"D, d M Y · H:i" }}
+    </p>
+  </div>
+
+  {% if errors %}
+  <div class="mb-errors" role="alert">
+    <strong><i class="fas fa-circle-exclamation"></i> Please fix the following</strong>
+    <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+
+  <!-- Trip summary -->
+  <div class="mb-card">
+    <h2><i class="fas fa-ship"></i> Your sailing</h2>
+    <dl class="mb-facts">
+      <div class="mb-fact"><dt>Ferry</dt><dd>{{ booking.schedule.ferry.name|default:"—" }}</dd></div>
+      <div class="mb-fact"><dt>Departs</dt><dd>{{ booking.schedule.departure_time|date:"H:i" }}</dd></div>
+      <div class="mb-fact"><dt>Seats left</dt><dd>{{ available_seats }}</dd></div>
+      <div class="mb-fact"><dt>Adult fare</dt><dd>FJD {{ base_fare|floatformat:2 }}</dd></div>
+      <div class="mb-fact"><dt>Paid so far</dt><dd>FJD {{ booking.total_price|floatformat:2 }}</dd></div>
+    </dl>
+    <div class="mb-deadline" style="margin-top:1.1rem;">
+      <i class="fas fa-clock"></i>
+      <div>
+        Changes close <strong>{{ cutoff_hours }} hours</strong> before departure — by
+        <strong>{{ deadline|date:"D, d M Y · H:i" }}</strong>.
+        After that, please contact our team.
+      </div>
+    </div>
+  </div>
+
+  <form method="post" enctype="multipart/form-data" id="modify-form" novalidate>
+    {% csrf_token %}
+
+    <!-- Existing passengers -->
+    <div class="mb-card">
+      <h2><i class="fas fa-users"></i> Who's travelling</h2>
+      <p class="mb-hint">
+        Untick anyone who is no longer travelling. Children and infants must stay
+        with the adult they're linked to.
+      </p>
+
+      {% for p in passengers %}
+      <label class="pax" data-type="{{ p.passenger_type }}">
+        <input type="checkbox" name="keep_passenger" value="{{ p.id }}" checked data-keep>
+        <div class="pax-body">
+          <div class="pax-name">{{ p.get_full_name }}</div>
+          <div class="pax-meta">
+            {% if p.age %}Age {{ p.age }}{% elif p.date_of_birth %}Born {{ p.date_of_birth|date:"d M Y" }}{% endif %}
+            {% if p.linked_adult %} · travelling with {{ p.linked_adult.get_full_name }}{% endif %}
+          </div>
+        </div>
+        <span class="pax-tag {{ p.passenger_type }}">{{ p.get_passenger_type_display }}</span>
+      </label>
+      {% endfor %}
+    </div>
+
+    <!-- Add passengers -->
+    <div class="mb-card">
+      <h2><i class="fas fa-user-plus"></i> Add passengers</h2>
+      <p class="mb-hint">
+        Adults and children need a full name, age and a photo ID document (PDF, JPG or PNG, max 2.5MB).
+        Infants under 2 need a date of birth. Children and infants must be linked to an adult.
+      </p>
+
+      <div class="adder">
+        <span class="adder-label">Adults <small style="font-weight:400;opacity:.7">(18+)</small></span>
+        <div class="stepper" data-stepper="adult">
+          <button type="button" data-dec aria-label="Remove an adult">&minus;</button>
+          <output data-out>0</output>
+          <button type="button" data-inc aria-label="Add an adult">+</button>
+        </div>
+      </div>
+      <div data-slots="adult"></div>
+
+      <div class="adder">
+        <span class="adder-label">Children <small style="font-weight:400;opacity:.7">(2&ndash;17)</small></span>
+        <div class="stepper" data-stepper="child">
+          <button type="button" data-dec aria-label="Remove a child">&minus;</button>
+          <output data-out>0</output>
+          <button type="button" data-inc aria-label="Add a child">+</button>
+        </div>
+      </div>
+      <div data-slots="child"></div>
+
+      <div class="adder">
+        <span class="adder-label">Infants <small style="font-weight:400;opacity:.7">(under 2)</small></span>
+        <div class="stepper" data-stepper="infant">
+          <button type="button" data-dec aria-label="Remove an infant">&minus;</button>
+          <output data-out>0</output>
+          <button type="button" data-inc aria-label="Add an infant">+</button>
+        </div>
+      </div>
+      <div data-slots="infant"></div>
+
+      <input type="hidden" name="new_adult_count" id="new_adult_count" value="0">
+      <input type="hidden" name="new_child_count" id="new_child_count" value="0">
+      <input type="hidden" name="new_infant_count" id="new_infant_count" value="0">
+    </div>
+
+    <!-- Live quote -->
+    <div class="mb-card">
+      <h2><i class="fas fa-receipt"></i> What this costs</h2>
+      <div class="price-row"><span>New fare (<output id="q-pax">0</output> passengers)</span><span>FJD <output id="q-newfare">0.00</output></span></div>
+      <div class="price-row"><span>Already paid</span><span>FJD {{ booking.total_price|floatformat:2 }}</span></div>
+      <div class="price-row"><span>Fare difference</span><span>FJD <output id="q-diff">0.00</output></span></div>
+      <div class="price-row"><span>Change fee <small style="opacity:.7">(flat, when the passenger list changes)</small></span><span>FJD <output id="q-fee">0.00</output></span></div>
+      <div class="price-row price-total">
+        <span id="q-label">No change</span>
+        <span class="amt" id="q-net">FJD 0.00</span>
+      </div>
+      <p class="price-note">
+        Children travel at 50% of the adult fare, infants at 10%. Cargo and add-ons
+        are unchanged. This is an estimate — the exact amount is confirmed on the
+        next screen, and any refund goes back to your original payment method.
+      </p>
+    </div>
+
+    <div class="mb-actions">
+      <button type="submit" class="btn btn-primary"><i class="fas fa-check"></i> Review &amp; confirm</button>
+      <a href="{% url 'bookings:booking_history' %}" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Back to my bookings</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
 {% block extra_js %}
+<script id="mb-config" type="application/json">{
+  "baseFare": {{ base_fare|floatformat:2 }},
+  "fee": {{ modification_fee|floatformat:2 }},
+  "paid": {{ booking.total_price|floatformat:2 }},
+  "seatsFree": {{ available_seats }},
+  "adults": {{ booking.passenger_adults }},
+  "children": {{ booking.passenger_children }},
+  "infants": {{ booking.passenger_infants }}
+}</script>
 <script>
-document.addEventListener('DOMContentLoaded', function () {
-    // Initialize AOS
-    function initializeAOS() {
-        if (typeof AOS === 'undefined') {
-            setTimeout(initializeAOS, 100);
-            return;
-        }
-        AOS.init({
-            duration: 800,
-            easing: 'ease-in-out',
-            once: true,
-            mirror: false,
-            anchorPlacement: 'top-bottom',
-            offset: 100,
-            disable: 'mobile'
-        });
+(function () {
+  'use strict';
+
+  var CFG = JSON.parse(document.getElementById('mb-config').textContent);
+  var BASE_FARE = CFG.baseFare, FEE = CFG.fee, PAID = CFG.paid, SEATS_FREE = CFG.seatsFree;
+  var OLD = { adult: CFG.adults, child: CFG.children, infant: CFG.infants };
+  var OLD_TOTAL = OLD.adult + OLD.child + OLD.infant;
+
+  // Fare weights mirror bookings/pricing.py:calculate_passenger_price.
+  var WEIGHT = { adult: 1.0, child: 0.5, infant: 0.1 };
+  // Cargo/add-ons are held constant server-side, so recover them once from the
+  // amount already paid and carry them through every estimate.
+  var OLD_PAX_FARE = (OLD.adult * WEIGHT.adult + OLD.child * WEIGHT.child + OLD.infant * WEIGHT.infant) * BASE_FARE;
+  var EXTRAS = PAID - OLD_PAX_FARE;
+
+  var counts = { adult: 0, child: 0, infant: 0 };
+  var form = document.getElementById('modify-form');
+  var esc = function (s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; };
+
+  function keptOf(type) {
+    return Array.from(document.querySelectorAll('[data-keep]'))
+      .filter(function (cb) { return cb.checked && cb.closest('.pax').dataset.type === type; });
+  }
+  function keptCount(type) { return keptOf(type).length; }
+
+  // Every adult on the final roster is a valid guardian: those kept, plus those
+  // being added right now (referenced by index until they have a primary key).
+  function adultOptions() {
+    var opts = keptOf('adult').map(function (cb) {
+      return { value: 'id:' + cb.value, label: cb.closest('.pax').querySelector('.pax-name').textContent.trim() };
+    });
+    for (var i = 0; i < counts.adult; i++) {
+      var fn = (document.getElementById('new_adult_first_name_' + i) || {}).value || '';
+      var ln = (document.getElementById('new_adult_last_name_' + i) || {}).value || '';
+      var name = (fn + ' ' + ln).trim() || ('New adult ' + (i + 1));
+      opts.push({ value: 'new:adult:' + i, label: name });
     }
-    initializeAOS();
-});
+    return opts;
+  }
+
+  function refreshGuardianSelects() {
+    var opts = adultOptions();
+    document.querySelectorAll('select[data-guardian]').forEach(function (sel) {
+      var prev = sel.value;
+      sel.innerHTML = '<option value="">Select responsible adult…</option>' +
+        opts.map(function (o) { return '<option value="' + esc(o.value) + '">' + esc(o.label) + '</option>'; }).join('');
+      if (opts.some(function (o) { return o.value === prev; })) sel.value = prev;
+    });
+  }
+
+  function fieldsFor(type, i) {
+    var id = 'new_' + type + '_';
+    var rows =
+      '<div class="fld"><label for="' + id + 'first_name_' + i + '">First name</label>' +
+      '<input id="' + id + 'first_name_' + i + '" name="' + id + 'first_name_' + i + '" required></div>' +
+      '<div class="fld"><label for="' + id + 'last_name_' + i + '">Last name</label>' +
+      '<input id="' + id + 'last_name_' + i + '" name="' + id + 'last_name_' + i + '" required></div>';
+
+    if (type === 'infant') {
+      rows += '<div class="fld"><label for="' + id + 'dob_' + i + '">Date of birth</label>' +
+              '<input type="date" id="' + id + 'dob_' + i + '" name="' + id + 'dob_' + i + '" required></div>';
+    } else {
+      var lo = type === 'adult' ? 18 : 2, hi = type === 'adult' ? 120 : 17;
+      rows += '<div class="fld"><label for="' + id + 'age_' + i + '">Age</label>' +
+              '<input type="number" min="' + lo + '" max="' + hi + '" id="' + id + 'age_' + i + '" name="' + id + 'age_' + i + '" required></div>' +
+              '<div class="fld"><label for="' + id + 'id_document_' + i + '">ID document (PDF/JPG/PNG)</label>' +
+              '<input type="file" accept=".pdf,.jpg,.jpeg,.png" id="' + id + 'id_document_' + i + '" name="' + id + 'id_document_' + i + '" required></div>';
+    }
+
+    if (type === 'child' || type === 'infant') {
+      rows += '<div class="fld"><label for="' + id + 'linked_adult_' + i + '">Travelling with</label>' +
+              '<select data-guardian id="' + id + 'linked_adult_' + i + '" name="' + id + 'linked_adult_' + i + '" required></select></div>';
+    }
+    return rows;
+  }
+
+  function renderSlots(type) {
+    var host = document.querySelector('[data-slots="' + type + '"]');
+    host.innerHTML = '';
+    for (var i = 0; i < counts[type]; i++) {
+      var box = document.createElement('div');
+      box.className = 'new-pax';
+      box.innerHTML = '<div class="new-pax-head">New ' + type + ' ' + (i + 1) + '</div>' +
+                      '<div class="fld-grid">' + fieldsFor(type, i) + '</div>';
+      host.appendChild(box);
+    }
+    document.getElementById('new_' + type + '_count').value = counts[type];
+    refreshGuardianSelects();
+  }
+
+  function seatsAdded() {
+    var kept = keptCount('adult') + keptCount('child') + keptCount('infant');
+    return (kept + counts.adult + counts.child + counts.infant) - OLD_TOTAL;
+  }
+
+  function quote() {
+    var a = keptCount('adult') + counts.adult;
+    var c = keptCount('child') + counts.child;
+    var inf = keptCount('infant') + counts.infant;
+    var total = a + c + inf;
+    var changed = (a !== OLD.adult || c !== OLD.child || inf !== OLD.infant);
+
+    var newFare = (a * WEIGHT.adult + c * WEIGHT.child + inf * WEIGHT.infant) * BASE_FARE + EXTRAS;
+    var diff = newFare - PAID;
+    var fee = changed ? FEE : 0;
+    var net = diff + fee;
+
+    document.getElementById('q-pax').textContent = total;
+    document.getElementById('q-newfare').textContent = newFare.toFixed(2);
+    document.getElementById('q-diff').textContent = diff.toFixed(2);
+    document.getElementById('q-fee').textContent = fee.toFixed(2);
+
+    var label = document.getElementById('q-label');
+    var amt = document.getElementById('q-net');
+    amt.classList.remove('charge', 'refund');
+    if (!changed) {
+      label.textContent = 'No change';
+      amt.textContent = 'FJD 0.00';
+    } else if (net > 0.004) {
+      label.textContent = 'To pay now';
+      amt.textContent = 'FJD ' + net.toFixed(2);
+      amt.classList.add('charge');
+    } else if (net < -0.004) {
+      label.textContent = 'Refund to you';
+      amt.textContent = 'FJD ' + Math.abs(net).toFixed(2);
+      amt.classList.add('refund');
+    } else {
+      label.textContent = 'Nothing to pay';
+      amt.textContent = 'FJD 0.00';
+    }
+
+    // Never let someone request more seats than the sailing has left.
+    var atCapacity = seatsAdded() >= SEATS_FREE;
+    document.querySelectorAll('[data-inc]').forEach(function (b) { b.disabled = atCapacity; });
+    return { total: total, adults: a, changed: changed };
+  }
+
+  document.querySelectorAll('[data-stepper]').forEach(function (st) {
+    var type = st.dataset.stepper;
+    var out = st.querySelector('[data-out]');
+    st.querySelector('[data-inc]').addEventListener('click', function () {
+      if (counts[type] >= 20 || seatsAdded() >= SEATS_FREE) return;
+      counts[type]++; out.textContent = counts[type];
+      renderSlots(type); quote();
+    });
+    st.querySelector('[data-dec]').addEventListener('click', function () {
+      if (counts[type] === 0) return;
+      counts[type]--; out.textContent = counts[type];
+      renderSlots(type); quote();
+    });
+  });
+
+  // Keep/remove toggles: grey the row, keep the quote and guardian lists honest.
+  document.querySelectorAll('[data-keep]').forEach(function (cb) {
+    cb.addEventListener('change', function () {
+      cb.closest('.pax').classList.toggle('removing', !cb.checked);
+      refreshGuardianSelects();
+      quote();
+    });
+  });
+
+  // Typing an added adult's name relabels them in the guardian dropdowns.
+  form.addEventListener('input', function (e) {
+    if (e.target.id && /^new_adult_(first|last)_name_/.test(e.target.id)) refreshGuardianSelects();
+  });
+
+  form.addEventListener('submit', function (e) {
+    var q = quote();
+    if (q.total === 0) {
+      e.preventDefault();
+      window.Toast && window.Toast.error('Keep at least one passenger, or cancel the booking instead.');
+    } else if (q.adults === 0) {
+      e.preventDefault();
+      window.Toast && window.Toast.error('Children and infants must travel with at least one adult.');
+    } else if (!q.changed) {
+      e.preventDefault();
+      window.Toast && window.Toast.info('Nothing has changed yet.');
+    }
+  });
+
+  quote();
+})();
 </script>
 {% endblock %}

@@ -1,0 +1,562 @@
+/* ==========================================================================
+   Booking flow re-skin (v2) — modern glass pass over steps 1–4.
+
+   Loaded AFTER booking.css / booking_summary.css and works purely by
+   overriding their visuals: no markup or JS hooks change. Design language
+   matches the homepage hero: frosted-glass surfaces over the ocean
+   wallpaper, emerald/lagoon gradients, pill geometry, soft layered depth.
+   ========================================================================== */
+
+:root {
+  --bk-accent: #10b981;
+  --bk-accent-2: #0d9488;
+  --bk-grad: linear-gradient(135deg, #10b981, #0d9488);
+  --bk-glow: rgba(16, 185, 129, 0.28);
+  --bk-radius: 24px;
+  --bk-shadow: 0 24px 60px -20px rgba(2, 44, 34, 0.35);
+  /* Frosted surfaces (light) */
+  --bk-glass: rgba(255, 255, 255, 0.72);
+  --bk-glass-strong: rgba(255, 255, 255, 0.88);
+  --bk-glass-border: rgba(255, 255, 255, 0.55);
+  --bk-field: rgba(255, 255, 255, 0.65);
+  --bk-field-border: rgba(15, 23, 42, 0.10);
+  --bk-inset: rgba(15, 23, 42, 0.04);
+}
+[data-theme="dark"], html.dark, body.dark {
+  --bk-accent: #34d399;
+  --bk-accent-2: #14b8a6;
+  --bk-grad: linear-gradient(135deg, #059669, #0d9488);
+  --bk-glow: rgba(52, 211, 153, 0.30);
+  --bk-shadow: 0 24px 60px -18px rgba(0, 0, 0, 0.65);
+  /* Frosted surfaces (dark) */
+  --bk-glass: rgba(10, 22, 40, 0.66);
+  --bk-glass-strong: rgba(13, 27, 47, 0.82);
+  --bk-glass-border: rgba(255, 255, 255, 0.10);
+  --bk-field: rgba(255, 255, 255, 0.06);
+  --bk-field-border: rgba(255, 255, 255, 0.14);
+  --bk-inset: rgba(255, 255, 255, 0.04);
+}
+
+/* --------------------------------------------------------------------------
+   Page header
+   -------------------------------------------------------------------------- */
+.booking-hero-head { text-align: center; margin-bottom: 2rem; }
+.booking-hero-head h1 {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.5rem;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.12);
+}
+[data-theme="dark"] .booking-hero-head h1,
+html.dark .booking-hero-head h1 { text-shadow: 0 3px 24px rgba(0, 0, 0, 0.6); }
+
+.booking-hero-sub {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary, #6b7280);
+  padding: 0.4rem 1.1rem;
+  border-radius: 999px;
+  background: var(--bk-glass);
+  border: 1px solid var(--bk-glass-border);
+  backdrop-filter: blur(14px) saturate(1.3);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3);
+  box-shadow: 0 8px 24px -14px rgba(0, 0, 0, 0.35);
+}
+.booking-hero-sub .fa-lock { color: var(--bk-accent); font-size: 0.8rem; }
+
+/* The thin progress bar duplicated the stepper — retire it. */
+#booking-progressbar { display: none; }
+
+/* --------------------------------------------------------------------------
+   Stepper — floating glass pill with gradient rail
+   -------------------------------------------------------------------------- */
+.steps {
+  border-bottom: none;
+  max-width: 660px;
+  margin: 0 auto 1.75rem;
+  padding: 1rem 1.75rem 0.85rem;
+  border-radius: 999px;
+  background: var(--bk-glass);
+  border: 1px solid var(--bk-glass-border);
+  backdrop-filter: blur(18px) saturate(1.35);
+  -webkit-backdrop-filter: blur(18px) saturate(1.35);
+  box-shadow: 0 16px 40px -22px rgba(0, 0, 0, 0.45);
+}
+.steps ol { position: relative; width: 100%; }
+.steps ol::before { display: none; } /* booking.css's own rail — replaced below */
+
+.step { z-index: 1; }
+
+/* Rail segments behind the circles */
+.step::before {
+  content: '';
+  position: absolute;
+  top: 1.15rem;
+  left: -50%;
+  width: 100%;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--bk-field-border);
+  z-index: -1;
+  transition: background 0.4s ease;
+}
+.step:first-child::before { display: none; }
+.step.active::before { background: var(--bk-grad); }
+
+.step-number {
+  width: 2.35rem;
+  height: 2.35rem;
+  font-size: 0.9rem;
+  border-width: 2px;
+  background: var(--bk-glass-strong);
+  border-color: var(--bk-field-border);
+  transition: all 0.3s ease;
+}
+.step-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary, #6b7280);
+}
+
+/* Any reached step */
+.step.active .step-number {
+  background: var(--bk-grad);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 6px 16px -6px var(--bk-glow);
+}
+.step.active .step-label { color: var(--text-primary, #111827); }
+[data-theme="dark"] .step-label, html.dark .step-label { color: #cbd5e1; }
+[data-theme="dark"] .step.active .step-label,
+html.dark .step.active .step-label { color: #ffffff; }
+
+/* Completed steps (a later step is reached): swap the number for a tick */
+#step-nav[data-active="2"] .step[data-step="1"] .step-number,
+#step-nav[data-active="3"] .step[data-step="1"] .step-number,
+#step-nav[data-active="3"] .step[data-step="2"] .step-number,
+#step-nav[data-active="4"] .step[data-step="1"] .step-number,
+#step-nav[data-active="4"] .step[data-step="2"] .step-number,
+#step-nav[data-active="4"] .step[data-step="3"] .step-number {
+  font-size: 0;
+}
+#step-nav[data-active="2"] .step[data-step="1"] .step-number::after,
+#step-nav[data-active="3"] .step[data-step="1"] .step-number::after,
+#step-nav[data-active="3"] .step[data-step="2"] .step-number::after,
+#step-nav[data-active="4"] .step[data-step="1"] .step-number::after,
+#step-nav[data-active="4"] .step[data-step="2"] .step-number::after,
+#step-nav[data-active="4"] .step[data-step="3"] .step-number::after {
+  content: '✓';
+  font-size: 1rem;
+  font-weight: 800;
+  animation: none;
+  position: static;
+}
+
+/* The CURRENT step gets a breathing halo */
+#step-nav[data-active="1"] .step[data-step="1"] .step-number,
+#step-nav[data-active="2"] .step[data-step="2"] .step-number,
+#step-nav[data-active="3"] .step[data-step="3"] .step-number,
+#step-nav[data-active="4"] .step[data-step="4"] .step-number {
+  box-shadow: 0 0 0 5px var(--bk-glow), 0 8px 20px -8px var(--bk-glow);
+  animation: bk-halo 2.4s ease-in-out infinite;
+}
+@keyframes bk-halo {
+  50% { box-shadow: 0 0 0 9px rgba(16, 185, 129, 0.12), 0 8px 20px -8px var(--bk-glow); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #step-nav .step-number { animation: none !important; }
+}
+
+/* --------------------------------------------------------------------------
+   Form shell — frosted glass over the wallpaper
+   -------------------------------------------------------------------------- */
+.booking-form-container {
+  max-width: 860px;
+  border-radius: var(--bk-radius);
+  border: 1px solid var(--bk-glass-border);
+  background: var(--bk-glass);
+  backdrop-filter: blur(26px) saturate(1.4);
+  -webkit-backdrop-filter: blur(26px) saturate(1.4);
+  box-shadow: var(--bk-shadow);
+  padding: 2.5rem 2.5rem 2.1rem;
+}
+.booking-form-container::before {
+  height: 4px;
+  background: var(--bk-grad);
+  opacity: 0.9;
+}
+
+@media (max-width: 640px) {
+  .booking-form-container { padding: 1.5rem 1.15rem 1.3rem; border-radius: 20px; }
+  .steps { padding: 0.85rem 1rem 0.7rem; }
+}
+
+/* Step entrance animation */
+.form-step.active { animation: bk-step-in 0.4s cubic-bezier(0.22, 0.9, 0.35, 1); }
+@keyframes bk-step-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .form-step.active { animation: none; }
+}
+
+/* Step intro: visible title + subtitle instead of a boxed paragraph.
+   !important beats booking.css's per-step tinted-box rules. */
+.step-description,
+.form-step.active .step-description {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  margin-bottom: 1.75rem;
+}
+.step-title {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--text-primary, #111827);
+  margin: 0 0 0.3rem;
+  /* Undo .sr-only if it's still applied */
+  position: static !important;
+  width: auto !important;
+  height: auto !important;
+  clip: auto !important;
+  clip-path: none !important;
+  overflow: visible !important;
+  white-space: normal !important;
+  padding: 0 !important;
+  margin-bottom: 0.3rem !important;
+}
+/* Gradient flourish under the title */
+.step-description::after {
+  content: '';
+  display: block;
+  width: 54px;
+  height: 4px;
+  border-radius: 4px;
+  background: var(--bk-grad);
+  margin-top: 0.9rem;
+}
+.step-description p {
+  color: var(--text-secondary, #6b7280);
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Inputs — minimal filled fields, glow on focus
+   -------------------------------------------------------------------------- */
+.form-input, .form-select {
+  border: 1.5px solid var(--bk-field-border);
+  background: var(--bk-field);
+  border-radius: 14px;
+  padding: 0.85rem 1.05rem;
+  font-size: 0.97rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+.form-input:hover, .form-select:hover { border-color: rgba(16, 185, 129, 0.35); }
+.form-input:focus, .form-select:focus {
+  border-color: var(--bk-accent);
+  background: var(--bk-glass-strong);
+  box-shadow: 0 0 0 4px var(--bk-glow);
+}
+.form-group label {
+  font-weight: 600;
+  font-size: 0.78rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-secondary, #6b7280);
+}
+
+/* --------------------------------------------------------------------------
+   Step 2 — passenger counters & cards
+   -------------------------------------------------------------------------- */
+.counter-group {
+  border-radius: 18px;
+  padding: 1.35rem 1rem 1.1rem;
+  background: var(--bk-inset) !important;
+  border: 1.5px solid var(--bk-field-border) !important;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+}
+.counter-group:hover {
+  border-color: var(--bk-accent) !important;
+  box-shadow: 0 14px 30px -16px var(--bk-glow);
+  transform: translateY(-2px);
+}
+.counter-btn {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  border: 1.5px solid var(--bk-field-border);
+  background: var(--bk-glass-strong);
+  color: var(--text-primary, #111827);
+  font-size: 1.15rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.counter-btn[data-action="inc"] {
+  background: var(--bk-grad);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 6px 14px -6px var(--bk-glow);
+}
+.counter-btn:hover:not(:disabled) { transform: scale(1.1); }
+.counter-btn:active:not(:disabled) { transform: scale(0.96); }
+.counter-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.counter-display {
+  font-size: 1.85rem;
+  font-weight: 800;
+  min-width: 2.2rem;
+  display: inline-block;
+  color: var(--text-primary, #111827);
+  font-variant-numeric: tabular-nums;
+}
+
+.passenger-card {
+  border: 1px solid var(--bk-glass-border);
+  border-left: 4px solid var(--bk-accent);
+  border-radius: 18px;
+  background: var(--bk-inset);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 10px 30px -22px rgba(0, 0, 0, 0.5);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.passenger-card:hover { box-shadow: 0 16px 34px -20px var(--bk-glow); }
+.passenger-title { font-weight: 700; }
+
+/* Upload zone */
+.file-upload-zone {
+  border: 2px dashed var(--bk-field-border);
+  border-radius: 14px;
+  background: var(--bk-field);
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+.file-upload-zone:hover, .file-upload-zone.drag-over {
+  border-color: var(--bk-accent);
+  background: rgba(16, 185, 129, 0.07);
+}
+.file-upload-zone.has-file {
+  border-style: solid;
+  border-color: var(--bk-accent);
+  background: rgba(16, 185, 129, 0.09);
+}
+.file-upload-zone.has-file .file-upload-icon { color: var(--bk-accent); }
+
+/* --------------------------------------------------------------------------
+   Step 3 — add-ons & service cards
+   -------------------------------------------------------------------------- */
+.addon-card {
+  border: 1px solid var(--bk-glass-border) !important;
+  border-radius: 18px !important;
+  background: var(--bk-inset) !important;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  padding: 1.15rem !important;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+}
+.addon-card:hover {
+  border-color: var(--bk-accent) !important;
+  box-shadow: 0 16px 34px -18px var(--bk-glow);
+  transform: translateY(-3px);
+}
+.addon-card:has(.addon-qty-input:not([value="0"]):not([value=""])),
+.addon-card:focus-within {
+  border-color: var(--bk-accent) !important;
+}
+.addon-card-price {
+  background: var(--bk-grad);
+  color: #fff;
+  font-weight: 800;
+  font-size: 0.78rem;
+  padding: 0.24rem 0.7rem;
+  border-radius: 999px;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px -4px var(--bk-glow);
+}
+.addon-qty-input {
+  border-radius: 10px;
+  border: 1.5px solid var(--bk-field-border) !important;
+  background: var(--bk-field) !important;
+}
+.addon-qty-input:focus {
+  border-color: var(--bk-accent) !important;
+  box-shadow: 0 0 0 3px var(--bk-glow);
+  outline: none;
+}
+
+.service-card {
+  border-radius: 18px;
+  border: 1px solid var(--bk-glass-border);
+  background: var(--bk-inset);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.service-card.is-active {
+  border-color: var(--bk-accent);
+  box-shadow: 0 16px 34px -20px var(--bk-glow);
+}
+.service-card-icon { color: var(--bk-accent); }
+
+/* --------------------------------------------------------------------------
+   Step 4 — review & pay
+   -------------------------------------------------------------------------- */
+.pay-method__body {
+  border-radius: 16px;
+  border-width: 1.5px;
+  border-color: var(--bk-field-border);
+  background: var(--bk-field);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+.pay-method input:checked + .pay-method__body {
+  background: rgba(16, 185, 129, 0.08);
+  border-color: var(--bk-accent);
+}
+.pay-method input:checked + .pay-method__body::after {
+  content: '✓';
+  margin-left: auto;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 50%;
+  background: var(--bk-grad);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Consent links pick up the brand, not Tailwind blue */
+.form-step[data-step="4"] a.text-blue-600 { color: var(--bk-accent) !important; }
+#privacy_consent { accent-color: var(--bk-accent); width: 1.05rem; height: 1.05rem; }
+
+/* Summary-loading placeholder: glass, brand ring */
+#booking-summary .bg-gray-50 { background: var(--bk-inset) !important; border-radius: 18px; }
+#booking-summary .loading-spinner {
+  border-color: var(--bk-field-border) !important;
+  border-top-color: var(--bk-accent) !important;
+}
+
+/* --------------------------------------------------------------------------
+   Help accordions
+   -------------------------------------------------------------------------- */
+.step-help {
+  border: 1px solid var(--bk-glass-border);
+  border-radius: 16px;
+  background: var(--bk-inset);
+  overflow: hidden;
+}
+.step-help summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  padding: 0.9rem 1.15rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-secondary, #6b7280);
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.step-help summary:hover { color: var(--bk-accent); background: rgba(16, 185, 129, 0.06); }
+.step-help[open] summary { color: var(--bk-accent); border-bottom: 1px dashed var(--bk-field-border); }
+.step-help .help-content { padding: 1rem 1.3rem 1.2rem; font-size: 0.9rem; line-height: 1.6; }
+
+/* --------------------------------------------------------------------------
+   Prev / Next actions — pill buttons
+   -------------------------------------------------------------------------- */
+.form-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding-top: 1.6rem;
+  border-top: 1px solid var(--bk-field-border);
+  background: transparent !important;
+}
+.form-actions .btn {
+  border-radius: 999px;
+  font-weight: 700;
+  padding: 0.85rem 1.9rem;
+  font-size: 0.97rem;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+.form-actions .btn-primary,
+.form-actions .next-step,
+#submit-booking {
+  position: relative;
+  background: var(--bk-grad) !important;
+  color: #fff !important;
+  border: none !important;
+  box-shadow: 0 12px 28px -10px var(--bk-glow), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+.form-actions .btn-primary:hover,
+.form-actions .next-step:hover,
+#submit-booking:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 36px -12px var(--bk-glow), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+.form-actions .btn-primary:active,
+.form-actions .next-step:active,
+#submit-booking:active { transform: translateY(0) scale(0.98); }
+.form-actions .next-step::after { content: ' →'; }
+.form-actions .prev-step {
+  background: var(--bk-field) !important;
+  color: var(--text-secondary, #6b7280) !important;
+  border: 1.5px solid var(--bk-field-border) !important;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+.form-actions .prev-step::before { content: '← '; }
+.form-actions .prev-step:hover:not(:disabled) {
+  color: var(--text-primary, #111827) !important;
+  border-color: var(--text-secondary, #9ca3af) !important;
+}
+.form-actions .prev-step:disabled { opacity: 0.3; }
+#submit-booking { padding: 0.95rem 2.2rem; }
+
+/* Preselected schedule card (arriving from homepage "Book") */
+.preselected-schedule-card {
+  border: 1.5px solid rgba(16, 185, 129, 0.45);
+  background: rgba(16, 185, 129, 0.08);
+  border-radius: 18px;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+.psc-check { background: var(--bk-grad); color: #fff; }
+
+/* Frosted surfaces need translucent inner panels, not the opaque grays the
+   dark-mode patches in book.html force. */
+[data-theme="dark"] .counter-group,
+html.dark .counter-group, body.dark .counter-group {
+  background: var(--bk-inset) !important;
+  border-color: var(--bk-field-border) !important;
+}
+[data-theme="dark"] .addon-card,
+html.dark .addon-card, body.dark .addon-card {
+  background: var(--bk-inset) !important;
+  border-color: var(--bk-glass-border) !important;
+}
+[data-theme="dark"] .form-input, [data-theme="dark"] .form-select,
+html.dark .form-input, html.dark .form-select,
+body.dark .form-input, body.dark .form-select {
+  background: var(--bk-field) !important;
+  border-color: var(--bk-field-border) !important;
+}
+[data-theme="dark"] .addon-qty-input,
+html.dark .addon-qty-input, body.dark .addon-qty-input {
+  background: var(--bk-field) !important;
+  border-color: var(--bk-field-border) !important;
+}

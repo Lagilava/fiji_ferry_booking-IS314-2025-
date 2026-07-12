@@ -1,0 +1,171 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Pay for changes — Booking #{{ booking.id }}{% endblock %}
+
+{% block extra_css %}
+<style>
+  /* Glass surfaces, matching the modify screen, so the backdrop stays visible. */
+  .mp-page {
+    --glass-bg: rgba(255, 255, 255, 0.84);
+    --glass-brd: rgba(255, 255, 255, 0.65);
+    --glass-txt: #0f172a;
+    --glass-mut: #475569;
+    --glass-sub: rgba(15, 23, 42, 0.05);
+    max-width: 720px; margin: 0 auto;
+  }
+  [data-theme="dark"] .mp-page {
+    --glass-bg: rgba(9, 17, 32, 0.74);
+    --glass-brd: rgba(148, 197, 255, 0.20);
+    --glass-txt: #f1f5f9;
+    --glass-mut: #b2c0d4;
+    --glass-sub: rgba(255, 255, 255, 0.06);
+  }
+  .mp-card {
+    background: var(--glass-bg);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    backdrop-filter: blur(18px) saturate(140%);
+    border: 1px solid var(--glass-brd);
+    border-radius: 18px; padding: 1.6rem; margin-bottom: 1.35rem;
+    color: var(--glass-txt); box-shadow: 0 18px 45px -22px rgba(0,0,0,.65);
+  }
+  .mp-head { text-align: center; margin-bottom: 1.6rem; }
+  .mp-eyebrow {
+    font-size: .72rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+    color: #7dd3fc; margin: 0 0 .4rem; text-shadow: 0 1px 10px rgba(0,0,0,.55);
+  }
+  .mp-title {
+    font-family: 'Playfair Display', serif; font-size: 2rem; font-weight: 700;
+    color: #fff; margin: 0 0 .35rem; text-shadow: 0 2px 18px rgba(0,0,0,.6);
+  }
+  .mp-sub { color: rgba(255,255,255,.9); font-size: .95rem; text-shadow: 0 1px 12px rgba(0,0,0,.6); }
+
+  .mp-card h2 { font-size: 1.05rem; font-weight: 700; margin: 0 0 1rem; display: flex; align-items: center; gap: .55rem; }
+  .mp-card h2 i { color: var(--primary); }
+
+  .row { display: flex; justify-content: space-between; gap: 1rem; padding: .5rem 0; font-size: .9rem; }
+  .row + .row { border-top: 1px solid var(--glass-brd); }
+  .row span:last-child { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+  .row.total { font-size: 1.2rem; font-weight: 800; padding-top: .85rem; margin-top: .35rem; border-top: 2px solid var(--primary); }
+  .row.total span:last-child { color: #ef4444; }
+
+  .methods { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .75rem; }
+  .method { position: relative; cursor: pointer; }
+  .method input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
+  .method-body {
+    display: flex; align-items: center; gap: .8rem; padding: .95rem 1rem; height: 100%;
+    border: 2px solid var(--glass-brd); border-radius: 12px; background: var(--glass-sub);
+    transition: border-color .15s, background .15s, transform .15s;
+  }
+  .method-body:hover { transform: translateY(-1px); border-color: var(--primary); }
+  .method input:checked + .method-body { border-color: var(--primary); background: rgba(16,185,129,.12); }
+  .method input:focus-visible + .method-body { box-shadow: 0 0 0 3px rgba(16,185,129,.35); }
+  .method-icon {
+    width: 42px; height: 42px; flex-shrink: 0; border-radius: 10px; display: flex;
+    align-items: center; justify-content: center; background: var(--bg-primary); color: var(--primary);
+  }
+  .method-icon img { max-width: 26px; max-height: 26px; }
+  .method-name { font-weight: 700; font-size: .92rem; }
+  .method-desc { font-size: .74rem; color: var(--glass-mut); margin-top: .1rem; }
+
+  .mp-actions { display: flex; gap: .8rem; flex-wrap: wrap; margin-bottom: 2rem; }
+  .mp-actions .btn { flex: 1; justify-content: center; min-width: 160px; }
+  .mp-note { font-size: .78rem; color: var(--glass-mut); margin-top: .9rem; line-height: 1.5; }
+
+  @media (max-width: 640px) {
+    .mp-title { font-size: 1.5rem; }
+    .mp-card { padding: 1.15rem; }
+    .mp-actions .btn { flex-basis: 100%; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mp-page">
+
+  <div class="mp-head">
+    <p class="mp-eyebrow">Step 2 of 2 &middot; Payment</p>
+    <h1 class="mp-title">Pay for your changes</h1>
+    <p class="mp-sub">
+      Booking #{{ booking.id }} &middot;
+      {{ booking.schedule.route.departure_port.name }} → {{ booking.schedule.route.destination_port.name }}
+    </p>
+  </div>
+
+  <div class="mp-card">
+    <h2><i class="fas fa-receipt"></i> What you're paying</h2>
+    <div class="row"><span>Fare difference</span><span>FJD {{ fare_difference|floatformat:2 }}</span></div>
+    <div class="row"><span>Change fee</span><span>FJD {{ fee|floatformat:2 }}</span></div>
+    <div class="row total"><span>Total due</span><span>FJD {{ amount|floatformat:2 }}</span></div>
+    <p class="mp-note">
+      Your passenger changes are saved. Your updated e-tickets are released as soon
+      as this balance is paid.
+    </p>
+  </div>
+
+  <form method="post" id="mp-form">
+    {% csrf_token %}
+    <div class="mp-card">
+      <h2><i class="fas fa-credit-card"></i> Choose how to pay</h2>
+      <div class="methods" role="radiogroup" aria-label="Choose a payment method">
+        <label class="method">
+          <input type="radio" name="payment_method" value="card" checked>
+          <span class="method-body">
+            <span class="method-icon"><i class="fas fa-credit-card"></i></span>
+            <span><span class="method-name">Card</span><span class="method-desc">Visa / Mastercard via Stripe</span></span>
+          </span>
+        </label>
+        <label class="method">
+          <input type="radio" name="payment_method" value="anz">
+          <span class="method-body">
+            <span class="method-icon"><img src="{% static 'images/anz-logo.svg' %}" alt=""></span>
+            <span><span class="method-name">ANZ Fiji</span><span class="method-desc">Internet Banking</span></span>
+          </span>
+        </label>
+        <label class="method">
+          <input type="radio" name="payment_method" value="bsp">
+          <span class="method-body">
+            <span class="method-icon"><img src="{% static 'images/bsp-logo.svg' %}" alt=""></span>
+            <span><span class="method-name">BSP</span><span class="method-desc">Internet Banking</span></span>
+          </span>
+        </label>
+        <label class="method">
+          <input type="radio" name="payment_method" value="mpaisa">
+          <span class="method-body">
+            <span class="method-icon"><img src="{% static 'images/vodafone-logo.svg' %}" alt=""></span>
+            <span><span class="method-name">M-PAiSA</span><span class="method-desc">Vodafone mobile money</span></span>
+          </span>
+        </label>
+        <label class="method">
+          <input type="radio" name="payment_method" value="mycash">
+          <span class="method-body">
+            <span class="method-icon"><img src="{% static 'images/digicel-logo.svg' %}" alt=""></span>
+            <span><span class="method-name">MyCash</span><span class="method-desc">Digicel mobile money</span></span>
+          </span>
+        </label>
+      </div>
+    </div>
+
+    <div class="mp-actions">
+      <button type="submit" class="btn btn-primary" id="mp-submit">
+        <i class="fas fa-lock"></i> Pay FJD {{ amount|floatformat:2 }}
+      </button>
+      <a href="{% url 'bookings:booking_history' %}" class="btn btn-secondary">
+        <i class="fas fa-arrow-left"></i> Pay later
+      </a>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // Guard against a double-submit creating two gateway sessions.
+  document.getElementById('mp-form').addEventListener('submit', function (e) {
+    var btn = document.getElementById('mp-submit');
+    if (btn.disabled) { e.preventDefault(); return; }
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Redirecting…';
+  });
+</script>
+{% endblock %}

@@ -1652,20 +1652,27 @@
 
         async pollScheduleUpdates() {
             try {
-                const res = await fetch('/bookings/api/bookings/updates/?limit=50', {
+                const cardIds = Array.from(document.querySelectorAll('.schedule-card[data-schedule-id]'))
+                    .map(c => c.dataset.scheduleId);
+                const statusParam = cardIds.length
+                    ? `&status_ids=${encodeURIComponent(cardIds.join(','))}` : '';
+                const res = await fetch(`/bookings/api/bookings/updates/?limit=50${statusParam}`, {
                     headers: { 'X-Requested-With': 'XMLHttpRequest' }
                 });
                 if (!res.ok) return;
                 const data = await res.json();
                 const live = {};
                 (data.schedules || []).forEach(s => { live[String(s.id)] = s; });
+                const statuses = data.statuses || {};
 
                 document.querySelectorAll('.schedule-card[data-schedule-id]').forEach(card => {
                     const id = String(card.dataset.scheduleId);
                     const info = live[id];
+                    const st = statuses[id];
                     const seatsEl = card.querySelector('.seats-count');
+                    const seats = st ? st.available_seats : (info ? info.available_seats : null);
 
-                    if (!info) {
+                    if (!info && !st) {
                         // Disappeared from the active feed → sold out / cancelled / departed.
                         if (card.dataset.status !== 'unavailable') {
                             card.dataset.status = 'unavailable';
@@ -1679,17 +1686,30 @@
                     }
 
                     // Update seat count live; toast when a sailing gets tight.
-                    if (seatsEl) {
+                    if (seatsEl && seats != null) {
                         const prev = parseInt(seatsEl.textContent, 10);
-                        if (!Number.isNaN(prev) && info.available_seats !== prev) {
-                            seatsEl.textContent = info.available_seats;
-                            if (info.available_seats > 0 && info.available_seats <= 5 && prev > 5 && window.Toast) {
-                                window.Toast.warning(`Only ${info.available_seats} seats left on a ${info.route} sailing!`);
+                        if (!Number.isNaN(prev) && seats !== prev) {
+                            seatsEl.textContent = seats;
+                            if (seats > 0 && seats <= 5 && prev > 5 && window.Toast && info) {
+                                window.Toast.warning(`Only ${seats} seats left on a ${info.route} sailing!`);
                             }
                         }
                     }
-                    if (info.status && card.dataset.status !== info.status) {
-                        card.dataset.status = info.status;
+
+                    // "Filling fast" chip tracks the live seat count.
+                    const chip = card.querySelector('.js-scarcity');
+                    if (chip && seats != null) {
+                        chip.classList.toggle('is-on', seats > 0 && seats <= 5);
+                    }
+
+                    // Swap Book ↔ Join-waitlist as the sailing sells out / frees up.
+                    if (st && st.status === 'scheduled' && !st.departed) {
+                        this.syncBoardAction(card, id, st.available_seats);
+                    }
+
+                    const newStatus = st ? st.status : info.status;
+                    if (newStatus && card.dataset.status !== newStatus) {
+                        card.dataset.status = newStatus;
                     }
                 });
                 logger.log('Schedule cards refreshed from live feed');
@@ -1698,71 +1718,98 @@
             }
         }
 
+        // Keep the card's primary action truthful: a Book link while seats
+        // remain, a Join-waitlist button the moment it sells out (and back
+        // again if a cancellation frees seats).
+        syncBoardAction(card, id, seats) {
+            const stub = card.querySelector('.bp-stub-content');
+            if (!stub) return;
+            const bookLink = stub.querySelector('a.btn-board');
+            const waitBtn = stub.querySelector('.js-join-waitlist');
+
+            if (seats === 0 && bookLink) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'btn-board btn-board--wait js-join-waitlist';
+                btn.dataset.scheduleId = id;
+                btn.textContent = 'Join waitlist';
+                bookLink.replaceWith(btn);
+            } else if (seats > 0 && waitBtn && !waitBtn.disabled && !waitBtn.dataset.armed) {
+                const a = document.createElement('a');
+                a.className = 'btn-board';
+                a.href = `/bookings/book/?schedule_id=${id}`;
+                a.textContent = 'Book';
+                waitBtn.replaceWith(a);
+            }
+        }
+
         // Populate each schedule card's weather strip from the data the server
         // already embedded (schedule-weather-data), before any network call.
         renderInitialWeather() {
+            // Port icons come from the server-rendered `weather-data` blob.
+            this.applyFallbackWeather();
+
             const list = Utils.safeParseJSON('schedule-weather-data', []);
             if (!Array.isArray(list)) return;
             list.forEach(w => {
                 const id = w.schedule_id;
                 if (id == null) return;
-                this.paintCard(id, {
-                    condition: w.condition,
-                    temperature: w.temperature,
-                    wind_speed: w.wind_speed,
-                    precipitation_probability: w.precipitation_probability,
-                });
+                this.paintCard(id, w);
             });
         }
 
-        // Shared painter so initial + live + fallback all render identically.
+        // Shared painter so initial + live render identically. Missing values
+        // render as an em dash rather than an invented 28°C, so a data outage is
+        // visible instead of quietly showing a plausible but wrong number.
         paintCard(id, data) {
             data = data || {};
-            ['condition', 'icon', 'temp', 'wind', 'precip'].forEach(field => {
+            const temp = data.temperature ?? data.temp;
+            const wind = data.wind_speed ?? data.wind;
+            const precip = data.precipitation_probability ?? data.precip;
+            const set = (field, value, asHtml) => {
                 const el = document.getElementById(`weather-${field}-${id}`);
                 if (!el) return;
-                const value =
-                    field === 'icon' ? Utils.getWeatherIcon(data.condition) :
-                    field === 'temp' ? `${Math.round(data.temperature ?? data.temp ?? 28)}°C` :
-                    field === 'wind' ? `${Math.round(data.wind_speed ?? data.wind ?? 12)} kph` :
-                    field === 'precip' ? `${Math.round(data.precipitation_probability ?? data.precip ?? 5)}%` :
-                    data.condition || 'Sunny';
-                if (field === 'icon') el.innerHTML = value; else el.textContent = value;
-            });
+                if (asHtml) el.innerHTML = value; else el.textContent = value;
+            };
+            set('icon', Utils.getWeatherIcon(data.condition), true);
+            set('condition', data.condition || '—');
+            set('temp', temp == null ? '—' : `${Math.round(temp)}°C`);
+            set('wind', wind == null ? '—' : `${Math.round(wind)} kph`);
+            set('precip', precip == null ? '—' : `${Math.round(precip)}%`);
+
+            const card = document.querySelector(`.schedule-card[data-schedule-id="${id}"]`);
+            const strip = card && card.querySelector('.bp-weather');
+            if (strip) {
+                strip.classList.toggle('is-stale', !!data.stale);
+                if (data.warning) strip.title = data.warning;
+            }
         }
 
         async updateWeatherDisplay() {
+            const ids = Array.from(document.querySelectorAll('.schedule-card'))
+                .map(c => c.dataset.scheduleId)
+                .filter(Boolean);
+            if (ids.length === 0) return;
+
             try {
-                const scheduleCards = Array.from(document.querySelectorAll('.schedule-card'));
-                if (scheduleCards.length === 0) return;
+                // One round trip for every visible card. This previously looped
+                // with `await` per card and threw on the first failure, so a
+                // single departed schedule wiped weather off the whole board.
+                const response = await fetch(
+                    `/bookings/api/weather/batch/?schedule_ids=${encodeURIComponent(ids.join(','))}`
+                );
+                if (!response.ok) throw new Error(`Weather batch failed: ${response.status}`);
+                const { weather } = await response.json();
+                if (!weather) return;
 
-                // === Update each schedule card individually ===
-                for (const card of scheduleCards) {
-                    const id = card.dataset.scheduleId;
-                    if (!id) continue;
-
-                    // Fetch weather for this schedule_id
-                    const response = await fetch(`/bookings/api/weather/conditions/?schedule_id=${id}`);
-                    if (!response.ok) throw new Error(`Weather fetch failed for schedule ${id}`);
-                    const { weather } = await response.json();
-
-                    // --- Update port weather (for dashboard top icons) ---
-                    ['nadi', 'suva'].forEach(port => {
-                        const data = weather?.ports?.[port] || {};
-                        const iconEl = document.getElementById(`${port}-icon`);
-                        const tempEl = document.getElementById(`${port}-temp`);
-                        if (iconEl) iconEl.innerHTML = Utils.getWeatherIcon(data.condition);
-                        if (tempEl) tempEl.textContent = `${data.temp || 28}°`;
-                    });
-
-                    // --- Update weather details for this schedule card only ---
-                    if (weather) this.paintCard(id, weather);
-                }
-
-                logger.log('Weather updated per schedule from DB');
+                ids.forEach(id => {
+                    if (weather[id]) this.paintCard(id, weather[id]);
+                });
+                logger.log(`Weather updated for ${Object.keys(weather).length}/${ids.length} schedules`);
             } catch (error) {
-                logger.warn('Weather update failed:', error);
-                this.applyFallbackWeather();
+                // Keep whatever the server already painted rather than clobbering
+                // real (if slightly stale) readings with invented placeholders.
+                logger.warn('Weather update failed, keeping last known values:', error);
             }
         }
 

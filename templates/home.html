@@ -44,29 +44,38 @@
     {# ——— BOOKING WIDGET ——— #}
     <div class="booking-widget">
       <form class="booking-form" id="search-form" action="{% url 'bookings:book_ticket' %}" method="get" novalidate onsubmit="return validateAndSubmit(event)">
-        <div class="bw-label">Plan your crossing</div>
+        <div class="bw-label-row">
+          <div class="bw-label">Plan your crossing</div>
+          <span class="fare-preview" id="fare-preview" aria-live="polite"></span>
+        </div>
         <div class="form-row">
           <div class="form-group">
-            <label for="route">
+            <label for="route-from">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/></svg>
-              Route
+              From
             </label>
             <div class="input-wrap">
-              <input type="text" id="route" name="route" required list="routes"
-                value="{{ form_data.route|default:''|escapejs }}"
-                placeholder="Nadi → Suva" autocomplete="off" aria-required="true">
-              <input type="hidden" id="route-id" name="route_id" value="{{ form_data.route_id|default:''|escapejs }}">
-              <datalist id="routes">
-                {% for route in routes %}
-                <option value="{{ route.departure_port__name }} to {{ route.destination_port__name }}">
-                  {{ route.departure_port__name }} → {{ route.destination_port__name }}
-                </option>
-                {% empty %}
-                <option value="Nadi to Suva">Nadi → Suva</option>
-                <option value="Denarau to Yasawa Islands">Denarau → Yasawa Islands</option>
-                <option value="Suva to Lautoka">Suva → Lautoka</option>
+              <select id="route-from" required aria-required="true">
+                <option value="">Departure port</option>
+                {% regroup routes by departure_port__name as origin_groups %}
+                {% for group in origin_groups %}
+                <option value="{{ group.grouper }}">{{ group.grouper }}</option>
                 {% endfor %}
-              </datalist>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="route-to">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+              To
+            </label>
+            <div class="input-wrap">
+              <select id="route-to" required aria-required="true">
+                <option value="">Destination</option>
+              </select>
+              <input type="hidden" id="route" name="route" value="{{ form_data.route|default:'' }}">
+              <input type="hidden" id="route-id" name="route_id" value="{{ form_data.route_id|default:'' }}">
             </div>
           </div>
 
@@ -118,6 +127,33 @@
         {% endfor %}
       </div>
     </div>
+
+    {# ——— LIVE DEPARTURE BOARD ——— #}
+    {% if hero_departures %}
+    <div class="live-board" id="live-board" aria-label="Next departures">
+      <div class="lb-head">
+        <span class="lb-live"><span class="lb-dot" aria-hidden="true"></span> Live</span>
+        <span class="lb-title">Next departures</span>
+      </div>
+      <div class="lb-rows">
+        {% for dep in hero_departures %}
+        <div class="lb-row" data-schedule-id="{{ dep.schedule_id }}" data-departure="{{ dep.departure_iso }}">
+          <span class="lb-count" data-countdown>—</span>
+          <span class="lb-route">{{ dep.origin }} <span class="lb-arrow" aria-hidden="true">→</span> {{ dep.destination }}</span>
+          <span class="lb-cond" title="Sea conditions at departure port">
+            {% if dep.condition %}{{ dep.condition }}{% if dep.wind %} · {{ dep.wind|floatformat:0 }} kph{% endif %}{% endif %}
+          </span>
+          <span class="lb-seats {% if dep.seats <= 5 %}lb-seats--low{% endif %}" data-seats>
+            {% if dep.seats <= 5 %}{{ dep.seats }} left{% else %}{{ dep.seats }} seats{% endif %}
+          </span>
+          <a class="lb-book" href="{% url 'bookings:book_ticket' %}?schedule_id={{ dep.schedule_id }}">
+            {% if dep.fare %}FJ${{ dep.fare|floatformat:0 }}{% else %}Book{% endif %}
+          </a>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
   </div>
 
   <nav class="slide-dots" aria-label="Slideshow navigation">
@@ -173,6 +209,26 @@
       {% if user.is_authenticated %}
       <h2 id="welcome-heading">Welcome back, <em>{{ user.get_full_name|default:user.username }}</em></h2>
       <p>Your next island crossing awaits. Saved preferences ready.</p>
+      {% if last_trip %}
+      <div class="rebook-card">
+        <div class="rebook-info">
+          <span class="rebook-label">Your usual crossing</span>
+          <span class="rebook-route">{{ last_trip.origin }} <span aria-hidden="true">→</span> {{ last_trip.destination }}</span>
+          {% if last_trip.next_departure %}
+          <span class="rebook-next">Next sailing {{ last_trip.next_departure|date:"D d M, H:i" }}</span>
+          {% else %}
+          <span class="rebook-next">No upcoming sailings on this route yet</span>
+          {% endif %}
+        </div>
+        {% if last_trip.next_schedule_id %}
+        <a class="btn btn--primary rebook-btn"
+           href="{% url 'bookings:book_ticket' %}?schedule_id={{ last_trip.next_schedule_id }}&passengers={{ last_trip.passengers }}">
+          Book it again
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+        </a>
+        {% endif %}
+      </div>
+      {% endif %}
       <div class="welcome-actions">
         <a href="{% url 'bookings:booking_history' %}" class="btn btn--outline">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
@@ -354,11 +410,12 @@
                 <div class="bp-info-item">
                   <dt>Seats</dt>
                   <dd class="seats-count">{{ schedule.available_seats }}</dd>
+                  <span class="bp-scarcity js-scarcity {% if schedule.available_seats > 0 and schedule.available_seats <= 5 %}is-on{% endif %}">Filling fast</span>
                 </div>
                 {% if schedule.route.estimated_duration %}
                 <div class="bp-info-item">
                   <dt>Duration</dt>
-                  <dd>{{ schedule.route.estimated_duration|floatformat:0 }}h</dd>
+                  <dd>{{ schedule.route.estimated_duration|duration_hm }}</dd>
                 </div>
                 {% endif %}
                 {% if schedule.route.base_fare and schedule.status == 'scheduled' %}
@@ -387,7 +444,9 @@
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
                 </a>
                 {% elif schedule.available_seats == 0 %}
-                <button class="btn-board btn-board--sold" disabled>Sold out</button>
+                <button class="btn-board btn-board--wait js-join-waitlist" data-schedule-id="{{ schedule.id }}" type="button">
+                  Join waitlist
+                </button>
                 {% else %}
                 <button class="btn-board btn-board--unavail" disabled>{{ schedule.status|title }}</button>
                 {% endif %}
@@ -525,69 +584,32 @@
       <p>Discover the diversity of Fiji's archipelago</p>
     </div>
     <div class="dest-grid" role="list">
+      {% comment %}
+        Driven by real ports with upcoming sailings. The cards were previously
+        hardcoded to Nadi/Suva/Denarau/Yasawa — the last two aren't ports at
+        all, so their "Explore" links filtered the search down to nothing.
+        NOTE: {# #} is single-line only in Django; a multi-line one renders as
+        literal text on the page.
+      {% endcomment %}
+      {% for d in featured_destinations %}
       <article class="dest-card" tabindex="0">
         <div class="dest-img">
-          <img src="https://images.unsplash.com/photo-1519046904884-53103b34b206?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80"
-            alt="Nadi coastline" loading="lazy"
-            onerror="this.onerror=null;this.src='https://images.unsplash.com/photo-1505228395891-9a51e7e86bf6?auto=format&fit=crop&w=400&q=80'">
+          <img src="{% static d.image %}" alt="{{ d.name }}, Fiji" loading="lazy"
+               width="1200" height="750">
+          {% if d.credit %}<span class="dest-credit" title="Photo: {{ d.credit }}">&copy;</span>{% endif %}
           <div class="dest-overlay">
-            <a href="#" class="dest-cta" data-to-port="Nadi">Explore Nadi</a>
+            <a href="#" class="dest-cta" data-to-port="{{ d.name }}">Explore {{ d.name }}</a>
           </div>
         </div>
         <div class="dest-info">
-          <h3>Nadi</h3>
-          <p>Fiji's vibrant gateway — world-class resorts, duty-free markets</p>
-          <span class="dest-meta">30 min – 2 hr · 8 routes</span>
+          <h3>{{ d.name }}</h3>
+          <p>{{ d.blurb }}</p>
+          <span class="dest-meta">{{ d.route_count }} route{{ d.route_count|pluralize }}</span>
         </div>
       </article>
-
-      <article class="dest-card" tabindex="0">
-        <div class="dest-img">
-          <img src="https://images.unsplash.com/photo-1473042904451-00171c69419d?auto=format&fit=crop&w=400&q=80"
-            alt="Suva capital" loading="lazy"
-            onerror="this.onerror=null;this.src='https://images.unsplash.com/photo-1505228395891-9a51e7e86bf6?auto=format&fit=crop&w=400&q=80'">
-          <div class="dest-overlay">
-            <a href="#" class="dest-cta" data-to-port="Suva">Visit Suva</a>
-          </div>
-        </div>
-        <div class="dest-info">
-          <h3>Suva</h3>
-          <p>Fiji's capital — culture, history, and urban sophistication</p>
-          <span class="dest-meta">4 – 6 hr · 12 routes</span>
-        </div>
-      </article>
-
-      <article class="dest-card" tabindex="0">
-        <div class="dest-img">
-          <img src="https://images.unsplash.com/photo-1559827260-dc66d52bef19?auto=format&fit=crop&w=400&q=80"
-            alt="Denarau marina" loading="lazy"
-            onerror="this.onerror=null;this.src='https://images.unsplash.com/photo-1505228395891-9a51e7e86bf6?auto=format&fit=crop&w=400&q=80'">
-          <div class="dest-overlay">
-            <a href="#" class="dest-cta" data-to-port="Denarau">Discover Denarau</a>
-          </div>
-        </div>
-        <div class="dest-info">
-          <h3>Denarau</h3>
-          <p>Luxury marina — gateway to the Mamanuca Islands</p>
-          <span class="dest-meta">15 – 45 min · 15 routes</span>
-        </div>
-      </article>
-
-      <article class="dest-card" tabindex="0">
-        <div class="dest-img">
-          <img src="https://images.unsplash.com/photo-1506905925346-21bda4d32df4?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80"
-            alt="Yasawa Islands" loading="lazy"
-            onerror="this.onerror=null;this.src='https://images.unsplash.com/photo-1505228395891-9a51e7e86bf6?auto=format&fit=crop&w=400&q=80'">
-          <div class="dest-overlay">
-            <a href="#" class="dest-cta" data-to-port="Yasawa">Yasawa adventure</a>
-          </div>
-        </div>
-        <div class="dest-info">
-          <h3>Yasawa Islands</h3>
-          <p>Remote paradise — pristine beaches and authentic villages</p>
-          <span class="dest-meta">4 – 7 hr · 5 routes</span>
-        </div>
-      </article>
+      {% empty %}
+      <p class="dest-empty">Destinations are being scheduled — check back shortly.</p>
+      {% endfor %}
     </div>
   </div>
 </section>
@@ -769,6 +791,7 @@
 
 {# ——— Hidden data for JS ——— #}
 {{ form_data|json_script:"form-data" }}
+{{ routes|json_script:"routes-data" }}
 {{ weather_data|json_script:"weather-data" }}
 {{ schedule_weather_data|json_script:"schedule-weather-data" }}
 
@@ -1184,6 +1207,154 @@ img { display: block; max-width: 100%; }
   padding-right: 0.75rem;
 }
 
+/* Fare preview (top-right of widget) */
+.bw-label-row {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: 0.7rem;
+}
+.bw-label-row .bw-label { margin-bottom: 0; }
+.fare-preview {
+  font-size: 0.78rem; font-weight: 700; color: var(--lagoon);
+  opacity: 0; transform: translateY(2px);
+  transition: opacity .25s var(--ease), transform .25s var(--ease);
+}
+.fare-preview.is-on { opacity: 1; transform: none; }
+
+/* =============================================================================
+   HERO LIVE DEPARTURE BOARD
+============================================================================= */
+.live-board {
+  width: 100%; max-width: 780px;
+  background: rgba(10, 22, 40, 0.72);
+  backdrop-filter: blur(20px) saturate(1.3);
+  -webkit-backdrop-filter: blur(20px) saturate(1.3);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 14px;
+  padding: 0.65rem 0.9rem 0.55rem;
+  text-align: left;
+  margin-top: -0.9rem;
+}
+.lb-head {
+  display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.35rem;
+}
+.lb-live {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  font-size: 0.6rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+  color: #4ade80;
+}
+.lb-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: #4ade80;
+  box-shadow: 0 0 8px rgba(74, 222, 128, 0.8);
+  animation: lb-pulse 1.6s ease-in-out infinite;
+}
+@keyframes lb-pulse { 50% { opacity: 0.35; } }
+.lb-title {
+  font-size: 0.62rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+}
+.lb-rows { display: flex; flex-direction: column; }
+.lb-row {
+  display: grid;
+  grid-template-columns: 5.4rem 1fr auto auto auto;
+  align-items: center; gap: 0.7rem;
+  padding: 0.32rem 0.15rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 0.8rem;
+  transition: opacity .3s;
+}
+.lb-row:first-child { border-top: none; }
+.lb-row--gone { opacity: 0.35; pointer-events: none; }
+.lb-count {
+  font-weight: 700; color: #d1fffd; font-variant-numeric: tabular-nums;
+  font-size: 0.78rem;
+}
+.lb-row--imminent .lb-count { color: #fbbf24; }
+.lb-route { color: rgba(255, 255, 255, 0.88); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lb-arrow { color: var(--lagoon); }
+.lb-cond { font-size: 0.68rem; color: rgba(255, 255, 255, 0.5); white-space: nowrap; }
+.lb-seats {
+  font-size: 0.66rem; font-weight: 600; padding: 0.14rem 0.55rem;
+  border-radius: 20px; white-space: nowrap;
+  background: rgba(0, 201, 167, 0.14); color: var(--lagoon);
+  border: 1px solid rgba(0, 201, 167, 0.25);
+}
+.lb-seats--low {
+  background: rgba(251, 191, 36, 0.14); color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.3);
+}
+.lb-book {
+  font-size: 0.72rem; font-weight: 700; text-decoration: none;
+  color: var(--ocean); background: var(--lagoon);
+  padding: 0.22rem 0.75rem; border-radius: 8px;
+  transition: var(--t) var(--ease); white-space: nowrap;
+}
+.lb-book:hover { background: var(--lagoon-dark); transform: translateY(-1px); }
+
+@media (max-width: 640px), (max-height: 760px) {
+  .lb-cond { display: none; }
+}
+@media (max-height: 700px) {
+  .live-board { display: none; }
+}
+
+/* =============================================================================
+   REBOOK CARD (returning visitors)
+============================================================================= */
+.rebook-card {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  max-width: 520px; margin: 1.1rem auto 0.4rem;
+  padding: 0.85rem 1.1rem;
+  background: linear-gradient(135deg, rgba(0, 201, 167, 0.08), rgba(0, 201, 167, 0.02));
+  border: 1px solid rgba(0, 201, 167, 0.25);
+  border-radius: 14px;
+  text-align: left;
+}
+.rebook-info { display: flex; flex-direction: column; gap: 0.1rem; }
+.rebook-label {
+  font-size: 0.6rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--lagoon);
+}
+.rebook-route { font-weight: 700; font-size: 1.02rem; }
+.rebook-route span { color: var(--lagoon); }
+.rebook-next { font-size: 0.75rem; opacity: 0.65; }
+.rebook-btn { white-space: nowrap; flex: 0 0 auto; }
+@media (max-width: 520px) {
+  .rebook-card { flex-direction: column; align-items: flex-start; }
+}
+
+/* =============================================================================
+   SCARCITY CHIP + WAITLIST
+============================================================================= */
+.bp-scarcity {
+  display: none;
+  font-size: 0.58rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  color: #b45309; background: rgba(251, 191, 36, 0.16);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  padding: 0.1rem 0.45rem; border-radius: 20px;
+  margin-top: 0.2rem;
+  animation: lb-pulse 2.2s ease-in-out infinite;
+}
+.bp-scarcity.is-on { display: inline-block; }
+
+.btn-board--wait {
+  background: transparent; color: var(--lagoon);
+  border: 1.5px solid var(--lagoon); cursor: pointer;
+}
+.btn-board--wait:hover { background: rgba(0, 201, 167, 0.1); }
+.btn-board--wait:disabled { opacity: 0.75; cursor: default; }
+
+.wl-inline { display: inline-flex; gap: 0.3rem; align-items: center; }
+.wl-email {
+  width: 10.5rem; height: 30px; padding: 0 0.55rem;
+  border: 1px solid var(--border, rgba(0,0,0,0.15)); border-radius: 8px;
+  font-size: 0.75rem;
+}
+.wl-go {
+  height: 30px; padding: 0 0.7rem; border: none; border-radius: 8px;
+  background: var(--lagoon); color: var(--ocean);
+  font-size: 0.72rem; font-weight: 700; cursor: pointer;
+}
+
 /* =============================================================================
    STATS BAND
 ============================================================================= */
@@ -1409,6 +1580,8 @@ img { display: block; max-width: 100%; }
   background: var(--bg-surf); border: 1px solid var(--border);
   font-size: .78rem; color: var(--txt-2); margin-bottom: .75rem;
 }
+/* Last-known reading whose TTL lapsed; refreshed moments after page load. */
+.bp-weather.is-stale { opacity: .72; }
 .bpw-icon { flex-shrink: 0; color: var(--txt-3); }
 .bpw-condition { flex: 1; font-weight: 500; color: var(--txt); }
 .bpw-temp, .bpw-wind, .bpw-precip {
@@ -1681,6 +1854,13 @@ img { display: block; max-width: 100%; }
 .dest-card:hover { transform: translateY(-5px); box-shadow: 0 20px 50px rgba(0,0,0,.4); border-color: rgba(0,201,167,.2); }
 .dest-img { position: relative; overflow: hidden; height: 200px; }
 .dest-img img { width: 100%; height: 100%; object-fit: cover; transition: transform .6s var(--ease); }
+/* Photo attribution — a licence condition for the CC BY / CC BY-SA images. */
+.dest-credit {
+  position: absolute; right: .4rem; bottom: .35rem; z-index: 2;
+  font-size: .6rem; line-height: 1; color: rgba(255,255,255,.7);
+  background: rgba(15,23,42,.45); border-radius: 3px; padding: 2px 4px; cursor: help;
+}
+.dest-empty { grid-column: 1 / -1; text-align: center; color: var(--txt-2); }
 .dest-card:hover .dest-img img { transform: scale(1.06); }
 .dest-overlay {
   position: absolute; inset: 0;
@@ -1934,25 +2114,358 @@ img { display: block; max-width: 100%; }
    FORM VALIDATION
 ========================================================================== */
 window.validateAndSubmit = function(e) {
-  const route = document.getElementById('route').value.trim();
+  const from = document.getElementById('route-from')?.value || '';
+  const to = document.getElementById('route-to')?.value || '';
   const date = document.getElementById('departure-date').value;
   const fb = document.getElementById('form-feedback');
-  if (!route || !date) {
+  if (!from || !to || !date) {
     e.preventDefault();
-    if (fb) fb.textContent = 'Please fill in both route and departure date.';
+    if (fb) fb.textContent = 'Please choose both ports and a departure date.';
     return false;
   }
+  // Compose the legacy "Origin to Destination" value the backend parses.
+  document.getElementById('route').value = `${from} to ${to}`;
   if (fb) fb.textContent = '';
   return true;
 };
+
+/* ==========================================================================
+   BOOKING WIDGET — From/To selects + live fare preview
+========================================================================== */
+(function () {
+  function parseJSON(id, fallback) {
+    try { return JSON.parse(document.getElementById(id).textContent); }
+    catch (_) { return fallback; }
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    const routes = parseJSON('routes-data', []) || [];
+    const fromSel = document.getElementById('route-from');
+    const toSel = document.getElementById('route-to');
+    const routeIdInput = document.getElementById('route-id');
+    const paxSel = document.getElementById('passengers');
+    const preview = document.getElementById('fare-preview');
+    if (!fromSel || !toSel) return;
+
+    const origins = [...new Set(routes.map(r => r.departure_port__name))].sort();
+
+    function fillSelect(sel, values, placeholder, keep) {
+      const prev = keep || sel.value;
+      sel.innerHTML = '';
+      const ph = document.createElement('option');
+      ph.value = ''; ph.textContent = placeholder;
+      sel.appendChild(ph);
+      values.forEach(v => {
+        const o = document.createElement('option');
+        o.value = v; o.textContent = v;
+        sel.appendChild(o);
+      });
+      if (prev && values.includes(prev)) sel.value = prev;
+    }
+
+    function destinationsFor(origin) {
+      const pool = origin ? routes.filter(r => r.departure_port__name === origin) : routes;
+      return [...new Set(pool.map(r => r.destination_port__name))].sort();
+    }
+
+    function matchRoute() {
+      return routes.find(r =>
+        r.departure_port__name === fromSel.value &&
+        r.destination_port__name === toSel.value) || null;
+    }
+
+    function updatePreview() {
+      const r = matchRoute();
+      if (routeIdInput) routeIdInput.value = r ? r.id : '';
+      if (!preview) return;
+      if (r && r.base_fare != null) {
+        const pax = Math.max(1, parseInt(paxSel?.value, 10) || 1);
+        const total = Math.round(parseFloat(r.base_fare) * pax);
+        preview.textContent = `From FJ$${total}` + (pax > 1 ? ` · ${pax} pax` : '');
+        preview.classList.add('is-on');
+      } else {
+        preview.textContent = '';
+        preview.classList.remove('is-on');
+      }
+    }
+
+    fillSelect(fromSel, origins, 'Departure port');
+    fillSelect(toSel, destinationsFor(''), 'Destination');
+
+    // Prefill from a previous search ("nadi to suva").
+    const prevRoute = (document.getElementById('route')?.value || '').toLowerCase();
+    if (prevRoute) {
+      const m = routes.find(r =>
+        `${r.departure_port__name} to ${r.destination_port__name}`.toLowerCase() === prevRoute);
+      if (m) {
+        fromSel.value = m.departure_port__name;
+        fillSelect(toSel, destinationsFor(fromSel.value), 'Destination', m.destination_port__name);
+      }
+    }
+    updatePreview();
+
+    fromSel.addEventListener('change', () => {
+      fillSelect(toSel, destinationsFor(fromSel.value), 'Destination');
+      updatePreview();
+    });
+    toSel.addEventListener('change', updatePreview);
+    paxSel?.addEventListener('change', updatePreview);
+  });
+})();
+
+/* ==========================================================================
+   HERO LIVE DEPARTURE BOARD — ticking countdowns + live seat refresh
+========================================================================== */
+(function () {
+  document.addEventListener('DOMContentLoaded', function () {
+    const board = document.getElementById('live-board');
+    if (!board) return;
+
+    function tick() {
+      board.querySelectorAll('.lb-row').forEach(row => {
+        const el = row.querySelector('[data-countdown]');
+        const dep = new Date(row.dataset.departure);
+        if (!el || isNaN(dep)) return;
+        const mins = Math.round((dep - Date.now()) / 60000);
+        if (mins <= 0) {
+          el.textContent = 'Departing';
+          row.classList.add('lb-row--imminent');
+        } else if (mins < 60) {
+          el.textContent = `in ${mins} min`;
+          row.classList.toggle('lb-row--imminent', mins <= 30);
+        } else if (mins < 60 * 24) {
+          const h = Math.floor(mins / 60);
+          el.textContent = `in ${h}h ${mins % 60}m`;
+        } else {
+          el.textContent = dep.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+        }
+      });
+    }
+
+    async function refreshSeats() {
+      const ids = Array.from(board.querySelectorAll('.lb-row')).map(r => r.dataset.scheduleId);
+      if (!ids.length) return;
+      try {
+        const res = await fetch(`/bookings/api/bookings/updates/?limit=1&status_ids=${ids.join(',')}`,
+          { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+        if (!res.ok) return;
+        const { statuses } = await res.json();
+        board.querySelectorAll('.lb-row').forEach(row => {
+          const st = statuses && statuses[row.dataset.scheduleId];
+          if (!st) return;
+          const seatsEl = row.querySelector('[data-seats]');
+          if (seatsEl) {
+            const n = st.available_seats;
+            seatsEl.textContent = n <= 5 ? `${n} left` : `${n} seats`;
+            seatsEl.classList.toggle('lb-seats--low', n > 0 && n <= 5);
+          }
+          if (!st.bookable) row.classList.add('lb-row--gone');
+        });
+      } catch (_) { /* keep last known values */ }
+    }
+
+    tick();
+    setInterval(tick, 30000);
+    refreshSeats();
+    setInterval(refreshSeats, 45000);
+  });
+})();
+
+/* ==========================================================================
+   LIVE SCHEDULE DATA — weather strips + seats/status on the boarding cards.
+   (Ported from the legacy home.js ScheduleManager, which is not loaded.)
+========================================================================== */
+(function () {
+  function parseJSON(id, fallback) {
+    try { return JSON.parse(document.getElementById(id).textContent); }
+    catch (_) { return fallback; }
+  }
+
+  const ICONS = [
+    [/thunder/i, '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 15a4 4 0 004 4h1l-2 4 6-5h-2l2-3H7a4 4 0 01-4-4 5 5 0 019.8-1.5A4.5 4.5 0 0116 18"/></svg>'],
+    [/rain|drizzle|shower/i, '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 13a4 4 0 004 4h9a5 5 0 10-.1-9.999A5.002 5.002 0 006.1 9.1 4.001 4.001 0 003 13z"/><path d="M8 19v2M12 19v2M16 19v2"/></svg>'],
+    [/fog|mist/i, '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 10h16M2 14h20M4 18h16"/></svg>'],
+    [/cloud|overcast/i, '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"/></svg>'],
+    [/clear|sun/i, '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4l1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4m11.4-11.4l1.4-1.4"/></svg>'],
+  ];
+  function weatherIcon(condition) {
+    for (const [re, svg] of ICONS) if (condition && re.test(condition)) return svg;
+    return ICONS[3][1]; // default cloud
+  }
+
+  // Missing values render as an em dash rather than an invented 28°C, so a
+  // data outage is visible instead of quietly showing a wrong number.
+  function paintCard(id, d) {
+    d = d || {};
+    const set = (field, value, asHtml) => {
+      const el = document.getElementById(`weather-${field}-${id}`);
+      if (!el) return;
+      if (asHtml) el.innerHTML = value; else el.textContent = value;
+    };
+    const temp = d.temperature, wind = d.wind_speed, precip = d.precipitation_probability;
+    set('icon', weatherIcon(d.condition), true);
+    set('condition', d.condition || '—');
+    set('temp', temp == null ? '—' : `${Math.round(temp)}°C`);
+    set('wind', wind == null ? '—' : `${Math.round(wind)} kph`);
+    set('precip', precip == null ? '—' : `${Math.round(precip)}%`);
+    const card = document.querySelector(`.schedule-card[data-schedule-id="${id}"]`);
+    const strip = card && card.querySelector('.bp-weather');
+    if (strip) {
+      strip.classList.toggle('is-stale', !!d.stale);
+      if (d.warning) strip.title = d.warning;
+    }
+  }
+
+  function cardIds() {
+    return Array.from(document.querySelectorAll('.schedule-card[data-schedule-id]'))
+      .map(c => c.dataset.scheduleId);
+  }
+
+  async function refreshWeather() {
+    const ids = cardIds();
+    if (!ids.length) return;
+    try {
+      const res = await fetch(`/bookings/api/weather/batch/?schedule_ids=${encodeURIComponent(ids.join(','))}`);
+      if (!res.ok) return;
+      const { weather } = await res.json();
+      if (!weather) return;
+      ids.forEach(id => { if (weather[id]) paintCard(id, weather[id]); });
+    } catch (_) { /* keep last painted values */ }
+  }
+
+  // Keep each card's primary action truthful: Book while seats remain,
+  // Join-waitlist the moment it sells out (and back if seats free up).
+  function syncBoardAction(card, id, seats) {
+    const stub = card.querySelector('.bp-stub-content');
+    if (!stub) return;
+    const bookLink = stub.querySelector('a.btn-board');
+    const waitBtn = stub.querySelector('.js-join-waitlist');
+    if (seats === 0 && bookLink) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn-board btn-board--wait js-join-waitlist';
+      btn.dataset.scheduleId = id;
+      btn.textContent = 'Join waitlist';
+      bookLink.replaceWith(btn);
+    } else if (seats > 0 && waitBtn && !waitBtn.disabled && !waitBtn.dataset.armed) {
+      const a = document.createElement('a');
+      a.className = 'btn-board';
+      a.href = `{% url 'bookings:book_ticket' %}?schedule_id=${id}`;
+      a.textContent = 'Book';
+      waitBtn.replaceWith(a);
+    }
+  }
+
+  async function refreshSeats() {
+    const ids = cardIds();
+    if (!ids.length) return;
+    try {
+      const res = await fetch(
+        `/bookings/api/bookings/updates/?limit=1&status_ids=${encodeURIComponent(ids.join(','))}`,
+        { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+      if (!res.ok) return;
+      const { statuses } = await res.json();
+      if (!statuses) return;
+      document.querySelectorAll('.schedule-card[data-schedule-id]').forEach(card => {
+        const id = String(card.dataset.scheduleId);
+        const st = statuses[id];
+        if (!st) return;
+        const seatsEl = card.querySelector('.seats-count');
+        if (seatsEl) seatsEl.textContent = st.available_seats;
+        const chip = card.querySelector('.js-scarcity');
+        if (chip) chip.classList.toggle('is-on', st.available_seats > 0 && st.available_seats <= 5);
+        if (st.status === 'scheduled' && !st.departed) syncBoardAction(card, id, st.available_seats);
+        if (card.dataset.status !== st.status) card.dataset.status = st.status;
+        card.classList.toggle('is-unavailable', !st.bookable && st.available_seats === 0 && st.status !== 'scheduled');
+      });
+    } catch (_) { /* transient — next poll will catch up */ }
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    // Paint the server-embedded readings immediately, then go live.
+    (parseJSON('schedule-weather-data', []) || []).forEach(w => {
+      if (w.schedule_id != null) paintCard(w.schedule_id, w);
+    });
+    refreshWeather();
+    setInterval(refreshWeather, 120000);
+    refreshSeats();
+    setInterval(refreshSeats, 45000);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) { refreshWeather(); refreshSeats(); }
+    });
+  });
+})();
+
+/* ==========================================================================
+   WAITLIST — one-tap join from a sold-out card
+========================================================================== */
+(function () {
+  function getCookie(name) {
+    const m = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+    return m ? decodeURIComponent(m.pop()) : '';
+  }
+
+  async function join(scheduleId, email, btn) {
+    const body = new URLSearchParams({ schedule_id: scheduleId, email: email || '', seats: '1' });
+    try {
+      const res = await fetch('{% url "bookings:waitlist_join" %}', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-CSRFToken': getCookie('csrftoken'),
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        body
+      });
+      const data = await res.json();
+      if (data.ok) {
+        btn.textContent = 'On the waitlist ✓';
+        btn.disabled = true;
+        window.Toast ? Toast.success(data.message) : alert(data.message);
+      } else if (data.book_url) {
+        window.location.href = data.book_url; // seats reappeared — go book
+      } else {
+        window.Toast ? Toast.warning(data.error || 'Could not join waitlist.') : alert(data.error || 'Could not join waitlist.');
+      }
+    } catch (_) {
+      window.Toast ? Toast.error('Network error — please try again.') : alert('Network error — please try again.');
+    }
+  }
+
+  document.addEventListener('click', function (e) {
+    const btn = e.target.closest('.js-join-waitlist');
+    if (!btn || btn.disabled) return;
+    const userEmail = '{{ user.email|default:""|escapejs }}';
+    if (userEmail) { join(btn.dataset.scheduleId, userEmail, btn); return; }
+
+    // Guest: swap the button for a tiny inline email form.
+    if (btn.dataset.armed) return;
+    btn.dataset.armed = '1';
+    const wrap = document.createElement('span');
+    wrap.className = 'wl-inline';
+    wrap.innerHTML = '<input type="email" class="wl-email" placeholder="you@email.com" aria-label="Email for waitlist">' +
+                     '<button type="button" class="wl-go">Notify me</button>';
+    btn.replaceWith(wrap);
+    const input = wrap.querySelector('.wl-email');
+    input.focus();
+    wrap.querySelector('.wl-go').addEventListener('click', () => {
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(input.value)) { input.reportValidity(); return; }
+      const goBtn = wrap.querySelector('.wl-go');
+      join(btn.dataset.scheduleId, input.value.trim(), goBtn);
+    });
+  });
+})();
 
 window.scrollToSchedules = function() {
   document.getElementById('schedules-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
 
 window.resetSearch = function() {
-  const r = document.getElementById('route'), d = document.getElementById('departure-date');
-  if (r) r.value = '';
+  ['route', 'route-id', 'route-from', 'route-to'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  const d = document.getElementById('departure-date');
   if (d) d.value = '{{ today|date:"Y-m-d" }}';
   document.getElementById('search-form')?.submit();
 };

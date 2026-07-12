@@ -89,6 +89,23 @@ def zip(a, b):
 def get_item(dictionary, key):
     return dictionary.get(key)
 
+@register.filter
+def duration_hm(td):
+    """
+    Render a timedelta as a compact crossing time.
+    Usage: {{ route.estimated_duration|duration_hm }} -> "4h" or "4h 30m"
+    """
+    try:
+        total_minutes = int(td.total_seconds() // 60)
+    except (AttributeError, TypeError):
+        return ""
+    hours, minutes = divmod(total_minutes, 60)
+    if hours and minutes:
+        return f"{hours}h {minutes}m"
+    if hours:
+        return f"{hours}h"
+    return f"{minutes}m"
+
 @register.filter(name='mul')
 def mul(value, arg):
     """

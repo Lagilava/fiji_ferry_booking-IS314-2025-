@@ -197,7 +197,22 @@ def confirm_paid_booking(booking_id, *, session_id, payment_intent_id, amount):
         )
     else:
         booking.save(update_fields=['payment_intent_id', 'stripe_session_id'])
+    _mark_waitlist_converted_on_commit(booking)
     return booking
+
+
+def _mark_waitlist_converted_on_commit(booking):
+    """If this customer was waitlisted for the sailing, close their entry."""
+    schedule_id = booking.schedule_id
+    email = booking.guest_email or (booking.user.email if booking.user_id and booking.user else None)
+
+    def _mark():
+        from .models import Schedule
+        from .waitlist import mark_converted
+        schedule = Schedule.objects.filter(pk=schedule_id).first()
+        if schedule and email:
+            mark_converted(schedule, email)
+    transaction.on_commit(_mark)
 
 
 # --------------------------------------------------------------------------- #
@@ -250,6 +265,7 @@ def confirm_mock_payment(booking_id, *, provider, reference, amount):
         transition_booking(booking, BookingStatus.CONFIRMED, extra_fields=['stripe_session_id'])
     else:
         booking.save(update_fields=['stripe_session_id'])
+    _mark_waitlist_converted_on_commit(booking)
     return booking
 
 
@@ -327,9 +343,13 @@ def cancel_booking(booking_id, *, do_refund=True):
 
     # Email the customer once the cancellation has actually committed (keeps the
     # slow SMTP call out of the row-locked transaction). Best-effort.
+    schedule_id = booking.schedule_id
+
     def _notify():
         from .notifications import send_booking_cancellation_email
         send_booking_cancellation_email(booking)
+        from .waitlist import process_waitlist
+        process_waitlist(schedule_id)
     transaction.on_commit(_notify)
 
     return booking, True
@@ -382,6 +402,12 @@ def rebook_booking(booking_id, new_schedule_id, *, moved_by=None):
     booking.schedule = new_schedule
     booking.save(update_fields=['schedule'])
 
+    # Seats just went back to the old sailing — offer them to its waitlist.
+    def _offer_freed_seats():
+        from .waitlist import process_waitlist
+        process_waitlist(old_schedule_id)
+    transaction.on_commit(_offer_freed_seats)
+
     logger.info(
         "Booking %s reBooked: schedule %s → %s by %s",
         booking_id, old_schedule_id, new_schedule_id, moved_by or 'system',
@@ -429,4 +455,10 @@ def expire_pending_booking(booking_id):
         return False
     release_seats(booking.schedule_id, passenger_count(booking))
     transition_booking(booking, BookingStatus.CANCELLED)
+    schedule_id = booking.schedule_id
+
+    def _offer():
+        from .waitlist import process_waitlist
+        process_waitlist(schedule_id)
+    transaction.on_commit(_offer)
     return True

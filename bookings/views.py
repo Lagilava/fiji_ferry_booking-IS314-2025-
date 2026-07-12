@@ -26,20 +26,22 @@ from django.core.files.storage import default_storage
 from django.core.mail import send_mail, EmailMultiAlternatives
 from django.core.validators import FileExtensionValidator
 from django.db import transaction
-from django.db.models import Subquery, Max, OuterRef, Prefetch, Q, F
+from django.db.models import Subquery, Max, OuterRef, Prefetch, Q, F, Count
 from django.http import FileResponse
 from django.http import JsonResponse, HttpResponseForbidden, StreamingHttpResponse, HttpResponse
 from django.shortcuts import get_object_or_404
 from django.shortcuts import render, redirect
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.cache import cache_page
 from django.views.decorators.csrf import csrf_exempt, csrf_protect
 from django.views.decorators.http import require_POST, require_GET
 # PDF generation lives in bookings/pdf.py (render_booking_pdf).
 
+from . import modification
+from . import notifications
 from .decorators import login_required_allow_anonymous
-from .forms import ModifyBookingForm
 from .models import Schedule, Booking, Passenger, Payment, Ticket, Cargo, Route, WeatherCondition, AddOn, Vehicle, Port
 from . import services
 from .pdf import render_booking_pdf
@@ -274,6 +276,37 @@ def get_weather_conditions(request):
     return JsonResponse({'valid': True, 'weather': weather_data})
 
 
+@require_GET
+def weather_batch(request):
+    """Current weather for many schedules in one round trip.
+
+    The homepage renders one card per schedule; asking for each separately meant
+    N sequential requests where a single failure aborted the rest. This returns
+    a {schedule_id: weather} map and self-heals stale rows, so the board stays
+    correct even when the Celery refresh worker is down.
+    """
+    raw = (request.GET.get('schedule_ids') or '').strip()
+    ids = [int(p) for p in raw.split(',') if p.strip().isdigit()][:50]
+    if not ids:
+        return JsonResponse({'valid': False, 'error': 'No schedule_ids given'}, status=400)
+
+    schedules = Schedule.objects.filter(id__in=ids).select_related('route__departure_port')
+    routes = {s.route_id: s.route for s in schedules}
+    if not routes:
+        return JsonResponse({'valid': True, 'weather': {}})
+
+    from bookings.weather.provider import refresh_routes_if_stale
+    by_route = refresh_routes_if_stale(routes.values())
+
+    weather = {}
+    for s in schedules:
+        data = by_route.get(s.route_id)
+        if data:
+            weather[str(s.id)] = data
+
+    return JsonResponse({'valid': True, 'weather': weather})
+
+
 def privacy_policy(request):
     return render(request, 'privacy_policy.html')
 
@@ -392,6 +425,33 @@ def homepage(request):
     # --- Routes queryset ---
     routes = Route.objects.select_related('departure_port', 'destination_port').all()
 
+    # --- Featured destinations (real ports, real photos) ---
+    # The cards used to be hardcoded to Nadi/Suva/Denarau/Yasawa; the last two
+    # aren't ports at all, so their "Explore" links filtered to nothing.
+    from .destinations_data import port_media
+    featured_destinations = []
+    try:
+        # Port -> Route is `arrivals`; Route -> Schedule is `bookings` (the
+        # related_name on Schedule.route, misleading but that's the reverse path).
+        featured_ports = (
+            Port.objects
+            .filter(arrivals__bookings__departure_time__gt=now,
+                    arrivals__bookings__status='scheduled')
+            .annotate(route_count=Count('arrivals', distinct=True))
+            .distinct().order_by('-route_count')[:4]
+        )
+        for p in featured_ports:
+            media = port_media(p.name)
+            featured_destinations.append({
+                'name': p.name,
+                'image': media['image'],
+                'blurb': media['blurb'],
+                'credit': media['credit'],
+                'route_count': p.route_count,
+            })
+    except Exception as e:
+        logger.warning("Featured destinations unavailable: %s", e)
+
     # --- Next Departure Info ---
     next_departure = schedules.first()
     next_departure_info = None
@@ -475,39 +535,28 @@ def homepage(request):
 
     if schedule_route_ids:
         try:
-            latest_conditions_subquery = WeatherCondition.objects.filter(
-                route_id=OuterRef('route_id'),
-                expires_at__gt=now
-            ).values('route_id').annotate(
-                latest_updated=Max('updated_at')
-            ).values('latest_updated')
+            from bookings.weather.provider import serialize_condition
 
-            latest_conditions = WeatherCondition.objects.filter(
-                route_id__in=schedule_route_ids,
-                expires_at__gt=now,
-                updated_at__in=Subquery(latest_conditions_subquery)
-            ).select_related('route', 'port')
-
-            latest_per_route = {wc.route_id: wc for wc in latest_conditions}
+            # Serve the most recent reading per route even if it has expired: a
+            # real 20-minute-old temperature beats a hardcoded placeholder, and
+            # the page's batch refresh replaces it moments later. We never block
+            # the homepage render on an upstream weather call.
+            latest_per_route = {}
+            for wc in (WeatherCondition.objects
+                       .filter(route_id__in=schedule_route_ids)
+                       .select_related('port')
+                       .order_by('route_id', '-updated_at')):
+                latest_per_route.setdefault(wc.route_id, wc)
 
             for schedule in schedules:
                 wc = latest_per_route.get(schedule.route_id)
-                if wc and not wc.is_expired():
-                    schedule_weather_data.append({
-                        'route_id': schedule.route_id,
-                        'schedule_id': schedule.id,
-                        'port': wc.port.name,
-                        'condition': wc.condition,
-                        'temperature': float(wc.temperature) if wc.temperature is not None else None,
-                        'wind_speed': float(wc.wind_speed) if wc.wind_speed is not None else None,
-                        'precipitation_probability': float(wc.precipitation_probability) if wc.precipitation_probability is not None else None,
-                        'expires_at': wc.expires_at.isoformat() if wc.expires_at else None,
-                        'updated_at': wc.updated_at.isoformat() if wc.updated_at else None,
-                        'is_expired': False,
-                        'error': None
-                    })
+                if wc:
+                    entry = serialize_condition(wc)
+                    entry['schedule_id'] = schedule.id
+                    entry['is_expired'] = entry['stale']
+                    entry['error'] = None
                 else:
-                    schedule_weather_data.append({
+                    entry = {
                         'route_id': schedule.route_id,
                         'schedule_id': schedule.id,
                         'port': schedule.route.departure_port.name,
@@ -517,23 +566,14 @@ def homepage(request):
                         'precipitation_probability': None,
                         'expires_at': None,
                         'updated_at': None,
+                        'stale': True,
                         'is_expired': True,
-                        'error': 'No valid weather data available'
-                    })
+                        'error': 'No valid weather data available',
+                    }
+                schedule_weather_data.append(entry)
         except Exception as e:
             logger.error(f"Schedule weather data error: {e}")
-            for schedule in schedules:
-                schedule_weather_data.append({
-                    'route_id': schedule.route_id,
-                    'schedule_id': schedule.id,
-                    'port': schedule.route.departure_port.name,
-                    'condition': 'Partly Cloudy',
-                    'temperature': 28,
-                    'wind_speed': 12,
-                    'precipitation_probability': 5,
-                    'is_expired': False,
-                    'error': None
-                })
+            schedule_weather_data = []
 
     # --- Pagination ---
     total_schedules_count = schedules.count()
@@ -553,7 +593,7 @@ def homepage(request):
         'preferred_departure_windows',
         'safety_buffer_minutes',
         'waypoints'
-    )[:10])
+    )[:50])
 
     if not routes_data:
         routes_data = [
@@ -579,6 +619,66 @@ def homepage(request):
     on_schedule_count = upcoming_qs.count()
     active_ferries_count = upcoming_qs.values('ferry').distinct().count()
 
+    # --- Hero departure board: the next few sailings across ALL routes ---
+    # Deliberately unfiltered by the search form — the board is an airport-style
+    # "what's leaving next" strip, not a search result.
+    hero_departures = []
+    try:
+        board = list(
+            upcoming_qs
+            .select_related('ferry', 'route__departure_port', 'route__destination_port')
+            .order_by('departure_time')[:4]
+        )
+        board_weather = {}
+        for wc in (WeatherCondition.objects
+                   .filter(route_id__in={s.route_id for s in board})
+                   .order_by('route_id', '-updated_at')):
+            board_weather.setdefault(wc.route_id, wc)
+        for s in board:
+            wc = board_weather.get(s.route_id)
+            hero_departures.append({
+                'schedule_id': s.id,
+                'origin': s.route.departure_port.name,
+                'destination': s.route.destination_port.name,
+                'departure_iso': s.departure_time.isoformat(),
+                'seats': s.available_seats,
+                'fare': float(s.route.base_fare) if s.route.base_fare else None,
+                'ferry': s.ferry.name if s.ferry else '',
+                'condition': (wc.condition or None) if wc else None,
+                'wind': float(wc.wind_speed) if wc and wc.wind_speed is not None else None,
+            })
+    except Exception as e:
+        logger.warning("Hero departure board unavailable: %s", e)
+
+    # --- Returning visitor: offer to rebook their most recent trip ---
+    last_trip = None
+    if request.user.is_authenticated:
+        try:
+            lb = (Booking.objects
+                  .filter(user=request.user, status='confirmed')
+                  .select_related('schedule__route__departure_port',
+                                  'schedule__route__destination_port')
+                  .order_by('-booking_date')
+                  .first())
+            if lb:
+                r = lb.schedule.route
+                next_sched = (
+                    upcoming_qs
+                    .filter(route=r, available_seats__gt=0)
+                    .order_by('departure_time')
+                    .first()
+                )
+                last_trip = {
+                    'origin': r.departure_port.name,
+                    'destination': r.destination_port.name,
+                    'route_id': r.id,
+                    'passengers': lb.passenger_adults + lb.passenger_children,
+                    'next_schedule_id': next_sched.id if next_sched else None,
+                    'next_departure': next_sched.departure_time if next_sched else None,
+                }
+        except Exception as e:
+            logger.warning("Last-trip lookup failed: %s", e)
+
     # --- Context ---
     context = {
         'bookings': displayed_schedules,
@@ -594,13 +694,50 @@ def homepage(request):
             'passengers': passengers
         },
         'weather_data': weather_data,
+        'featured_destinations': featured_destinations,
         'schedule_weather_data': schedule_weather_data,
         'next_departure': next_departure_info,
+        'hero_departures': hero_departures,
+        'last_trip': last_trip,
         'today': now.date(),
         'tile_error_url': '/static/images/tile-error.png'
     }
 
     return render(request, 'home.html', context)
+
+
+def _safe_next(request, param='next', fallback='bookings:booking_history'):
+    """Return a same-origin redirect target from the request, else `fallback`."""
+    candidate = request.GET.get(param) or request.POST.get(param) or ''
+    if candidate and url_has_allowed_host_and_scheme(
+        candidate, allowed_hosts={request.get_host()}, require_https=request.is_secure()
+    ):
+        return candidate
+    return reverse(fallback)
+
+
+@require_GET
+def guest_lookup(request):
+    """Let a guest reach their bookings by proving they own the booking email.
+
+    The page drives the existing OTP endpoints (api_send_otp / api_verify_otp);
+    a successful verification is what writes `session['guest_email']`, which is
+    the session flag every guest-visible view gates on. Nothing here trusts a
+    typed-in address on its own.
+    """
+    next_url = _safe_next(request)
+
+    if request.user.is_authenticated:
+        return redirect(next_url)
+
+    # Already verified this session — no reason to make them do it again, unless
+    # they explicitly asked to switch address (?switch=1). A successful OTP
+    # overwrites session['guest_email'], so nothing is cleared here: that keeps
+    # this GET free of side effects.
+    if request.session.get('guest_email') and not request.GET.get('switch'):
+        return redirect(next_url)
+
+    return render(request, 'bookings/guest_lookup.html', {'next': next_url})
 
 
 @login_required_allow_anonymous
@@ -611,17 +748,15 @@ def booking_history(request):
         f"session_keys={list(request.session.keys())}"
     )
 
-    if request.method == 'POST':
-        guest_email = request.POST.get('guest_email', '').strip()
-        if guest_email:
-            request.session['guest_email'] = guest_email
-            logger.debug(f"Set guest_email in session: {guest_email}")
-
+    # `guest_email` is only ever written server-side — after checkout, or by
+    # api_verify_otp once the guest proves ownership of the address. Never
+    # trust an address supplied directly by the request: doing so would let
+    # anyone list a stranger's bookings by typing their email.
     if request.user.is_authenticated:
         bookings = Booking.objects.filter(user=request.user).select_related('schedule__ferry', 'schedule__route').order_by('-booking_date')
     else:
         guest_email = request.session.get('guest_email')
-        bookings = Booking.objects.filter(guest_email=guest_email).select_related('schedule__ferry', 'schedule__route').order_by('-booking_date') if guest_email else []
+        bookings = Booking.objects.filter(guest_email__iexact=guest_email).select_related('schedule__ferry', 'schedule__route').order_by('-booking_date') if guest_email else []
 
     for booking in bookings:
         booking.update_status_if_expired()
@@ -630,7 +765,8 @@ def booking_history(request):
         'bookings': bookings,
         # Modifications close 24h before departure (cancellation has its own window).
         'cutoff_time': timezone.now() + datetime.timedelta(hours=24),
-        'is_guest': not request.user.is_authenticated
+        'is_guest': not request.user.is_authenticated,
+        'guest_email': request.session.get('guest_email') if not request.user.is_authenticated else None,
     })
 
 
@@ -1277,6 +1413,30 @@ def mock_payment(request, booking_id):
         messages.error(request, "This booking is no longer valid.")
         return redirect('bookings:booking_history')
 
+    # Paying a modification balance on an already-confirmed booking: charge the
+    # difference only, and don't re-run the booking confirmation.
+    purpose = (request.GET.get('purpose') or request.POST.get('purpose') or '').strip().lower()
+    if purpose == 'modification':
+        pending = _pending_modification(request, booking)
+        if not pending:
+            messages.info(request, "There's nothing left to pay on this booking.")
+            return redirect('bookings:view_tickets', booking_id=booking.id)
+
+        if request.method == 'POST':
+            reference = f"mod_{provider}_{uuid.uuid4().hex[:16]}"
+            record_modification_payment(booking, pending['amount'], provider, reference)
+            request.session.pop('modification', None)
+            messages.success(request, "Payment received — your updated tickets are ready.")
+            return redirect('bookings:view_tickets', booking_id=booking.id)
+
+        return render(request, 'bookings/mock_payment.html', {
+            'booking': booking,
+            'provider': provider,
+            'provider_label': provider_label,
+            'amount': pending['amount'],
+            'purpose': 'modification',
+        })
+
     if request.method == 'POST':
         # Demo gateway: accept any input. Generate a unique, human-readable reference.
         reference = f"mock_{provider}_{uuid.uuid4().hex[:16]}"
@@ -1495,10 +1655,18 @@ def book_ticket(request):
                     for day in week
                 ])
 
+            # Human-readable route for the journey summary bar.
+            selected_route = None
+            if route_id and str(route_id).isdigit():
+                selected_route = (Route.objects
+                                  .select_related('departure_port', 'destination_port')
+                                  .filter(pk=route_id).first())
+
             context = {
                 'schedules': available_schedules.order_by('departure_time'),
                 'calendar': calendar_days,
                 'selected_month': travel_date,
+                'selected_route': selected_route,
                 'today': timezone.now().date(),
                 'form_data': {
                     'route_id': route_id,                                # <-- expose route_id to template
@@ -2697,7 +2865,7 @@ Fiji Ferry Service Team
     <div class="footer">
       Please arrive 30–60 minutes early. Present QR code at check-in.<br>
       Need help? <a href="mailto:support@yourferryservice.com">support@yourferryservice.com</a> • +679-738-8496
-      <br><br>Vinaka vakSnack, and safe travels,<br><strong>Fiji Ferry Service Team</strong>
+      <br><br>Vinaka vakalevu, and safe travels,<br><strong>Fiji Ferry Service Team</strong>
     </div>
   </div>
 </div>
@@ -3002,95 +3170,464 @@ def stripe_webhook(request):
     return JsonResponse({'status': 'event not handled'})
 
 
-@login_required
+@login_required_allow_anonymous
 def modify_booking(request, booking_id):
-    booking = get_object_or_404(Booking, id=booking_id, user=request.user)
-    now = timezone.now()
+    """Change the passenger roster on a confirmed booking.
 
-    if booking.status != 'confirmed' or booking.schedule.departure_time <= now + datetime.timedelta(hours=24):
-        messages.error(request, "Bookings can't be modified within 24 hours of departure.")
+    The form submits the *desired roster* rather than bare counts: which existing
+    passengers to keep, plus full details for each added passenger. Counts are
+    derived from that roster, so the Booking's counters can never drift out of
+    step with its Passenger rows (the old version moved the counters and left the
+    rows untouched, so added passengers had no name, age, document or ticket).
+
+    Added adults/children need a name, age and ID document; added children and
+    infants must be linked to an adult travelling on the same booking — the same
+    rules the initial booking flow enforces.
+    """
+    booking = get_object_or_404(
+        Booking.objects.select_related('schedule__route', 'schedule__ferry'), id=booking_id
+    )
+    if not _user_can_view_booking(request, booking):
+        return HttpResponseForbidden("You are not authorized to modify this booking.")
+
+    now = timezone.now()
+    allowed, reason = modification.can_modify(booking, now)
+    if not allowed:
+        messages.error(request, reason)
         return redirect('bookings:booking_history')
 
-    form = ModifyBookingForm(request.POST or None, instance=booking)
-    if request.method == 'POST' and form.is_valid():
-        new_schedule = form.cleaned_data['schedule']
-        new_adults = form.cleaned_data['passenger_adults']
-        new_children = form.cleaned_data['passenger_children']
-        new_infants = form.cleaned_data['passenger_infants']
+    existing = list(booking.passengers.select_related('linked_adult').order_by('id'))
 
-        total_passengers = new_adults + new_children + new_infants
-        if total_passengers == 0:
-            messages.error(request, "At least one passenger is required.")
-            return render(request, 'bookings/modify_booking.html', {'form': form, 'booking': booking})
+    def _render(errors=None, form_state=None):
+        return render(request, 'bookings/modify_booking.html', {
+            'booking': booking,
+            'passengers': existing,
+            'existing_adults': [p for p in existing if p.passenger_type == 'adult'],
+            'errors': errors or [],
+            'form_state': form_state or {},
+            'modification_fee': modification.MODIFICATION_FEE,
+            'cutoff_hours': modification.MODIFY_CUTOFF_HOURS,
+            'deadline': modification.modify_deadline(booking),
+            'base_fare': booking.schedule.route.base_fare or Decimal('35.50'),
+            'available_seats': booking.schedule.available_seats,
+        })
 
-        old_total_price = booking.total_price
-        new_total_price = calculate_total_price(
-            new_adults, new_children, new_infants, new_schedule,
-            booking.cargo.exists(), booking.cargo.first().cargo_type if booking.cargo.exists() else None,
-            booking.cargo.first().weight_kg if booking.cargo.exists() else 0,
-            [{'type': addon.add_on_type, 'quantity': addon.quantity} for addon in booking.add_ons.all()]
-        )
+    if request.method != 'POST':
+        return _render()
 
-        # CON-1/LOG-4: move seats atomically under a row lock to prevent
-        # overbooking on the new schedule and lost updates on the old one.
-        old_schedule_id = booking.schedule_id
-        old_seats = (booking.passenger_adults + booking.passenger_children + booking.passenger_infants)
-        with transaction.atomic():
-            locked_new = Schedule.objects.select_for_update().get(pk=new_schedule.pk)
-            # If staying on the same schedule, the seats we are about to release count as available.
-            effective_available = locked_new.available_seats + (old_seats if old_schedule_id == new_schedule.pk else 0)
-            if effective_available < total_passengers:
-                messages.error(request, "Not enough seats available in the selected schedule.")
-                return render(request, 'bookings/modify_booking.html', {'form': form, 'booking': booking})
+    errors = []
 
-            if old_schedule_id:
-                Schedule.objects.filter(pk=old_schedule_id).update(
-                    available_seats=F('available_seats') + old_seats
-                )
-            Schedule.objects.filter(pk=new_schedule.pk).update(
-                available_seats=F('available_seats') - total_passengers
+    # --- Which existing passengers are being kept? ---
+    keep_ids = set()
+    for raw in request.POST.getlist('keep_passenger'):
+        if str(raw).isdigit():
+            keep_ids.add(int(raw))
+    kept = [p for p in existing if p.id in keep_ids]
+    removed = [p for p in existing if p.id not in keep_ids]
+
+    # --- Added passengers ---
+    added, add_errors = _collect_added_passengers(request)
+    errors.extend(add_errors)
+
+    kept_counts = {'adult': 0, 'child': 0, 'infant': 0}
+    for p in kept:
+        kept_counts[p.passenger_type] = kept_counts.get(p.passenger_type, 0) + 1
+    added_counts = {'adult': 0, 'child': 0, 'infant': 0}
+    for a in added:
+        added_counts[a['passenger_type']] += 1
+
+    adults = kept_counts['adult'] + added_counts['adult']
+    children = kept_counts['child'] + added_counts['child']
+    infants = kept_counts['infant'] + added_counts['infant']
+
+    errors.extend(modification.validate_counts(adults, children, infants))
+
+    # A kept child/infant whose responsible adult was removed would be orphaned.
+    kept_ids = {p.id for p in kept}
+    for p in kept:
+        if p.passenger_type in ('child', 'infant') and p.linked_adult_id and p.linked_adult_id not in kept_ids:
+            errors.append(
+                f"{p.get_full_name()} is linked to {p.linked_adult.get_full_name()}, "
+                "who you removed. Remove them too, or keep the adult."
             )
 
-            booking.schedule = new_schedule
-            booking.passenger_adults = new_adults
-            booking.passenger_children = new_children
-            booking.passenger_infants = new_infants
-            booking.total_price = new_total_price
-            booking.save()
+    if errors:
+        return _render(errors, request.POST)
 
-        price_difference = new_total_price - old_total_price
-        if price_difference > 0:
-            request.session['price_difference'] = str(price_difference)
-            request.session['booking_id'] = booking.id
-            messages.info(request, f"Booking modified. Additional payment of FJD {price_difference} required.")
-            return redirect('bookings:process_payment', booking_id=booking.id)
-        elif price_difference < 0:
-            try:
-                refund = stripe.Refund.create(
-                    payment_intent=booking.payment_intent_id,
-                    amount=int(abs(price_difference) * 100)
+    q = modification.quote(booking, adults, children, infants)
+    if not q['counts_changed']:
+        messages.info(request, "Nothing to change — the passenger list is the same.")
+        return redirect('bookings:booking_history')
+
+    try:
+        with transaction.atomic():
+            # Lock the schedule so a concurrent booking can't oversell the seats
+            # we are about to claim.
+            locked = Schedule.objects.select_for_update().get(pk=booking.schedule_id)
+            if q['seats_delta'] > 0 and locked.available_seats < q['seats_delta']:
+                raise _NotEnoughSeats(locked.available_seats)
+
+            if q['seats_delta']:
+                Schedule.objects.filter(pk=locked.pk).update(
+                    available_seats=F('available_seats') - q['seats_delta']
                 )
-                Payment.objects.create(
+
+            # Removing a Passenger cascades to its Ticket.
+            for p in removed:
+                p.delete()
+
+            # Create added adults first so dependents can point at them.
+            new_by_index = {}
+            for a in added:
+                if a['passenger_type'] != 'adult':
+                    continue
+                new_by_index[a['index_key']] = Passenger.objects.create(
                     booking=booking,
-                    payment_method='stripe',
-                    amount=price_difference,
-                    payment_status='refunded',
-                    transaction_id=refund.id
+                    first_name=a['first_name'],
+                    last_name=a['last_name'],
+                    age=a['age'],
+                    passenger_type='adult',
+                    document=a['document'],
                 )
-                logger.info(f"Refund processed for booking {booking.id}: amount={price_difference}")
-            except stripe.error.StripeError as e:
-                logger.error(f"Refund error for booking {booking.id}: {str(e)}")
-                messages.error(request, f"Refund processing failed: {str(e)}. Please contact support.")
-                return redirect('bookings:booking_history')
 
-        messages.success(request, "Booking modified successfully.")
+            for a in added:
+                if a['passenger_type'] == 'adult':
+                    continue
+                linked = _resolve_linked_adult(a['linked_adult'], kept_ids, new_by_index)
+                Passenger.objects.create(
+                    booking=booking,
+                    first_name=a['first_name'],
+                    last_name=a['last_name'],
+                    age=a['age'],
+                    date_of_birth=a['dob'],
+                    passenger_type=a['passenger_type'],
+                    document=a['document'],
+                    linked_adult=linked,
+                )
+
+            booking.passenger_adults = adults
+            booking.passenger_children = children
+            booking.passenger_infants = infants
+            booking.total_price = q['new_fare']
+            booking.save(update_fields=[
+                'passenger_adults', 'passenger_children', 'passenger_infants', 'total_price'
+            ])
+
+            # Issue tickets for anyone who doesn't have one yet. QR images are
+            # rendered on demand from qr_token, so no file work is needed here.
+            for p in booking.passengers.all():
+                Ticket.objects.get_or_create(
+                    booking=booking, passenger=p, defaults={'ticket_status': 'active'}
+                )
+    except _NotEnoughSeats as e:
+        errors.append(f"Only {e.available} seat(s) left on this sailing.")
+        return _render(errors, request.POST)
+
+    logger.info(
+        "Booking %s modified: %s adults/%s children/%s infants, fee=%s, net=%s",
+        booking.id, adults, children, infants, q['fee'], q['net'],
+    )
+
+    net = q['net']
+    if net > 0:
+        # Hand off to the same payment gateway the booking flow's step 4 uses, so
+        # the customer picks a method (card / ANZ / BSP / M-PAiSA / MyCash) and
+        # pays the difference, rather than the change being applied silently.
+        request.session['modification'] = {
+            'booking_id': booking.id,
+            'amount': str(net),
+            'fee': str(q['fee']),
+            'fare_difference': str(q['fare_difference']),
+        }
+        request.session['booking_id'] = booking.id
+        return redirect('bookings:modification_payment', booking_id=booking.id)
+
+    if net < 0:
+        _refund_modification(request, booking, abs(net))
+
+    messages.success(request, "Booking modified successfully.")
+    return redirect('bookings:view_tickets', booking_id=booking.id)
+
+
+def _pending_modification(request, booking):
+    """The modification awaiting payment for ``booking``, or None.
+
+    Read from the session rather than a request field so the amount can't be
+    tampered with between the modify screen and the gateway.
+    """
+    data = request.session.get('modification') or {}
+    if data.get('booking_id') != booking.id:
+        return None
+    try:
+        amount = Decimal(str(data['amount']))
+    except (KeyError, TypeError, ArithmeticError):
+        return None
+    if amount <= 0:
+        return None
+    return {
+        'amount': amount,
+        'fee': Decimal(str(data.get('fee') or '0')),
+        'fare_difference': Decimal(str(data.get('fare_difference') or '0')),
+    }
+
+
+@login_required_allow_anonymous
+def modification_payment(request, booking_id):
+    """Pay the balance owed after adding passengers to a booking.
+
+    Mirrors step 4 of the booking flow: the customer chooses a payment method
+    (card via Stripe, or one of the Fiji-local rails via the mock gateway) and
+    pays the difference — the change is never applied-and-forgotten without a
+    trip through a gateway.
+    """
+    booking = get_object_or_404(
+        Booking.objects.select_related('schedule__route'), id=booking_id
+    )
+    if not _user_can_view_booking(request, booking):
+        return HttpResponseForbidden("You are not authorized to pay for this booking.")
+
+    pending = _pending_modification(request, booking)
+    if not pending:
+        messages.info(request, "There's nothing left to pay on this booking.")
         return redirect('bookings:view_tickets', booking_id=booking.id)
 
-    return render(request, 'bookings/modify_booking.html', {
-        'form': form,
+    if request.method == 'POST':
+        provider = (request.POST.get('payment_method') or '').strip().lower()
+        if provider not in services.MOCK_PAYMENT_PROVIDERS:
+            messages.error(request, "Please choose a valid payment method.")
+            return redirect('bookings:modification_payment', booking_id=booking.id)
+
+        # Card goes to the real Stripe Checkout; the Fiji-local rails go to the
+        # same mock gateway screen the booking flow uses.
+        if provider == 'card':
+            try:
+                return redirect(_stripe_modification_session(request, booking, pending['amount']))
+            except stripe.error.StripeError as e:
+                logger.error("Stripe session failed for modification of booking %s: %s", booking.id, e)
+                messages.error(request, "We couldn't reach the card gateway. Please try another method.")
+                return redirect('bookings:modification_payment', booking_id=booking.id)
+
+        url = reverse('bookings:mock_payment', args=[booking.id])
+        return redirect(f"{url}?method={provider}&purpose=modification")
+
+    return render(request, 'bookings/modification_payment.html', {
         'booking': booking,
-        'cutoff_time': now + datetime.timedelta(hours=24)
+        'amount': pending['amount'],
+        'fee': pending['fee'],
+        'fare_difference': pending['fare_difference'],
+        'providers': services.MOCK_PAYMENT_PROVIDERS,
     })
+
+
+def _stripe_modification_session(request, booking, amount):
+    """Create a Stripe Checkout Session for a modification balance; return its URL."""
+    customer_email = booking.user.email if booking.user else booking.guest_email
+    session = stripe.checkout.Session.create(
+        payment_method_types=['card'],
+        line_items=[{
+            'price_data': {
+                'currency': 'fjd',
+                'product_data': {'name': f'Booking #{booking.id} — passenger change'},
+                'unit_amount': int(amount * 100),
+            },
+            'quantity': 1,
+        }],
+        mode='payment',
+        success_url=request.build_absolute_uri(
+            reverse('bookings:modification_success', args=[booking.id])
+        ) + '?session_id={CHECKOUT_SESSION_ID}',
+        cancel_url=request.build_absolute_uri(
+            reverse('bookings:modification_payment', args=[booking.id])
+        ),
+        metadata={'booking_id': str(booking.id), 'purpose': 'modification'},
+        customer_email=customer_email or None,
+    )
+    return session.url
+
+
+def record_modification_payment(booking, amount, method, reference):
+    """Record a settled modification balance, then email the updated tickets.
+
+    Idempotent on ``reference``: a replayed gateway callback neither double-charges
+    nor sends a second email.
+    """
+    payment, created = Payment.objects.get_or_create(
+        transaction_id=reference,
+        defaults={
+            'booking': booking,
+            'payment_method': 'stripe' if method == 'card' else 'local',
+            'amount': amount,
+            'payment_status': 'completed',
+        },
+    )
+
+    if created:
+        # Sent here rather than in each gateway branch so the card and the
+        # Fiji-local rails can't drift apart. The PDF is rendered from the live
+        # roster, so it already contains the added passengers' boarding passes.
+        try:
+            notifications.send_modification_confirmation_email(booking, amount)
+        except Exception:
+            logger.exception("Modification email failed for booking %s", booking.id)
+
+    return payment, created
+
+
+@login_required_allow_anonymous
+def modification_success(request, booking_id):
+    """Land here after the card gateway settles a modification balance."""
+    booking = get_object_or_404(Booking, id=booking_id)
+    if not _user_can_view_booking(request, booking):
+        return HttpResponseForbidden("You are not authorized to view this booking.")
+
+    reference = request.GET.get('session_id')
+    pending = _pending_modification(request, booking)
+
+    if pending and reference:
+        record_modification_payment(booking, pending['amount'], 'card', reference)
+        request.session.pop('modification', None)
+        messages.success(request, "Payment received — your updated tickets are ready.")
+    else:
+        messages.info(request, "Your booking is up to date.")
+
+    return redirect('bookings:view_tickets', booking_id=booking.id)
+
+
+class _NotEnoughSeats(Exception):
+    def __init__(self, available):
+        self.available = available
+        super().__init__(f"only {available} seats")
+
+
+def _resolve_linked_adult(token, kept_ids, new_by_index):
+    """Map a ``linked_adult`` form token onto a real Passenger row."""
+    if token.startswith('id:'):
+        try:
+            pk = int(token[3:])
+        except (TypeError, ValueError):
+            return None
+        return Passenger.objects.filter(pk=pk).first() if pk in kept_ids else None
+    if token.startswith('new:'):
+        return new_by_index.get(token[4:])
+    return None
+
+
+def _collect_added_passengers(request):
+    """Parse and validate the newly added passengers from the modify form.
+
+    Field names mirror the booking flow: ``new_<type>_<field>_<i>``. Returns
+    ``(passengers, errors)``; each carries an ``index_key`` so dependents can be
+    linked to added adults before those rows have primary keys.
+    """
+    added, errors = [], []
+
+    for p_type in ('adult', 'child', 'infant'):
+        try:
+            count = int(request.POST.get(f'new_{p_type}_count') or 0)
+        except (TypeError, ValueError):
+            count = 0
+        count = max(0, min(count, modification.MAX_PER_TYPE))
+
+        for i in range(count):
+            label = f"New {p_type} {i + 1}"
+
+            def g(field, _i=i, _t=p_type):
+                return (request.POST.get(f'new_{_t}_{field}_{_i}') or '').strip()
+
+            first_name, last_name = g('first_name'), g('last_name')
+            age_raw, dob_raw = g('age'), g('dob')
+            document = request.FILES.get(f'new_{p_type}_id_document_{i}')
+
+            if not first_name:
+                errors.append(f"{label}: first name is required.")
+            if not last_name:
+                errors.append(f"{label}: last name is required.")
+
+            age = None
+            if p_type in ('adult', 'child'):
+                if not document:
+                    errors.append(f"{label}: an ID document is required.")
+                else:
+                    # Reuses the booking flow's size/extension/magic-byte check,
+                    # so a renamed executable can't be stored as an "ID".
+                    try:
+                        _validate_id_document(document)
+                    except ValidationError as e:
+                        errors.append(f"{label}: {'; '.join(e.messages)}")
+
+                if not age_raw:
+                    errors.append(f"{label}: age is required.")
+                else:
+                    try:
+                        age = int(age_raw)
+                        if p_type == 'adult' and age < 18:
+                            errors.append(f"{label}: an adult must be 18 or older.")
+                        if p_type == 'child' and not (2 <= age <= 17):
+                            errors.append(f"{label}: a child must be aged 2-17.")
+                    except (TypeError, ValueError):
+                        errors.append(f"{label}: invalid age.")
+
+            dob = None
+            if p_type == 'infant':
+                if not dob_raw:
+                    errors.append(f"{label}: date of birth is required.")
+                else:
+                    try:
+                        dob = datetime.datetime.strptime(dob_raw, '%Y-%m-%d').date()
+                        if (datetime.date.today() - dob).days > 730:
+                            errors.append(f"{label}: an infant must be under 2 years old.")
+                    except ValueError:
+                        errors.append(f"{label}: invalid date of birth.")
+
+            linked = ''
+            if p_type in ('child', 'infant'):
+                linked = (request.POST.get(f'new_{p_type}_linked_adult_{i}') or '').strip()
+                if not linked:
+                    errors.append(f"{label}: must be linked to an adult.")
+
+            added.append({
+                'passenger_type': p_type,
+                'index_key': f'{p_type}:{i}',
+                'first_name': first_name,
+                'last_name': last_name,
+                'age': age,
+                'dob': dob,
+                'document': document,
+                'linked_adult': linked,
+            })
+
+    return added, errors
+
+
+def _refund_modification(request, booking, amount):
+    """Refund ``amount`` (a positive Decimal) for a downward modification."""
+    if not booking.payment_intent_id:
+        messages.warning(
+            request,
+            f"A refund of FJD {amount:.2f} is due. Our team will contact you to arrange it."
+        )
+        return
+    try:
+        refund = stripe.Refund.create(
+            payment_intent=booking.payment_intent_id,
+            amount=int(amount * 100),
+        )
+        Payment.objects.create(
+            booking=booking,
+            payment_method='stripe',
+            amount=-amount,
+            payment_status='refunded',
+            transaction_id=refund.id,
+        )
+        messages.success(request, f"A refund of FJD {amount:.2f} is on its way.")
+        logger.info("Refund processed for booking %s: amount=%s", booking.id, amount)
+    except stripe.error.StripeError as e:
+        logger.error("Refund error for booking %s: %s", booking.id, e)
+        messages.warning(
+            request,
+            f"Your booking was updated, but the FJD {amount:.2f} refund could not be "
+            "processed automatically. Please contact support."
+        )
 
 
 @login_required
@@ -3599,39 +4136,8 @@ def live_departures(request):
 def destinations(request):
     now = timezone.now()
 
-    PORT_IMAGES = {
-        'Nadi': 'https://images.unsplash.com/photo-1519046904884-53103b34b206?auto=format&fit=crop&w=800&q=80',
-        'Suva': 'https://images.unsplash.com/photo-1473042904451-00171c69419d?auto=format&fit=crop&w=800&q=80',
-        'Denarau': 'https://images.unsplash.com/photo-1559827260-dc66d52bef19?auto=format&fit=crop&w=800&q=80',
-        'Yasawa': 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=800&q=80',
-        'Lautoka': 'https://images.unsplash.com/photo-1586348943529-beaae6c28db9?auto=format&fit=crop&w=800&q=80',
-        'Savusavu': 'https://images.unsplash.com/photo-1565073624497-7144969d5c8f?auto=format&fit=crop&w=800&q=80',
-        'Labasa': 'https://images.unsplash.com/photo-1570168007204-dfb528c6958f?auto=format&fit=crop&w=800&q=80',
-        'Levuka': 'https://images.unsplash.com/photo-1534430480872-3498386e7856?auto=format&fit=crop&w=800&q=80',
-        'Natovi': 'https://images.unsplash.com/photo-1559827260-dc66d52bef19?auto=format&fit=crop&w=800&q=80',
-    }
-    PORT_TAGLINES = {
-        'Nadi': 'Western gateway',
-        'Suva': 'Capital city',
-        'Denarau': 'Luxury marina',
-        'Yasawa': 'Island paradise',
-        'Lautoka': 'Sugar city',
-        'Savusavu': 'Hidden gem',
-        'Labasa': 'Northern town',
-        'Levuka': 'Historic capital',
-        'Natovi': 'Northern hub',
-    }
-    PORT_DESCRIPTIONS = {
-        'Nadi': "Fiji's vibrant western gateway — world-class resorts, duty-free shopping, and the international airport.",
-        'Suva': "The capital city: colonial architecture, the finest museums, and a lively harbour waterfront.",
-        'Denarau': "Luxury marina island — the launch pad for the dazzling Mamanuca and Yasawa archipelagos.",
-        'Yasawa': "Remote paradise: impossible blues, pristine reefs, and authentic village encounters.",
-        'Lautoka': "Fiji's sugar city — rich agricultural heritage and the northern gateway to the Yasawas.",
-        'Savusavu': "Hidden gem of Vanua Levu: hot springs, world-class pearl farms, and calm yachting waters.",
-        'Labasa': "The friendly market town of Vanua Levu, heart of Fiji's Indo-Fijian community.",
-        'Levuka': "Fiji's historic first capital and UNESCO World Heritage Site — step back in time.",
-        'Natovi': "Northern hub on Viti Levu connecting inter-island crossings to Ovalau and beyond.",
-    }
+    # Editorial copy + real, licensed photography of each port.
+    from .destinations_data import port_media
 
     all_ports = list(Port.objects.all())
 
@@ -3658,14 +4164,13 @@ def destinations(request):
             .order_by('base_fare')[:6]
         )
 
-        key = port.name.split()[0]
+        media = port_media(port.name)
         destinations_data.append({
             'name': port.name,
-            'image': PORT_IMAGES.get(port.name, PORT_IMAGES.get(key,
-                'https://images.unsplash.com/photo-1559827260-dc66d52bef19?auto=format&fit=crop&w=800&q=80')),
-            'tagline': PORT_TAGLINES.get(port.name, PORT_TAGLINES.get(key, 'Fiji destination')),
-            'blurb': PORT_DESCRIPTIONS.get(port.name, PORT_DESCRIPTIONS.get(key,
-                'A beautiful Fijian destination accessible by ferry.')),
+            'image': media['image'],
+            'tagline': media['tagline'],
+            'blurb': media['blurb'],
+            'credit': media['credit'],
             'min_fare': min_fare,
             'route_count': len(routes_to),
             'next_departure': next_dep,
@@ -3819,3 +4324,122 @@ def assistant_api(request):
     result = chatbot.answer(message, user=request.user, context=context)
     request.session["chat_context"] = result.pop("context", {})
     return JsonResponse(result)
+
+
+# --------------------------------------------------------------------------- #
+# Waitlist + smart rebooking
+# --------------------------------------------------------------------------- #
+@require_POST
+def waitlist_join(request):
+    """Join the waitlist for a sold-out sailing. Guests welcome (email only)."""
+    from . import waitlist as waitlist_svc
+
+    schedule_id = request.POST.get('schedule_id')
+    email = (request.POST.get('email') or '').strip().lower()
+    seats = safe_int(request.POST.get('seats', 1)) or 1
+
+    if request.user.is_authenticated and not email:
+        email = (request.user.email or '').lower()
+    if not schedule_id or not EMAIL_RE.match(email or ''):
+        return JsonResponse({'ok': False, 'error': 'A valid email address is required.'}, status=400)
+    if not 1 <= seats <= 20:
+        return JsonResponse({'ok': False, 'error': 'Seats must be between 1 and 20.'}, status=400)
+
+    schedule = Schedule.objects.filter(
+        pk=schedule_id, status='scheduled', departure_time__gt=timezone.now()
+    ).first()
+    if not schedule:
+        return JsonResponse({'ok': False, 'error': 'This sailing is no longer accepting waitlist entries.'}, status=400)
+    if schedule.available_seats >= seats:
+        return JsonResponse({
+            'ok': False,
+            'error': 'Seats are currently available — you can book right now.',
+            'book_url': f"{reverse('bookings:book_ticket')}?schedule_id={schedule.id}&passengers={seats}",
+        }, status=409)
+
+    entry, created = waitlist_svc.join_waitlist(schedule, email, seats, user=request.user)
+    return JsonResponse({
+        'ok': True,
+        'created': created,
+        'message': (
+            "You're on the waitlist! We'll email you the moment seats open up."
+            if created else
+            "You're already on the waitlist for this sailing — we'll email you when seats open up."
+        ),
+    })
+
+
+@require_GET
+def waitlist_leave(request, token):
+    """One-click unsubscribe from a waitlist (link in the offer email)."""
+    from . import waitlist as waitlist_svc
+
+    entry = waitlist_svc.leave_waitlist(token)
+    return render(request, 'bookings/waitlist_status.html', {
+        'entry': entry,
+        'found': entry is not None,
+    })
+
+
+def rebook_oneclick(request, token):
+    """Free one-click move of a booking to the alternative sailing offered in a
+    cancellation email. GET shows a confirmation, POST performs the move."""
+    from django.core import signing
+    from . import waitlist as waitlist_svc
+
+    try:
+        data = waitlist_svc.read_rebook_token(token)
+    except signing.SignatureExpired:
+        return render(request, 'bookings/rebook_confirm.html', {'state': 'expired'}, status=410)
+    except signing.BadSignature:
+        return render(request, 'bookings/rebook_confirm.html', {'state': 'invalid'}, status=404)
+
+    booking = Booking.objects.filter(pk=data.get('b')).select_related(
+        'schedule__route__departure_port', 'schedule__route__destination_port', 'schedule__ferry'
+    ).first()
+    new_schedule = Schedule.objects.filter(pk=data.get('s')).select_related(
+        'ferry', 'route__departure_port', 'route__destination_port'
+    ).first()
+
+    if not booking or not new_schedule:
+        return render(request, 'bookings/rebook_confirm.html', {'state': 'invalid'}, status=404)
+    if booking.schedule_id == new_schedule.pk:
+        return render(request, 'bookings/rebook_confirm.html',
+                      {'state': 'done', 'booking': booking, 'new_schedule': new_schedule})
+    if booking.status == 'cancelled':
+        return render(request, 'bookings/rebook_confirm.html', {'state': 'booking_cancelled'}, status=410)
+    if new_schedule.status != 'scheduled' or new_schedule.departure_time <= timezone.now():
+        return render(request, 'bookings/rebook_confirm.html', {'state': 'gone'}, status=410)
+
+    if request.method == 'POST':
+        try:
+            booking, _old = services.rebook_booking(booking.pk, new_schedule.pk, moved_by='customer-oneclick')
+        except ValueError as exc:
+            return render(request, 'bookings/rebook_confirm.html',
+                          {'state': 'no_room', 'error': str(exc)}, status=409)
+        notifications.send_modification_confirmation_email(booking)
+        return render(request, 'bookings/rebook_confirm.html',
+                      {'state': 'done', 'booking': booking, 'new_schedule': new_schedule})
+
+    return render(request, 'bookings/rebook_confirm.html', {
+        'state': 'confirm',
+        'booking': booking,
+        'new_schedule': new_schedule,
+        'token': token,
+    })
+
+
+# --------------------------------------------------------------------------- #
+# PWA: service worker + offline fallback
+# --------------------------------------------------------------------------- #
+def service_worker(request):
+    """Serve the service worker from the site root so its scope covers '/'."""
+    response = render(request, 'sw.js', content_type='application/javascript')
+    response['Service-Worker-Allowed'] = '/'
+    # Always revalidate so SW updates roll out promptly.
+    response['Cache-Control'] = 'no-cache'
+    return response
+
+
+def offline_page(request):
+    return render(request, 'offline.html')

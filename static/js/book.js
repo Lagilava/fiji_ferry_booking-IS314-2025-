@@ -301,23 +301,17 @@
     const css = document.createElement('style');
     css.id = 'ffb-anim-css';
     css.textContent = `
+      /* NOTE: deliberately no --primary/--border/--text-* tokens here.
+         This sheet is appended to <head> at runtime, so anything it
+         declares overrides the page theme — it used to force the whole
+         booking flow blue. Brand tokens live in base.html / book.html. */
       :root {
         --surface: #ffffff;
         --surface-muted: #f8fafc;
-        --border: #e5e7eb;
-        --text-primary: #0f172a;
-        --text-secondary: #475569;
-        --primary: #2563eb;
-        --gradient-primary: linear-gradient(90deg, #2563eb, #0ea5e9);
       }
       html.dark,:root[data-theme="dark"],.dark {
         --surface: #0b1220;
         --surface-muted: #0f172a;
-        --border: #1f2a44;
-        --text-primary: #e5e7eb;
-        --text-secondary: #a3b0c2;
-        --primary: #60a5fa;
-        --gradient-primary: linear-gradient(90deg, #2563eb, #22d3ee);
       }
 
       /* SCHEDULE SELECT shimmer on refresh */
@@ -864,11 +858,41 @@
     return { adults, children, infants };
   }
 
+  // The counter badge (span) and +/- disabled state are separate DOM from
+  // the hidden number input they represent — book.html's click handler keeps
+  // them in sync on manual +/-, but any programmatic value change (restoring
+  // a saved session, a preselected schedule) bypasses that handler entirely.
+  // Without this, the badge can show a stale count while the passenger cards
+  // below (built from the real input value) show the true, larger count.
+  function syncPassengerCounterUI() {
+    const displayIds = {
+      passenger_adults: 'adults-display',
+      passenger_children: 'children-display',
+      passenger_infants: 'infants-display'
+    };
+    [adultCountInput, childCountInput, infantCountInput].forEach(input => {
+      if (!input) return;
+      const val = Number(input.value || 0);
+      const min = Number(input.getAttribute('min') || 0);
+      const max = Number(input.getAttribute('max') || 99);
+      const dispEl = document.getElementById(displayIds[input.id]);
+      if (dispEl) dispEl.textContent = String(val);
+      const group = input.closest('.counter-group');
+      if (group) {
+        const dec = group.querySelector('[data-action="dec"]');
+        const inc = group.querySelector('[data-action="inc"]');
+        if (dec) dec.disabled = (val <= min);
+        if (inc) inc.disabled = (val >= max);
+      }
+    });
+  }
+
   function updatePassengerFields() {
     console.log('Updating passenger fields...');
     const { adults, children, infants } = getCounts();
     console.log('Passenger counts:', { adults, children, infants });
 
+    syncPassengerCounterUI();
     renderPassengerCards('adult', adults, adultFieldsWrap);
     renderPassengerCards('child', children, childFieldsWrap);
     renderPassengerCards('infant', infants, infantFieldsWrap);

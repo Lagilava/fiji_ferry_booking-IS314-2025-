@@ -825,9 +825,12 @@
         <i class="fas fa-exclamation-triangle"></i> Session
       </div>
       <p>Signing out will end your current session. You can sign back in any time.</p>
-      <a href="{% url 'accounts:logout' %}" class="btn-signout">
-        <i class="fas fa-sign-out-alt"></i> Sign out
-      </a>
+      <form method="post" action="{% url 'accounts:logout' %}" style="margin:0;">
+        {% csrf_token %}
+        <button type="submit" class="btn-signout">
+          <i class="fas fa-sign-out-alt"></i> Sign out
+        </button>
+      </form>
     </div>
   </div>
 

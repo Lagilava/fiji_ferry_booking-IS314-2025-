@@ -62,9 +62,11 @@ CELERY_BEAT_SCHEDULE = {
         'schedule': crontab(minute='*/10'),
     },
     # Keep weather fresh for active routes (free Open-Meteo provider).
+    # Poll ahead of the 15-minute row TTL so readings never lapse. Open-Meteo is
+    # keyless and quota-free, so a tighter cadence costs nothing.
     'refresh-weather': {
         'task': 'bookings.tasks.refresh_weather',
-        'schedule': crontab(minute='*/20'),
+        'schedule': crontab(minute='*/10'),
     },
     # Flag upcoming sailings for staff review when weather turns dangerous.
     'evaluate-weather-holds': {

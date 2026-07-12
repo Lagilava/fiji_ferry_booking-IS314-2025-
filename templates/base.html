@@ -1,7 +1,16 @@
-{% load static %}
+{% load static %}<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <script>
+        // Apply the saved theme before first paint so navigating between pages
+        // never flashes light chrome at a dark-mode user.
+        (function () {
+            var t = 'light';
+            try { t = localStorage.getItem('theme') || 'light'; } catch (e) {}
+            document.documentElement.setAttribute('data-theme', t);
+        })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Book your Fiji ferry tickets for a seamless island adventure. Discover stunning routes between Nadi, Denarau, and the Yasawa Islands.">
     <meta name="keywords" content="Fiji, ferry, booking, travel, Yasawa Islands, Nadi, Denarau, tropical adventure, island hopping">
@@ -10,6 +19,13 @@
 
     <!-- Favicon -->
     <link rel="icon" type="image/png" href="{% static 'favicon.png' %}">
+
+    <!-- PWA -->
+    <link rel="manifest" href="{% static 'manifest.webmanifest' %}">
+    <meta name="theme-color" content="#10B981">
+    <link rel="apple-touch-icon" href="{% static 'apple-touch-icon.png' %}">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Fiji Ferry">
 
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -76,8 +92,8 @@
         --gradient-navbar: linear-gradient(to left, #ffffff 0%, #22aec2 100%);
 
     }
-    /* Light theme (default on body) */
-    body[data-theme="light"] {
+    /* Light theme (data-theme lives on <html>) */
+    [data-theme="light"] body {
         background-image: url("https://plus.unsplash.com/premium_photo-light-theme.jpg");
         background-size: cover;
         background-position: center;
@@ -85,8 +101,8 @@
 
     }
 
-    /* Dark theme (on body) */
-    body[data-theme="dark"] {
+    /* Dark theme (data-theme lives on <html>) */
+    [data-theme="dark"] body {
         background-image: url("https://wallpaperaccess.com/full/2340155.jpg");
         background-size: cover;
         background-position: center;
@@ -1322,7 +1338,7 @@
 
     {% block extra_css %}{% endblock %}
 </head>
-<body data-theme="light">
+<body>
     <!-- 🔔 GLOBAL TOAST REGION (unified notifications, all pages) -->
     <div class="toast-region" id="toast-region" role="region" aria-label="Notifications" aria-live="polite"></div>
 
@@ -1395,6 +1411,12 @@
                     </li>
                 {% else %}
                     <li class="nav-item">
+                        <a href="{% url 'bookings:guest_lookup' %}" class="nav-link {% if request.resolver_match.url_name == 'guest_lookup' %}active{% endif %}" data-nav-link>
+                            <i class="fas fa-ticket-alt"></i>
+                            <span>Find My Booking</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a href="{% url 'accounts:login' %}" class="nav-link" data-nav-link>
                             <i class="fas fa-sign-in-alt"></i>
                             <span>Login</span>
@@ -1436,12 +1458,13 @@
             <i class="fas fa-times"></i>
         </button>
         <nav class="mobile-nav">
-            <a href="{% url 'home' %}" class="nav-link"><i class="fas fa-home"></i><span>Home</span></a>
-            <a href="{% url 'bookings:book_ticket' %}" class="nav-link"><i class="fas fa-ship"></i><span>Book Now</span></a>
-            <a href="{% url 'bookings:live_departures' %}" class="nav-link"><i class="fas fa-clock"></i><span>Live Departures</span></a>
-            <a href="{% url 'bookings:destinations' %}" class="nav-link"><i class="fas fa-map-marked-alt"></i><span>Destinations</span></a>
+            {% with nav=request.resolver_match.url_name %}
+            <a href="{% url 'home' %}" class="nav-link {% if nav == 'home' %}active{% endif %}" {% if nav == 'home' %}aria-current="page"{% endif %}><i class="fas fa-home"></i><span>Home</span></a>
+            <a href="{% url 'bookings:book_ticket' %}" class="nav-link {% if nav == 'book_ticket' %}active{% endif %}" {% if nav == 'book_ticket' %}aria-current="page"{% endif %}><i class="fas fa-ship"></i><span>Book Now</span></a>
+            <a href="{% url 'bookings:live_departures' %}" class="nav-link {% if nav == 'live_departures' %}active{% endif %}" {% if nav == 'live_departures' %}aria-current="page"{% endif %}><i class="fas fa-clock"></i><span>Live Departures</span></a>
+            <a href="{% url 'bookings:destinations' %}" class="nav-link {% if nav == 'destinations' %}active{% endif %}" {% if nav == 'destinations' %}aria-current="page"{% endif %}><i class="fas fa-map-marked-alt"></i><span>Destinations</span></a>
             {% if user.is_authenticated %}
-                <a href="{% url 'bookings:booking_history' %}" class="nav-link"><i class="fas fa-ticket-alt"></i><span>My Bookings</span></a>
+                <a href="{% url 'bookings:booking_history' %}" class="nav-link {% if nav == 'booking_history' %}active{% endif %}"><i class="fas fa-ticket-alt"></i><span>My Bookings</span></a>
                 <a href="{% url 'bookings:profile' %}" class="nav-link"><i class="fas fa-user-cog"></i><span>Profile Settings</span></a>
                 <form method="post" action="{% url 'accounts:logout' %}" style="margin:0;">
                     {% csrf_token %}
@@ -1450,9 +1473,11 @@
                     </button>
                 </form>
             {% else %}
+                <a href="{% url 'bookings:guest_lookup' %}" class="nav-link {% if nav == 'guest_lookup' %}active{% endif %}"><i class="fas fa-ticket-alt"></i><span>Find My Booking</span></a>
                 <a href="{% url 'accounts:login' %}" class="nav-link"><i class="fas fa-sign-in-alt"></i><span>Login</span></a>
                 <a href="{% url 'accounts:register' %}" class="nav-link"><i class="fas fa-user-plus"></i><span>Get Started</span></a>
             {% endif %}
+            {% endwith %}
         </nav>
     </aside>
 
@@ -1496,9 +1521,10 @@
                     <h3>Quick Links</h3>
                     <a href="{% url 'home' %}" data-footer-link>Home</a>
                     <a href="{% url 'bookings:book_ticket' %}" data-footer-link>Book Tickets</a>
-                    <a href="{% url 'bookings:privacy_policy' %}" data-footer-link>Privacy Policy</a>
-                    <a href="#" data-footer-link>Terms of Service</a>
-                    <a href="#" data-footer-link>FAQ</a>
+                    <a href="{% url 'bookings:live_departures' %}" data-footer-link>Live Departures</a>
+                    <a href="{% url 'bookings:destinations' %}" data-footer-link>Destinations</a>
+                    <a href="{% url 'privacy_policy' %}" data-footer-link>Privacy Policy</a>
+                    <a href="{% url 'terms_of_service' %}" data-footer-link>Terms of Service</a>
                 </div>
 
                 <!-- Contact Info -->
@@ -1586,8 +1612,11 @@
                 hamburger.setAttribute('aria-expanded', 'true');
                 mobileMenu.setAttribute('aria-hidden', 'false');
                 document.body.style.overflow = 'hidden';
+                // Move focus into the drawer so keyboard/screen-reader users land there.
+                const first = mobileMenu.querySelector('a, button');
+                first && first.focus();
             }
-            function closeMobileMenu() {
+            function closeMobileMenu(restoreFocus) {
                 if (!mobileMenu) return;
                 mobileBackdrop.classList.remove('open');
                 mobileMenu.classList.remove('open');
@@ -1595,20 +1624,54 @@
                 hamburger.setAttribute('aria-expanded', 'false');
                 mobileMenu.setAttribute('aria-hidden', 'true');
                 document.body.style.overflow = '';
+                if (restoreFocus) hamburger.focus();
                 setTimeout(() => { mobileBackdrop.hidden = true; }, 300);
             }
 
             if (hamburger && mobileMenu) {
                 hamburger.addEventListener('click', () => {
-                    mobileMenu.classList.contains('open') ? closeMobileMenu() : openMobileMenu();
+                    mobileMenu.classList.contains('open') ? closeMobileMenu(true) : openMobileMenu();
                 });
-                mobileClose && mobileClose.addEventListener('click', closeMobileMenu);
-                mobileBackdrop && mobileBackdrop.addEventListener('click', closeMobileMenu);
-                mobileMenu.querySelectorAll('a').forEach(a => a.addEventListener('click', closeMobileMenu));
+                mobileClose && mobileClose.addEventListener('click', () => closeMobileMenu(true));
+                mobileBackdrop && mobileBackdrop.addEventListener('click', () => closeMobileMenu(true));
+                // Any nav target (links and the logout submit) dismisses the drawer.
+                mobileMenu.querySelectorAll('a, button[type="submit"]').forEach(el =>
+                    el.addEventListener('click', () => closeMobileMenu(false))
+                );
                 document.addEventListener('keydown', (e) => {
-                    if (e.key === 'Escape' && mobileMenu.classList.contains('open')) closeMobileMenu();
+                    if (e.key === 'Escape' && mobileMenu.classList.contains('open')) closeMobileMenu(true);
+                });
+                // Keep state sane if the viewport grows past the mobile breakpoint.
+                window.addEventListener('resize', () => {
+                    if (window.innerWidth > 768 && mobileMenu.classList.contains('open')) closeMobileMenu(false);
                 });
             }
+
+            // Account dropdown: click/keyboard toggle. CSS only opens it on
+            // hover, which strands touch-tablet and keyboard users (>768px sees
+            // no hamburger, so this is their only route to Profile/Logout).
+            document.querySelectorAll('[data-dropdown-toggle]').forEach((btn) => {
+                const parent = btn.closest('.dropdown');
+                if (!parent) return;
+                const setOpen = (open) => {
+                    parent.classList.toggle('open', open);
+                    btn.setAttribute('aria-expanded', String(open));
+                };
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setOpen(!parent.classList.contains('open'));
+                });
+                document.addEventListener('click', (e) => {
+                    if (!parent.contains(e.target)) setOpen(false);
+                });
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape' && parent.classList.contains('open')) {
+                        setOpen(false);
+                        btn.focus();
+                    }
+                });
+            });
 
             // ============================================================
             // UNIFIED TOAST SYSTEM  (window.Toast / window.notify)
@@ -1758,5 +1821,16 @@
     {% include "_chat_widget.html" %}
 
     {% block extra_js %}{% endblock %}
+
+    <!-- PWA: register the service worker (offline boarding passes) -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function () {
+                navigator.serviceWorker.register('/sw.js').catch(function (err) {
+                    console.warn('Service worker registration failed:', err);
+                });
+            });
+        }
+    </script>
 </body>
 </html>

@@ -23,7 +23,8 @@ from django.utils.html import escape
 DEFAULT_SUGGESTIONS = [
     "How do I book a ticket?",
     "Show me the next departures",
-    "What routes do you have?",
+    "How do I change my booking?",
+    "What documents do I need?",
     "How do I cancel or get a refund?",
 ]
 
@@ -49,9 +50,74 @@ SYNONYMS = {
     "kids": "child", "kid": "child", "toddler": "child", "baby": "infant",
     "auto": "car", "automobile": "car", "motorcycle": "motorbike",
     "timetable": "schedule", "timings": "schedule", "times": "schedule",
-    "fee": "fare", "fees": "fare", "charge": "fare", "cost": "fare",
     "tix": "ticket", "reservation": "booking", "buy": "book",
+    "cancelling": "cancel", "canceling": "cancel", "cancelled": "cancel",
+    "amend": "modify", "amending": "modify", "amendment": "modify",
+    "alter": "modify", "update": "modify", "modifying": "modify",
+    "ute": "car", "van": "car", "vehicle": "car",
+    "passport": "document", "id": "document", "identification": "document",
+    "birthdate": "dob", "birthday": "dob",
+    "wheelchair": "accessibility", "disabled": "accessibility",
+    "storm": "weather", "cyclone": "weather", "rain": "weather",
+    "otp": "code", "pin": "code",
 }
+
+# NOTE: "fee"/"cost"/"charge" are deliberately NOT folded into "fare" — the
+# change fee and the ticket fare are different things, and collapsing them made
+# "what is the change fee?" answer with the fare table.
+
+
+# --------------------------------------------------------------------------- #
+# Safety: the assistant is public and unauthenticated. It must never describe
+# internals, and must never be talked into acting as a general-purpose bot.
+# --------------------------------------------------------------------------- #
+_PROBE_PATTERNS = [
+    # Internals. Note "password" alone is NOT here — "I forgot my password" is a
+    # perfectly ordinary question that the `account` intent should answer.
+    r"\b(admin|superuser|staff)\s*(panel|page|login|url|dashboard|account|password)",
+    r"\b(database|sql|orm|schema|migration)\b",
+    r"\b(source code|codebase|repo|repository|github|settings\.py|views\.py|\.env)\b",
+    r"\b(api[_ ]?key|secret[_ ]?key|access[_ ]?token|credential)s?\b",
+    r"\b(stripe|webhook)\s*(key|secret|endpoint)",
+    r"\b(sql injection|xss|csrf|exploit|vulnerab|bypass|penetration test)",
+    # Prompt-injection style redirection.
+    r"\b(ignore|disregard|forget)\s+(all\s+)?(your\s+|the\s+)?(previous\s+)?(instruction|rule|prompt)",
+    r"\byou are now\b|\bpretend to be\b|\bsystem prompt\b",
+    # Other people's data. Scoped tightly so "make another booking" is fine.
+    r"\b(someone|somebody|anyone)\s*(else)?('s)?\s+(booking|ticket|account|email|detail)",
+    r"\b(another|other)\s+(person|customer|passenger|user)('s)?\s+(booking|ticket|account)",
+    r"\b(all|every|list\s+the)\s+(bookings|customers|users|passengers|emails)\b",
+    r"\bshow me\s+(the\s+)?(all\s+)?(users|customers|bookings|passengers)\b",
+]
+
+_PROBE_RE = re.compile("|".join(_PROBE_PATTERNS), re.IGNORECASE)
+
+SAFETY_REPLY = (
+    "I can only help with travel questions — booking, fares, schedules, "
+    "luggage, and managing your own bookings. I can't share anything about how "
+    "the system is built, or look up anyone else's booking. If you need account "
+    "help, our team can verify your identity: "
+    "<a href=\"mailto:info@fijiferrybooking.com\">info@fijiferrybooking.com</a> "
+    "or +679 738 8496."
+)
+
+
+def is_unsafe(raw_text):
+    """True when the message probes internals or asks for someone else's data.
+
+    Checked against the *raw* text (before synonym folding), so obfuscation via
+    the normalizer can't slip past it.
+    """
+    return bool(_PROBE_RE.search(raw_text or ""))
+
+
+def _policy():
+    """Live policy numbers, so the bot can never quote a stale fee or window."""
+    try:
+        from .modification import MODIFICATION_FEE, MODIFY_CUTOFF_HOURS
+        return {"fee": f"{MODIFICATION_FEE:.2f}", "modify_hours": MODIFY_CUTOFF_HOURS}
+    except Exception:
+        return {"fee": "15.00", "modify_hours": 24}
 
 
 # --------------------------------------------------------------------------- #
@@ -298,6 +364,51 @@ def live_my_bookings(ctx):
 
 # Each intent: keywords (weighted by specificity), an answer, follow-up chips,
 # and optionally a `handler` that returns a live reply (or None to fall back).
+def live_modify_policy(ctx):
+    """Explain the modification rules using the live constants from modification.py."""
+    p = _policy()
+    return (
+        "Open <a href=\"/bookings/history/\">My Bookings</a> → select the booking → "
+        "<em>Modify</em>. You can <strong>add or remove passengers</strong> there.<br><br>"
+        f"• Changes close <strong>{p['modify_hours']} hours</strong> before departure.<br>"
+        f"• A flat <strong>FJ${p['fee']}</strong> change fee applies whenever the "
+        "passenger list changes, on top of the fare difference.<br>"
+        "• Each <strong>added adult or child</strong> needs a full name, age and a "
+        "photo ID document; <strong>infants</strong> need a date of birth.<br>"
+        "• Children and infants must be linked to an adult on the booking.<br>"
+        "• Removing passengers refunds the fare drop (the fee still applies).<br><br>"
+        "The exact amount is shown before you confirm, and new e-tickets are issued "
+        "automatically."
+    )
+
+
+def live_modify_fee(ctx):
+    p = _policy()
+    return (
+        f"Changing the passenger list costs a flat <strong>FJ${p['fee']}</strong> "
+        "change fee, plus the difference in fare.<br><br>"
+        "• <strong>Adding</strong> someone: you pay the fee + their fare.<br>"
+        "• <strong>Removing</strong> someone: you pay the fee, and their fare is "
+        "refunded to your original payment method — so you may end up net refunded.<br><br>"
+        f"Changes must be made at least <strong>{p['modify_hours']} hours</strong> before "
+        "departure. You'll see the exact figure on the "
+        "<a href=\"/bookings/history/\">Modify</a> screen before confirming anything."
+    )
+
+
+def live_cancel_policy(ctx):
+    return (
+        "Open <a href=\"/bookings/history/\">My Bookings</a>, select the booking and "
+        "choose <em>Cancel</em>.<br><br>"
+        "• Cancellations close <strong>6 hours</strong> before departure.<br>"
+        "• Your refund returns to the original payment method.<br>"
+        "• Your seats are released straight away for other travellers.<br><br>"
+        "Only want to change who's travelling? That's a "
+        "<em>modification</em> rather than a cancellation — cheaper, and allowed up "
+        f"to {_policy()['modify_hours']} hours before departure."
+    )
+
+
 INTENTS = [
     {
         "name": "my_bookings",
@@ -362,27 +473,156 @@ INTENTS = [
     {
         "name": "cancel_refund",
         "keywords": ["cancel", "cancellation", "refund", "money back", "change my mind"],
+        "handler": live_cancel_policy,
         "answer": (
             "To cancel: open <a href=\"/bookings/history/\">My Bookings</a>, "
-            "select the booking, and choose <em>Cancel</em>. Any refund is "
-            "calculated according to the cancellation policy shown on your "
-            "ticket (it depends on how close to departure you cancel). Confirmed "
-            "refunds are returned to your original payment method."
+            "select the booking, and choose <em>Cancel</em>. Cancellations close "
+            "<strong>6 hours</strong> before departure — after that, please "
+            "contact our team. Refunds go back to your original payment method, "
+            "and your seats are released automatically."
         ),
-        "suggestions": ["How do I change my booking?", "Where are my tickets?"],
+        "suggestions": ["How do I change my booking?", "What is the change fee?"],
     },
     {
         "name": "modify",
-        "keywords": ["modify", "change my booking", "reschedule", "change date",
-                     "change time", "edit booking", "different ferry"],
+        # Phrases score higher than bare words, so "add another passenger to my
+        # booking" must out-score the `my_bookings` intent's "my booking".
+        "keywords": ["modify", "change my booking", "edit booking",
+                     "add a passenger", "add passenger", "add another passenger",
+                     "another passenger", "extra passenger", "add someone",
+                     "remove a passenger", "remove passenger", "remove someone",
+                     "passenger to my booking", "more people", "fewer people",
+                     "join the trip", "coming too", "dropped out", "pulled out",
+                     "no longer coming", "cant come", "one less", "one more person"],
+        "handler": live_modify_policy,
         "answer": (
-            "You can change an upcoming booking from "
-            "<a href=\"/bookings/history/\">My Bookings</a> → select it → "
-            "<em>Modify</em>. You can update the departure or passenger details "
-            "subject to seat availability on the new sailing. Any price "
-            "difference is shown before you confirm."
+            "Open <a href=\"/bookings/history/\">My Bookings</a> → select the "
+            "booking → <em>Modify</em> to add or remove passengers."
         ),
-        "suggestions": ["How do I cancel or get a refund?", "Show me the next departures"],
+        "suggestions": ["What is the change fee?", "What documents do I need?",
+                        "How do I cancel or get a refund?"],
+    },
+    {
+        "name": "modify_fee",
+        "keywords": ["change fee", "modification fee", "admin fee", "amendment fee",
+                     "surcharge", "cost to change", "charge to change", "fee to modify",
+                     "how much to change", "how much to add a passenger"],
+        "handler": live_modify_fee,
+        "answer": (
+            "Changing the passenger list costs a flat change fee, plus (or minus) "
+            "the difference in fare. Reducing passengers still pays the fee, and "
+            "the fare drop is refunded to your original payment method."
+        ),
+        "suggestions": ["How do I change my booking?", "How much do tickets cost?"],
+    },
+    {
+        "name": "modify_deadline",
+        "keywords": ["deadline to change", "too late to change", "when can i change",
+                     "last minute change", "cutoff", "cut off"],
+        "handler": live_modify_policy,
+        "answer": (
+            "Changes close 24 hours before departure, and cancellations 6 hours "
+            "before. Inside those windows the booking is locked so the manifest "
+            "and document checks can be finalised — contact our team if you're stuck."
+        ),
+        "suggestions": ["How do I change my booking?", "How do I cancel or get a refund?"],
+    },
+    {
+        "name": "documents",
+        "keywords": ["document", "documents", "what id", "photo id", "upload",
+                     "file type", "pdf", "jpg", "png", "file size", "proof of age"],
+        "answer": (
+            "Every <strong>adult</strong> and <strong>child</strong> needs a photo "
+            "ID document uploaded with the booking — a <strong>PDF, JPG or PNG</strong>, "
+            "up to <strong>2.5&nbsp;MB</strong>. Adults also need an age, children an "
+            "age between 2 and 17. <strong>Infants</strong> (under 2) need a date of "
+            "birth instead of a document. The same rules apply when you add a "
+            "passenger to an existing booking. Documents are checked by staff before "
+            "boarding."
+        ),
+        "suggestions": ["How do I change my booking?", "Do children need a ticket?"],
+    },
+    {
+        "name": "guest_lookup",
+        # "code" alone is too generic — it stole "scan the code at the gate" from
+        # ticket_checkin. Likewise a bare "email" belongs to `contact`.
+        "keywords": ["find my booking", "lost my ticket", "lost booking",
+                     "booked as a guest", "guest booking", "cant find my ticket",
+                     "didnt get my ticket", "no account booking", "verification code",
+                     "verify my email", "confirmation email", "never got",
+                     "didnt receive", "did not receive", "resend"],
+        "answer": (
+            "If you booked as a guest, use "
+            "<a href=\"/bookings/find-booking/\">Find My Booking</a>. Enter the email "
+            "you booked with and we'll send a <strong>6-digit code</strong>; entering "
+            "it opens your bookings and tickets. The code proves the email is yours — "
+            "we never show a booking to anyone who hasn't verified that address. "
+            "Codes expire after a few minutes; just request a new one."
+        ),
+        "suggestions": ["Where are my tickets?", "Create an account"],
+    },
+    {
+        "name": "accessibility",
+        "keywords": ["accessibility", "wheelchair", "mobility", "assistance",
+                     "special needs", "elderly", "pregnant"],
+        "answer": (
+            "We want everyone aboard comfortably. Please tell us before you travel "
+            "so we can arrange boarding assistance and suitable seating — "
+            "<a href=\"mailto:info@fijiferrybooking.com\">info@fijiferrybooking.com</a> "
+            "or +679 738 8496. Let staff at the terminal know when you arrive and "
+            "they'll help you board first."
+        ),
+        "suggestions": ["Contact support", "How do I book a ticket?"],
+    },
+    {
+        "name": "pets",
+        "keywords": ["pet", "pets", "dog", "cat", "animal", "livestock"],
+        "answer": (
+            "Pets and livestock aren't part of the standard passenger booking. "
+            "Livestock can be carried as <strong>cargo</strong> (it has its own "
+            "handling rate), and assistance animals are always welcome. Please "
+            "contact our team before travelling so we can arrange it safely: "
+            "<a href=\"mailto:info@fijiferrybooking.com\">info@fijiferrybooking.com</a>."
+        ),
+        "suggestions": ["Can I bring a vehicle?", "Contact support"],
+    },
+    {
+        "name": "arrival_time",
+        "keywords": ["how early", "arrive before", "check in time", "how long before",
+                     "boarding time", "gate close"],
+        "answer": (
+            "Please arrive at the terminal <strong>45 minutes</strong> before "
+            "departure (an hour if you're bringing a vehicle or cargo, which need "
+            "loading time). Have your QR e-ticket and each passenger's ID ready for "
+            "the gate. Boarding usually closes 15 minutes before departure."
+        ),
+        "suggestions": ["Where are my tickets?", "Can I bring a vehicle?"],
+    },
+    {
+        "name": "delays",
+        "keywords": ["delay", "delayed", "late", "cancelled sailing", "rough sea",
+                     "weather hold", "on time"],
+        "answer": (
+            "Sailings can be delayed or held when the weather turns — safety comes "
+            "first. The <a href=\"/bookings/departures/\">Live Departures</a> board "
+            "shows each sailing's current status, and we email you if your sailing "
+            "changes. If a sailing is cancelled by us, you're refunded in full or "
+            "moved to the next available one."
+        ),
+        "suggestions": ["What's the weather like?", "Show me the next departures"],
+    },
+    {
+        "name": "privacy_data",
+        "keywords": ["privacy", "data", "gdpr", "personal information",
+                     "delete my data", "how do you use my"],
+        "answer": (
+            "We collect only what a sailing needs: your contact details, passenger "
+            "names/ages and ID documents for the manifest and boarding checks. "
+            "Payments are handled by our payment provider — we never store your card "
+            "number. Read the full <a href=\"/privacy_policy/\">Privacy Policy</a> "
+            "and <a href=\"/terms_of_service/\">Terms of Service</a>."
+        ),
+        "suggestions": ["Contact support", "What documents do I need?"],
     },
     {
         "name": "vehicle_cargo",
@@ -411,7 +651,8 @@ INTENTS = [
     {
         "name": "ticket_checkin",
         "keywords": ["where are my tickets", "e-ticket", "eticket", "ticket",
-                     "qr code", "qr", "boarding", "check in", "check-in", "board"],
+                     "qr code", "qr", "boarding", "check in", "check-in", "board",
+                     "scan", "gate", "download my ticket", "print"],
         "answer": (
             "After payment your e-ticket with a <strong>QR code</strong> is "
             "available immediately under <a href=\"/bookings/history/\">My "
@@ -515,38 +756,118 @@ _VOCAB = sorted({
     kw for intent in INTENTS for kw in intent["keywords"] if " " not in kw and len(kw) > 3
 })
 
+# Words that carry no intent signal. Dropped before scoring so "how do i cancel"
+# and "cancel" land on the same intent with the same confidence.
+_STOPWORDS = frozenset("""
+a an the is are was were be been being do does did doing done have has had
+i me my we our you your it its they them their this that these those to for
+of in on at by with from about as if then than so and or but not no yes
+can could will would shall should may might must please just get got need
+want like use using there here what when where which who whom whose why how
+""".split())
+
+# Negation cues: "I do NOT want to cancel" should not fire the cancel intent
+# as confidently as "cancel my booking".
+_NEGATIONS = frozenset(["not", "dont", "don't", "doesnt", "doesn't", "never",
+                        "without", "cannot", "cant", "can't", "avoid", "instead of"])
+
+
+def _idf_table():
+    """Inverse document frequency over intent keywords.
+
+    Each intent is a "document" of terms. A term appearing in one intent
+    (``mpaisa``) is far more diagnostic than one appearing in many (``booking``),
+    and IDF captures exactly that — replacing the old flat +1-per-keyword count
+    that let common words like "booking" dominate the match.
+    """
+    import math
+    df = {}
+    for intent in INTENTS:
+        terms = set()
+        for kw in intent["keywords"]:
+            terms.update(kw.split())
+        for t in terms:
+            df[t] = df.get(t, 0) + 1
+    n = len(INTENTS)
+    return {t: math.log((n + 1) / (c + 0.5)) for t, c in df.items()}
+
+
+_IDF = _idf_table()
+_DEFAULT_IDF = 1.0
+
+
+def _correct(token):
+    """Snap a close-but-unknown token to a known keyword (typo tolerance).
+
+    Cutoff is 0.80, not 0.84: a single transposition in a short word ("cancle"
+    → "cancel") scores 0.833, which the stricter threshold silently rejected.
+    """
+    if len(token) > 4 and token not in _VOCAB:
+        match = difflib.get_close_matches(token, _VOCAB, n=1, cutoff=0.80)
+        if match:
+            return match[0]
+    return token
+
 
 def _normalize(text):
-    """Lowercase, strip punctuation, and fold synonyms to canonical terms."""
+    """Lowercase, strip punctuation, fold synonyms, and correct typos."""
     text = (text or "").lower()
     text = re.sub(r"[^\w\s$-]", " ", text)
-    tokens = [SYNONYMS.get(t, t) for t in text.split()]
-    # Light typo correction: snap close-but-unknown tokens to a known keyword.
-    corrected = []
-    for t in tokens:
-        if len(t) > 4 and t not in _VOCAB:
-            match = difflib.get_close_matches(t, _VOCAB, n=1, cutoff=0.84)
-            corrected.append(match[0] if match else t)
-        else:
-            corrected.append(t)
-    return " ".join(corrected)
+    return " ".join(_correct(SYNONYMS.get(t, t)) for t in text.split())
+
+
+def _terms(text):
+    """Content tokens plus adjacent bigrams, for phrase-aware scoring."""
+    tokens = [t for t in text.split() if t]
+    content = [t for t in tokens if t not in _STOPWORDS]
+    bigrams = [f"{tokens[i]} {tokens[i+1]}" for i in range(len(tokens) - 1)]
+    return tokens, content, bigrams
+
+
+def _negated(tokens, keyword):
+    """True when a negation cue appears within 3 tokens before ``keyword``."""
+    head = keyword.split()[0]
+    for i, tok in enumerate(tokens):
+        if tok == head:
+            if any(t in _NEGATIONS for t in tokens[max(0, i - 3):i]):
+                return True
+    return False
 
 
 def _score(text, keywords):
-    """Score how strongly `text` matches an intent's keywords.
+    """IDF-weighted match score for one intent, normalised to roughly [0, 1+].
 
-    Longer/multi-word keywords are weighted higher (more specific). Single
-    words match on word boundaries to avoid false hits inside other words.
+    Exact multi-word phrases are the strongest evidence, so they keep a large
+    bonus; single content words contribute their IDF. Dividing by the square
+    root of the intent's own vocabulary size stops keyword-heavy intents from
+    winning purely by having more ways to match.
     """
-    score = 0
+    import math
+
+    tokens, content, bigrams = _terms(text)
+    if not tokens:
+        return 0.0
+
+    seen = set(tokens) | set(bigrams)
+    score = 0.0
+
     for kw in keywords:
         if " " in kw:
-            if kw in text:
-                score += 3 + kw.count(" ")  # phrases are strong signals
+            if kw in text:  # exact phrase, in order
+                if _negated(tokens, kw):
+                    continue
+                score += 3.0 + 1.5 * kw.count(" ")
+            elif kw in seen:  # bigram hit
+                score += 2.0
         else:
-            if re.search(r"\b" + re.escape(kw) + r"\b", text):
-                score += 1
-    return score
+            if kw in seen and kw not in _STOPWORDS:
+                if _negated(tokens, kw):
+                    continue
+                score += _IDF.get(kw, _DEFAULT_IDF)
+
+    # Normalise by intent breadth so a 15-keyword intent isn't inherently favoured.
+    breadth = math.sqrt(max(len(keywords), 1))
+    return score / breadth * 2.0
 
 
 # Intents whose answers depend on a place/route. A bare port name in a
@@ -561,14 +882,80 @@ def _intent_by_name(name):
     return None
 
 
+#: One canonical question per intent, used to offer "did you mean" chips.
+_TOPIC_PROMPTS = {
+    "booking_how_to": "How do I book a ticket?",
+    "pricing": "How much do tickets cost?",
+    "modify": "How do I change my booking?",
+    "modify_fee": "What is the change fee?",
+    "documents": "What documents do I need?",
+    "cancel_refund": "How do I cancel or get a refund?",
+    "guest_lookup": "I booked as a guest — where's my ticket?",
+    "live_departures": "Show me the next departures",
+    "routes_destinations": "What routes do you have?",
+    "vehicle_cargo": "Can I bring a vehicle?",
+    "weather": "What's the weather like?",
+    "arrival_time": "How early should I arrive?",
+    "payment": "What payment methods can I use?",
+    "contact": "Contact support",
+}
+
+
+def _nearest_topics(text, limit=3):
+    """Closest intents by token overlap with their keywords — for 'did you mean'."""
+    words = set(text.split())
+    if not words:
+        return []
+    scored = []
+    for intent in INTENTS:
+        prompt = _TOPIC_PROMPTS.get(intent["name"])
+        if not prompt:
+            continue
+        kw_words = set()
+        for kw in intent["keywords"]:
+            kw_words.update(kw.split())
+        overlap = len(words & kw_words)
+        # Fuzzy: catch near-miss spellings the normalizer didn't snap.
+        if not overlap:
+            for w in words:
+                if len(w) > 3 and difflib.get_close_matches(w, kw_words, n=1, cutoff=0.8):
+                    overlap = 1
+                    break
+        if overlap:
+            scored.append((overlap, prompt))
+    scored.sort(key=lambda p: -p[0])
+    return [p for _, p in scored[:limit]]
+
+
+#: Below this the match is noise; above MARGIN the winner is unambiguous.
+_MIN_CONFIDENCE = 0.55
+#: If the runner-up is within this ratio of the winner, ask instead of guessing.
+_AMBIGUITY_RATIO = 0.82
+
+
+def _rank_intents(text):
+    """All intents scored, best first."""
+    ranked = [(intent, _score(text, intent["keywords"])) for intent in INTENTS]
+    ranked.sort(key=lambda p: -p[1])
+    return ranked
+
+
 def _match_intent(text):
     """Best-scoring intent for the normalized text (or (None, 0))."""
-    best, best_score = None, 0
-    for intent in INTENTS:
-        s = _score(text, intent["keywords"])
-        if s > best_score:
-            best, best_score = intent, s
-    return best, best_score
+    ranked = _rank_intents(text)
+    if not ranked or ranked[0][1] < _MIN_CONFIDENCE:
+        return None, 0
+    return ranked[0]
+
+
+def _ambiguous(ranked):
+    """The runner-up is nearly as strong as the winner → clarify, don't guess."""
+    if len(ranked) < 2:
+        return None
+    (top, s1), (second, s2) = ranked[0], ranked[1]
+    if s1 >= _MIN_CONFIDENCE and s2 > 0 and (s2 / s1) >= _AMBIGUITY_RATIO:
+        return top, second
+    return None
 
 
 def _run_intent(intent, ctx, is_authenticated):
@@ -612,11 +999,14 @@ def answer(message, user=None, is_authenticated=False, context=None):
         is_authenticated = getattr(user, "is_authenticated", is_authenticated)
     context = dict(context or {})
     pending = context.get("pending")
+    engine_state = context.get("engine") or {}
 
     def _out(reply, suggestions, intent_name, new_pending=None):
         new_ctx = {"last_intent": intent_name}
         if new_pending:
             new_ctx["pending"] = new_pending
+        if engine_state:
+            new_ctx["engine"] = engine_state
         return {"reply": reply, "suggestions": suggestions,
                 "intent": intent_name, "context": new_ctx}
 
@@ -624,7 +1014,27 @@ def answer(message, user=None, is_authenticated=False, context=None):
     if not raw:
         return _out(GREETING_REPLY, DEFAULT_SUGGESTIONS, "greeting")
 
+    # Checked against the raw text, before synonym folding, so the normalizer
+    # can't be used to smuggle a probe past the filter.
+    if is_unsafe(raw):
+        return _out(SAFETY_REPLY, DEFAULT_SUGGESTIONS, "safety")
+
     text = _normalize(raw)
+
+    # 0) Task engine: multi-turn slot-filling flows (trip planning, waitlist
+    #    joins). Runs before intent matching so an in-progress conversation
+    #    ("2 adults", "friday") is understood as an answer, not a new question.
+    #    Deterministic and offline, like everything else here.
+    try:
+        from . import chatbot_engine
+        engine_result, engine_state = chatbot_engine.handle(raw, text, context, user=user)
+    except Exception:
+        engine_result, engine_state = None, engine_state
+    if engine_result:
+        return _out(engine_result["reply"],
+                    engine_result.get("suggestions") or DEFAULT_SUGGESTIONS,
+                    engine_result["intent"])
+
     ports = extract_ports(text)
     ctx = {"user": user, "is_authenticated": is_authenticated, "ports": ports}
 
@@ -642,8 +1052,23 @@ def answer(message, user=None, is_authenticated=False, context=None):
     ):
         return _out(GREETING_REPLY, DEFAULT_SUGGESTIONS, "greeting")
 
-    # 3) Normal intent match.
-    best, best_score = _match_intent(text)
+    # 3) Normal intent match, with a confidence floor.
+    ranked = _rank_intents(text)
+    best, best_score = (ranked[0] if ranked else (None, 0))
+    if best_score < _MIN_CONFIDENCE:
+        best, best_score = None, 0
+
+    # 3b) Two intents nearly tied — offer both rather than silently picking one.
+    tie = _ambiguous(ranked) if best else None
+    if tie:
+        a, b = tie
+        chips = [_TOPIC_PROMPTS.get(a["name"]), _TOPIC_PROMPTS.get(b["name"])]
+        chips = [c for c in chips if c]
+        if len(chips) == 2:
+            return _out(
+                "I can help with either of these — which did you mean?",
+                chips, "clarify",
+            )
 
     # 4) No intent matched, but a place name + a route-aware last intent → reuse
     #    it ("how much is the fare?" … then just "Yasawa").
@@ -654,6 +1079,14 @@ def answer(message, user=None, is_authenticated=False, context=None):
             return _out(reply, suggestions, last["name"], new_pending)
 
     if best is None or best_score == 0:
+        # Nothing matched on keywords. Offer the closest topics by fuzzy overlap
+        # instead of a bare apology, so a rephrase is one tap away.
+        near = _nearest_topics(text)
+        if near:
+            return _out(
+                "I'm not sure I understood that. Did you mean one of these?",
+                near, "clarify",
+            )
         return _out(FALLBACK_REPLY, DEFAULT_SUGGESTIONS, "fallback")
 
     reply, suggestions, new_pending = _run_intent(best, ctx, is_authenticated)

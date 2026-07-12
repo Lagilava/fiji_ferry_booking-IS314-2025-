@@ -27,6 +27,12 @@
     .dest-card__media img { width: 100%; height: 100%; object-fit: cover; transition: transform .5s; }
     .dest-card:hover .dest-card__media img { transform: scale(1.07); }
     .dest-card__media::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to top, rgba(15,23,42,.65), transparent 55%); }
+    /* Photo attribution — a licence condition for the CC BY / CC BY-SA images. */
+    .dest-card__credit {
+        position: absolute; right: .45rem; bottom: .4rem; z-index: 2;
+        font-size: .62rem; line-height: 1; color: rgba(255,255,255,.75);
+        background: rgba(15,23,42,.45); border-radius: 3px; padding: 2px 4px; cursor: help;
+    }
     .dest-card__title { position: absolute; left: 1.1rem; bottom: .9rem; z-index: 1; color: #fff; }
     .dest-card__title h2 { font-family: 'Playfair Display', serif; font-size: 1.5rem; font-weight: 700; margin: 0; }
     .dest-card__title .tag { font-size: .8rem; opacity: .92; }
@@ -61,7 +67,9 @@
         {% for d in destinations %}
         <article class="dest-card">
             <div class="dest-card__media">
-                <img src="{{ d.image }}" alt="{{ d.name }}, Fiji" loading="lazy">
+                <img src="{% static d.image %}" alt="{{ d.name }}, Fiji" loading="lazy"
+                     width="1200" height="750">
+                {% if d.credit %}<span class="dest-card__credit" title="Photo: {{ d.credit }}">&copy;</span>{% endif %}
                 <div class="dest-card__fare">
                     <span class="lbl">from</span>
                     <span class="amt">FJD {{ d.min_fare|floatformat:2 }}</span>

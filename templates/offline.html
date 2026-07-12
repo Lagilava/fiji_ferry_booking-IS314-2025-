@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+
+{% block title %}You're offline - Fiji Ferry Booking{% endblock %}
+
+{% block content %}
+<div style="max-width:520px;margin:4rem auto;padding:0 1rem;text-align:center">
+  <div class="glass-card" style="padding:2.5rem 2rem;border-radius:16px;background:var(--bg-primary,#fff);border:1px solid var(--border,#e2e8f0);box-shadow:0 10px 30px rgba(0,0,0,.08)">
+    <i class="fas fa-wifi" style="font-size:52px;color:var(--warning,#F59E0B)"></i>
+    <h1 style="font-family:'Playfair Display',serif;font-size:1.7rem;margin:1rem 0 .5rem;color:var(--text-primary,#0f172a)">You're offline</h1>
+    <p style="color:var(--text-secondary,#64748b)">
+      No connection right now — but any boarding pass you've opened before is
+      still saved on this device and will scan at the jetty.
+    </p>
+    <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:1.5rem">
+      <button onclick="location.reload()" class="btn btn-primary" type="button">
+        <i class="fas fa-sync-alt"></i> Try again
+      </button>
+      <button onclick="history.back()" class="btn btn-secondary" type="button">
+        <i class="fas fa-arrow-left"></i> Go back
+      </button>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+
+{% block title %}Waitlist - Fiji Ferry Booking{% endblock %}
+
+{% block content %}
+<div style="max-width:520px;margin:4rem auto;padding:0 1rem;text-align:center">
+  <div class="glass-card" style="padding:2.5rem 2rem;border-radius:16px;background:var(--card-bg,#fff);box-shadow:0 10px 30px rgba(0,0,0,.08)">
+    {% if found %}
+      <i class="fas fa-check-circle" style="font-size:52px;color:var(--primary,#10B981)"></i>
+      <h1 style="font-family:'Playfair Display',serif;font-size:1.7rem;margin:1rem 0 .5rem">You've left the waitlist</h1>
+      <p style="color:var(--text-secondary,#64748b)">
+        We won't email you about this sailing again. Changed your mind?
+        You can rejoin from the departures page at any time.
+      </p>
+    {% else %}
+      <i class="fas fa-question-circle" style="font-size:52px;color:var(--warning,#F59E0B)"></i>
+      <h1 style="font-family:'Playfair Display',serif;font-size:1.7rem;margin:1rem 0 .5rem">Link not recognised</h1>
+      <p style="color:var(--text-secondary,#64748b)">
+        This waitlist link is invalid or was already used.
+      </p>
+    {% endif %}
+    <a href="{% url 'bookings:live_departures' %}" class="btn btn-primary" style="margin-top:1.5rem;display:inline-block">
+      <i class="fas fa-ship"></i> Browse departures
+    </a>
+  </div>
+</div>
+{% endblock %}

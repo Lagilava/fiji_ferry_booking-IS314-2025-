@@ -5,7 +5,7 @@ from django.urls import path, reverse
 from django.db.models import Count, Sum, F, Avg, Max, Q
 from django.utils import timezone
 from django.db.models import ExpressionWrapper, FloatField
-from django.db.models.functions import Round, Coalesce, ExtractWeekDay, TruncWeek
+from django.db.models.functions import Round, Coalesce, ExtractWeekDay, ExtractHour, TruncWeek
 from django.core.cache import cache
 from datetime import datetime, timedelta
 from django.contrib.admin.models import LogEntry
@@ -18,7 +18,8 @@ from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 from .models import (
     Port, Cargo, Ferry, Route, WeatherCondition, Schedule,
-    Booking, Passenger, Vehicle, AddOn, Payment, Ticket, MaintenanceLog, ServicePattern
+    Booking, Passenger, Vehicle, AddOn, Payment, Ticket, MaintenanceLog, ServicePattern,
+    WaitlistEntry
 )
 from accounts.models import User
 import logging
@@ -312,6 +313,9 @@ def clear_analytics_cache():
                 'analytics_data_fleet_status',
                 'analytics_data_weather_conditions',
                 'analytics_data_alerts',
+                'analytics_data_load_factor',
+                'analytics_data_cancellation_trends',
+                'analytics_data_demand_heatmap',
             ]
 
             # Clear known keys
@@ -1042,6 +1046,96 @@ class CustomAdminSite(admin.AdminSite):
 
             logger.debug(f"Weather conditions data: {data['weather_conditions']}")
 
+        if chart_type in [None, 'load_factor']:
+            # Load factor = seats sold / capacity, averaged per route over the
+            # window. The operator's core commercial metric: which routes run
+            # full (add sailings) and which run empty (cut or re-time them).
+            sched_qs = Schedule.objects.filter(ferry__capacity__gt=0)
+            if start_date:
+                sched_qs = sched_qs.filter(
+                    operational_day__gte=start_date, operational_day__lte=end_date
+                )
+            load = (
+                sched_qs.exclude(status='cancelled')
+                .annotate(
+                    pct=ExpressionWrapper(
+                        (F('ferry__capacity') - Coalesce(F('available_seats'), 0)) * 100.0
+                        / F('ferry__capacity'),
+                        output_field=FloatField(),
+                    )
+                )
+                .values('route__departure_port__name', 'route__destination_port__name')
+                .annotate(load_factor=Round(Avg('pct'), 1), sailings=Count('id'))
+                .order_by('-load_factor')
+            )
+            data['load_factor'] = [
+                {
+                    'route': f"{i['route__departure_port__name']} → {i['route__destination_port__name']}",
+                    'load_factor': float(i['load_factor'] or 0),
+                    'sailings': i['sailings'],
+                }
+                for i in load
+            ]
+
+        if chart_type in [None, 'cancellation_trends']:
+            # Cancelled vs. total sailings per day — surfaces weather-driven
+            # disruption patterns and their trend.
+            sched_qs = Schedule.objects.all()
+            if start_date:
+                sched_qs = sched_qs.filter(
+                    operational_day__gte=start_date, operational_day__lte=end_date
+                )
+            trend = (
+                sched_qs.values('operational_day')
+                .annotate(
+                    total=Count('id'),
+                    cancelled=Count('id', filter=Q(status='cancelled')),
+                )
+                .order_by('operational_day')
+            )
+            data['cancellation_trends'] = [
+                {
+                    'date': i['operational_day'].strftime('%Y-%m-%d'),
+                    'total': i['total'],
+                    'cancelled': i['cancelled'],
+                    'rate': round(i['cancelled'] * 100.0 / i['total'], 1) if i['total'] else 0,
+                }
+                for i in trend
+            ]
+
+        if chart_type in [None, 'demand_heatmap']:
+            # Passengers booked by departure weekday × hour — shows exactly
+            # where demand concentrates so schedules can follow it.
+            book_qs = Booking.objects.exclude(status='cancelled')
+            if start_date:
+                book_qs = book_qs.filter(
+                    schedule__operational_day__gte=start_date,
+                    schedule__operational_day__lte=end_date,
+                )
+            heat = (
+                book_qs.annotate(
+                    week_day=ExtractWeekDay('schedule__departure_time'),
+                    hour=ExtractHour('schedule__departure_time'),
+                )
+                .values('week_day', 'hour')
+                .annotate(
+                    passengers=Sum(
+                        F('passenger_adults') + F('passenger_children') + F('passenger_infants')
+                    )
+                )
+                .order_by('week_day', 'hour')
+            )
+            day_names = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+            data['demand_heatmap'] = [
+                {
+                    'day': day_names[i['week_day'] - 1],
+                    'day_index': i['week_day'] - 1,
+                    'hour': i['hour'],
+                    'passengers': int(i['passengers'] or 0),
+                }
+                for i in heat
+            ]
+
         if chart_type in [None, 'alerts']:
             data['alerts'] = self.get_alerts(current_time)
             logger.debug(f"Alerts data: {data['alerts']}")
@@ -1262,6 +1356,9 @@ class CustomAdminSite(admin.AdminSite):
             'payment_status': analytics_data.get('payment_status', []),
             'user_growth': analytics_data.get('user_growth', []),
             'top_customers': analytics_data.get('top_customers', []),
+            'load_factor': analytics_data.get('load_factor', []),
+            'cancellation_trends': analytics_data.get('cancellation_trends', []),
+            'demand_heatmap': analytics_data.get('demand_heatmap', []),
             'recent_bookings': recent_bookings,
             'recent_activities': recent_activities,
             'fleet_status': fleet_status,
@@ -2770,6 +2867,24 @@ def start_admin_background_tasks():
             logger.info("Admin background tasks completed")
     except Exception as e:
         logger.error(f"Failed to start admin background tasks: {str(e)}")
+
+
+@admin.register(WaitlistEntry, site=admin_site)
+class WaitlistEntryAdmin(admin.ModelAdmin):
+    list_display = ('id', 'email', 'schedule', 'seats_requested', 'status', 'created_at', 'notified_at')
+    list_filter = ('status',)
+    search_fields = ('email',)
+    readonly_fields = ('token', 'created_at', 'notified_at')
+    list_select_related = ('schedule__route__departure_port', 'schedule__route__destination_port')
+    actions = ['offer_now']
+
+    @admin.action(description="Re-run waitlist offers for these sailings")
+    def offer_now(self, request, queryset):
+        from .waitlist import process_waitlist
+        offered = 0
+        for schedule_id in set(queryset.values_list('schedule_id', flat=True)):
+            offered += process_waitlist(schedule_id)
+        self.message_user(request, f"Sent {offered} waitlist offer(s).", messages.SUCCESS)
 
 
 # Export utilities

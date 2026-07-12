@@ -1,0 +1,228 @@
+{% extends 'base.html' %}
+
+{% block title %}Find My Booking - Fiji Ferry Booking{% endblock %}
+
+{% block extra_css %}
+<style>
+  .lookup-wrap { max-width: 480px; margin: 0 auto; }
+  .lookup-head { text-align: center; margin-bottom: 1.75rem; }
+  .lookup-head h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.9rem; font-weight: 700; margin: 0 0 0.5rem;
+    color: var(--text-primary);
+  }
+  .lookup-head p { color: var(--text-secondary); font-size: 0.95rem; margin: 0; }
+  .lookup-step[hidden] { display: none; }
+  .lookup-actions { display: flex; flex-direction: column; gap: 0.75rem; margin-top: 1.25rem; }
+  .lookup-actions .btn { width: 100%; justify-content: center; }
+  .lookup-error {
+    color: var(--error); font-size: 0.85rem; margin-top: 0.5rem; min-height: 1.1rem;
+  }
+  .lookup-sent {
+    background: var(--secondary-light); color: var(--secondary-dark);
+    border-radius: 8px; padding: 0.7rem 0.9rem; font-size: 0.86rem; margin-bottom: 1rem;
+  }
+  .lookup-alt {
+    text-align: center; margin-top: 1.5rem; padding-top: 1.25rem;
+    border-top: 1px solid var(--border); font-size: 0.9rem; color: var(--text-secondary);
+  }
+  .lookup-alt a { color: var(--primary); font-weight: 600; text-decoration: none; }
+  .lookup-alt a:hover { text-decoration: underline; }
+  .otp-input { letter-spacing: 0.5em; text-align: center; font-size: 1.3rem; font-weight: 700; }
+  .link-btn {
+    background: none; border: none; color: var(--primary);
+    font-weight: 600; cursor: pointer; font-size: 0.86rem; padding: 0;
+  }
+  .link-btn:disabled { color: var(--text-muted); cursor: not-allowed; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="lookup-wrap">
+  <div class="lookup-head">
+    <h1>Find my booking</h1>
+    <p>Enter the email you used to book and we'll send you a 6-digit code.</p>
+  </div>
+
+  <div class="card">
+    <!-- Step 1: email -->
+    <form class="lookup-step" id="step-email" novalidate>
+      {% csrf_token %}
+      <div class="form-group">
+        <label class="form-label" for="lookup-email">Email address</label>
+        <input type="email" id="lookup-email" class="form-input"
+               autocomplete="email" inputmode="email" required
+               placeholder="you@example.com">
+      </div>
+      <div class="lookup-error" id="email-error" role="alert" aria-live="polite"></div>
+      <div class="lookup-actions">
+        <button type="submit" class="btn btn-primary" id="send-btn">
+          <i class="fas fa-paper-plane"></i><span>Send code</span>
+        </button>
+      </div>
+    </form>
+
+    <!-- Step 2: code -->
+    <form class="lookup-step" id="step-code" novalidate hidden>
+      {% csrf_token %}
+      <div class="lookup-sent">
+        We sent a code to <strong id="sent-to"></strong>.
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="lookup-code">6-digit code</label>
+        <input type="text" id="lookup-code" class="form-input otp-input"
+               inputmode="numeric" autocomplete="one-time-code"
+               maxlength="6" pattern="[0-9]{6}" required placeholder="······">
+      </div>
+      <div class="lookup-error" id="code-error" role="alert" aria-live="polite"></div>
+      <div class="lookup-actions">
+        <button type="submit" class="btn btn-primary" id="verify-btn">
+          <i class="fas fa-unlock"></i><span>View my bookings</span>
+        </button>
+        <button type="button" class="link-btn" id="resend-btn">Resend code</button>
+        <button type="button" class="link-btn" id="change-email-btn">Use a different email</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="lookup-alt">
+    Have an account? <a href="{% url 'accounts:login' %}?next={{ next|urlencode }}">Sign in instead</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  'use strict';
+
+  var NEXT = "{{ next|escapejs }}";
+  var stepEmail = document.getElementById('step-email');
+  var stepCode = document.getElementById('step-code');
+  var emailInput = document.getElementById('lookup-email');
+  var codeInput = document.getElementById('lookup-code');
+  var emailError = document.getElementById('email-error');
+  var codeError = document.getElementById('code-error');
+  var sendBtn = document.getElementById('send-btn');
+  var verifyBtn = document.getElementById('verify-btn');
+  var resendBtn = document.getElementById('resend-btn');
+  var sentTo = document.getElementById('sent-to');
+
+  function csrf() {
+    var el = document.querySelector('[name=csrfmiddlewaretoken]');
+    return el ? el.value : '';
+  }
+
+  function busy(btn, on, label) {
+    btn.disabled = on;
+    var span = btn.querySelector('span');
+    if (span && label) span.textContent = label;
+  }
+
+  // The OTP endpoints answer with {success, errors:[{field,message}]}.
+  function firstError(data, fallback) {
+    if (data && data.errors && data.errors.length) return data.errors[0].message;
+    return fallback;
+  }
+
+  function post(url, email, code) {
+    var body = new URLSearchParams({ email: email });
+    if (code) body.append('code', code);
+    return fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'X-CSRFToken': csrf(),
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      body: body.toString(),
+      credentials: 'same-origin'
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (d) {
+        return { ok: r.ok && d.success, data: d };
+      });
+    });
+  }
+
+  function sendCode(email, btn, errBox) {
+    errBox.textContent = '';
+    busy(btn, true, 'Sending…');
+    return post("{% url 'bookings:api_send_otp' %}", email).then(function (res) {
+      if (!res.ok) {
+        errBox.textContent = firstError(res.data, 'Could not send a code. Try again.');
+        return false;
+      }
+      return true;
+    }).catch(function () {
+      errBox.textContent = 'Network error. Please try again.';
+      return false;
+    }).finally(function () {
+      busy(btn, false, btn === sendBtn ? 'Send code' : null);
+    });
+  }
+
+  stepEmail.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var email = emailInput.value.trim();
+    if (!email) { emailError.textContent = 'Enter your email address.'; return; }
+    sendCode(email, sendBtn, emailError).then(function (ok) {
+      if (!ok) return;
+      sentTo.textContent = email;
+      stepEmail.hidden = true;
+      stepCode.hidden = false;
+      codeInput.focus();
+    });
+  });
+
+  stepCode.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var code = codeInput.value.trim();
+    if (code.length !== 6) { codeError.textContent = 'Enter the 6-digit code.'; return; }
+    codeError.textContent = '';
+    busy(verifyBtn, true, 'Checking…');
+    post("{% url 'bookings:api_verify_otp' %}", sentTo.textContent, code).then(function (res) {
+      if (!res.ok) {
+        codeError.textContent = firstError(res.data, 'Incorrect code.');
+        busy(verifyBtn, false, 'View my bookings');
+        return;
+      }
+      // Verification wrote session['guest_email']; the target view now passes.
+      window.location.assign(NEXT);
+    }).catch(function () {
+      codeError.textContent = 'Network error. Please try again.';
+      busy(verifyBtn, false, 'View my bookings');
+    });
+  });
+
+  resendBtn.addEventListener('click', function () {
+    sendCode(sentTo.textContent, resendBtn, codeError).then(function (ok) {
+      // Only throttle after a code actually went out; a failed send must leave
+      // the button usable so the user can retry immediately.
+      if (!ok) { resendBtn.disabled = false; resendBtn.textContent = 'Resend code'; return; }
+      if (window.Toast) window.Toast.success('A new code is on its way.');
+      resendBtn.disabled = true;
+      var left = 30;
+      resendBtn.textContent = 'Resend in ' + left + 's';
+      var t = setInterval(function () {
+        left--;
+        if (left <= 0) {
+          clearInterval(t);
+          resendBtn.disabled = false;
+          resendBtn.textContent = 'Resend code';
+        } else {
+          resendBtn.textContent = 'Resend in ' + left + 's';
+        }
+      }, 1000);
+    });
+  });
+
+  document.getElementById('change-email-btn').addEventListener('click', function () {
+    stepCode.hidden = true;
+    stepEmail.hidden = false;
+    codeInput.value = '';
+    codeError.textContent = '';
+    emailInput.focus();
+  });
+})();
+</script>
+{% endblock %}

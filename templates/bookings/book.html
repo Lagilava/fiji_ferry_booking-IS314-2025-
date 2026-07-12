@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/aos/2.3.4/aos.css" />
 <link rel="stylesheet" href="{% static 'css/booking.css' %}" />
 <link rel="stylesheet" href="{% static 'css/booking_summary.css' %}" />
+<link rel="stylesheet" href="{% static 'css/booking_v2.css' %}" />
 <!-- Expose Stripe key so JS can always discover it -->
 <meta name="stripe-publishable-key" content="{{ stripe_publishable_key|default:'' }}">
 <style>
@@ -70,8 +71,8 @@ body.dark .counter-group input,
 
 .counter-group input:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+    border-color: #10b981;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.3);
 }
 
 /* === ALL FORM INPUTS – DARK MODE OVERRIDE === */
@@ -96,8 +97,8 @@ body.dark .form-select,
 
 .form-input:focus,
 .form-select:focus {
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+    border-color: #10b981;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
 }
 
 /* === LABELS IN FORMS === */
@@ -210,12 +211,12 @@ body.dark .addon-qty-input,
     transition: border-color .2s, box-shadow .2s, transform .15s;
     height: 100%;
 }
-.pay-method:hover .pay-method__body { border-color: var(--secondary, #3b82f6); transform: translateY(-1px); }
+.pay-method:hover .pay-method__body { border-color: var(--primary, #10b981); transform: translateY(-1px); }
 .pay-method input:checked + .pay-method__body {
-    border-color: var(--secondary, #3b82f6);
-    box-shadow: 0 0 0 3px rgba(59,130,246,.15);
+    border-color: var(--primary, #10b981);
+    box-shadow: 0 0 0 3px rgba(16,185,129,.15);
 }
-.pay-method input:focus-visible + .pay-method__body { box-shadow: 0 0 0 3px rgba(59,130,246,.35); }
+.pay-method input:focus-visible + .pay-method__body { box-shadow: 0 0 0 3px rgba(16,185,129,.35); }
 .pay-method__icon {
     width: 56px; height: 38px; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
@@ -250,10 +251,11 @@ body.dark .addon-qty-input,
   --border:#e5e7eb;
   --text-primary:#111827;
   --text-secondary:#6b7280;
-  --primary:#2563eb;
-  --gradient-primary: linear-gradient(90deg,#2563eb,#60a5fa);
-  /* NEW tokens for OTP focus/success/error */
-  --focus-ring: rgba(59,130,246,0.35);
+  /* Brand emerald — the page previously ran on blue here, which clashed
+     with the rest of the site. */
+  --primary:#10b981;
+  --gradient-primary: linear-gradient(135deg,#10b981,#0ea5a4);
+  --focus-ring: rgba(16,185,129,0.30);
   --success: #16a34a;
   --error: #ef4444;
 }
@@ -263,10 +265,9 @@ html.dark, body.dark, .dark, [data-theme="dark"], [class*="dark"]{
   --border:#2a3647;
   --text-primary:#f9fafb;
   --text-secondary:#9ca3af;
-  --primary:#60a5fa;
-  --gradient-primary: linear-gradient(90deg,#1f50c8,#3b82f6);
-  /* Dark mode variants */
-  --focus-ring: rgba(96,165,250,0.35);
+  --primary:#34d399;
+  --gradient-primary: linear-gradient(135deg,#059669,#0d9488);
+  --focus-ring: rgba(52,211,153,0.30);
   --success: #22c55e;
   --error: #f43f5e;
 }
@@ -306,11 +307,11 @@ html.dark, body.dark, .dark, [data-theme="dark"], [class*="dark"]{
   min-width:7.5rem; padding:0 1.1rem; height:auto;
   border:none; border-radius:.7rem; cursor:pointer;
   font-weight:700; font-size:.95rem; white-space:nowrap;
-  color:#fff; background:linear-gradient(135deg,#2563eb,#0ea5e9);
-  box-shadow:0 6px 16px -6px rgba(37,99,235,.6);
+  color:#fff; background:linear-gradient(135deg,#10b981,#0d9488);
+  box-shadow:0 6px 16px -6px rgba(16,185,129,.6);
   transition:transform .15s ease, box-shadow .15s ease, opacity .15s ease;
 }
-.otp-btn:hover:not(:disabled) { transform:translateY(-1px); box-shadow:0 10px 22px -8px rgba(37,99,235,.7); }
+.otp-btn:hover:not(:disabled) { transform:translateY(-1px); box-shadow:0 10px 22px -8px rgba(16,185,129,.7); }
 .otp-btn:active:not(:disabled) { transform:translateY(0); }
 .otp-btn:disabled { opacity:.65; cursor:not-allowed; }
 .otp-spinner {
@@ -459,7 +460,10 @@ html.dark .text-red-500{ color: var(--error) !important; }
 Skip to main content </a>
 
 <main id="main-content" class="container mx-auto px-4 py-8 md:py-12 max-w-7xl">
-    <h1 class="text-3xl md:text-4xl font-bold text-center mb-6 md:mb-8">Book Your Ferry</h1>
+    <div class="booking-hero-head">
+        <h1 class="text-3xl md:text-4xl font-bold">Book Your Ferry</h1>
+        <span class="booking-hero-sub"><i class="fas fa-lock" aria-hidden="true"></i> Secure checkout — takes about a minute</span>
+    </div>
 
 <!-- Progress Bar -->
 <div class="progress-bar mb-8" role="progressbar" title="Booking progress" aria-label="Booking progress" aria-valuemin="0" aria-valuemax="4" aria-valuenow="{{ form_data.step|default:1 }}" id="booking-progressbar">
@@ -496,8 +500,8 @@ Skip to main content </a>
         <!-- STEP 1: Schedule Selection -->
         <section class="form-step active" data-step="1">
             <div class="step-description">
-                <h2 class="sr-only">Step 1: Select Schedule</h2>
-                <p>Choose your ferry schedule. All fields are required.</p>
+                <h2 class="step-title">Choose your sailing</h2>
+                <p>Pick a departure{% if not user.is_authenticated %} and verify your email so we can send your tickets{% endif %}.</p>
             </div>
 
             {% if preselected_schedule %}
@@ -642,8 +646,8 @@ Skip to main content </a>
         <!-- STEP 2: Passenger Details -->
         <section class="form-step" data-step="2">
             <div class="step-description">
-                <h2 class="sr-only">Step 2: Passenger Details</h2>
-                <p>Enter details for each passenger</p>
+                <h2 class="step-title">Who's travelling?</h2>
+                <p>Add each passenger's details exactly as they appear on their ID.</p>
             </div>
 
             <!-- Passenger Counters -->
@@ -818,8 +822,8 @@ Skip to main content </a>
         <!-- STEP 3: Add-ons & Optional Services -->
         <section class="form-step" data-step="3">
             <div class="step-description">
-                <h2 class="sr-only">Step 3: Optional Services</h2>
-                <p>Add optional services to your booking</p>
+                <h2 class="step-title">Make the trip yours</h2>
+                <p>Meals, comfort upgrades, vehicles and cargo — all optional.</p>
             </div>
 
             <!-- Add-ons notice -->
@@ -1031,8 +1035,8 @@ Skip to main content </a>
         <!-- STEP 4: Review & Payment -->
         <section class="form-step" data-step="4">
             <div class="step-description">
-                <h2 class="sr-only">Step 4: Review & Confirm</h2>
-                <p>Review your booking and proceed to payment</p>
+                <h2 class="step-title">Review &amp; pay</h2>
+                <p>Check everything looks right, choose how to pay, and you're done.</p>
             </div>
 
             <div id="booking-summary" class="mb-8">

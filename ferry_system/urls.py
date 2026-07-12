@@ -18,6 +18,10 @@ urlpatterns = [
     path('', booking_views.homepage, name='home'),
     path('privacy_policy/', booking_views.privacy_policy, name='privacy_policy'),
     path('terms_of_service/', booking_views.terms_of_service, name='terms_of_service'),
+
+    # PWA: service worker must be served from the root so its scope covers '/'.
+    path('sw.js', booking_views.service_worker, name='service_worker'),
+    path('offline/', booking_views.offline_page, name='offline'),
 ]
 
 # Static files in debug mode

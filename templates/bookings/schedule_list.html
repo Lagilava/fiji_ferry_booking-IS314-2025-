@@ -374,6 +374,23 @@ h1,h2,h3{ font-family:'Playfair Display',serif; line-height:1.15; }
   border-color: color-mix(in srgb, var(--primary) 70%, transparent);
   color: #d1fae5;
 }
+
+/* Journey summary bar */
+.summary-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap;
+  padding: 16px 22px;
+}
+.summary-main {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  font-size: 1rem;
+}
+.summary-route { font-weight: 800; font-size: 1.1rem; }
+.summary-route .fa-ship { color: var(--primary, #10B981); margin-right: 6px; }
+.summary-arrow { color: var(--primary, #10B981); font-size: .85em; margin: 0 4px; }
+.summary-sep { opacity: .35; }
+.summary-main i { opacity: .7; margin-right: 4px; }
+#refine-panel[hidden] { display: none; }
 </style>
 {% endblock %}
 
@@ -384,12 +401,38 @@ h1,h2,h3{ font-family:'Playfair Display',serif; line-height:1.15; }
   <div class="title-blur-container" data-aos="fade-down">
     <div class="title-blur-bg"></div>
     <h1 class="title-gradient">
-      Search for Ferry Schedules
+      Choose your sailing
     </h1>
   </div>
 
+  <!-- JOURNEY SUMMARY — what you searched for, results right below -->
+  <div class="glass-card summary-bar mb-10" data-aos="fade-up" aria-label="Your search">
+    <div class="summary-main">
+      <span class="summary-route">
+        <i class="fas fa-ship" aria-hidden="true"></i>
+        {% if selected_route %}
+          {{ selected_route.departure_port.name }} <i class="fas fa-arrow-right summary-arrow" aria-hidden="true"></i> {{ selected_route.destination_port.name }}
+        {% elif schedules %}
+          {{ schedules.0.route.departure_port.name }} <i class="fas fa-arrow-right summary-arrow" aria-hidden="true"></i> {{ schedules.0.route.destination_port.name }}
+        {% else %}
+          All routes
+        {% endif %}
+      </span>
+      <span class="summary-sep" aria-hidden="true">•</span>
+      <span><i class="far fa-calendar" aria-hidden="true"></i> {{ selected_month|date:"D, j M Y" }}</span>
+      <span class="summary-sep" aria-hidden="true">•</span>
+      <span><i class="fas fa-user-friends" aria-hidden="true"></i> {{ form_data.passengers|default:1 }} passenger{{ form_data.passengers|default:1|pluralize }}</span>
+    </div>
+    <button type="button" id="toggle-refine" class="btn btn-secondary" aria-expanded="false" aria-controls="refine-panel">
+      <i class="fas fa-sliders-h" aria-hidden="true"></i> Change search
+    </button>
+  </div>
+
+  <!-- REFINE PANEL (search form + calendar) — collapsed unless nothing found -->
+  <div id="refine-panel" {% if schedules %}hidden{% endif %}>
+
   <!-- SEARCH FORM (glass) -->
-  <form method="get" action="{% url 'bookings:book_ticket' %}" class="glass-card mb-10" data-aos="fade-up" aria-label="Search schedules">
+  <form method="get" action="{% url 'bookings:book_ticket' %}" class="glass-card mb-10" aria-label="Search schedules">
     <div class="form-grid">
 
       <!-- ROUTE DROPDOWN + hidden input -->
@@ -423,7 +466,7 @@ h1,h2,h3{ font-family:'Playfair Display',serif; line-height:1.15; }
   </form>
 
   <!-- CALENDAR -->
-  <div class="glass-card calendar-wrap mb-10" data-aos="fade-up" data-aos-delay="80">
+  <div class="glass-card calendar-wrap mb-10">
     <div class="cal-nav">
       <button id="prev-month" class="icon-btn" aria-label="Previous month">
         <i class="fas fa-chevron-left"></i>
@@ -459,9 +502,17 @@ h1,h2,h3{ font-family:'Playfair Display',serif; line-height:1.15; }
     <div class="legend">
       <span><span class="swatch lg-today"></span>Today</span>
       <span><span class="swatch lg-selected"></span>Selected</span>
-      <span><span class="swatch lg-available"></span>Available Day</span>
+      <span><span class="swatch lg-available"></span>Sailings available</span>
     </div>
+    <p class="subtle" style="margin-top:10px;font-size:.85rem">
+      {% if form_data.route_id %}
+      Tap a highlighted day to see that day's sailings on this route.
+      {% else %}
+      Pick a route above to highlight the days it sails.
+      {% endif %}
+    </p>
   </div>
+  </div><!-- /refine-panel -->
 
   <!-- SCHEDULE LIST -->
   {% if schedules %}
@@ -516,9 +567,21 @@ h1,h2,h3{ font-family:'Playfair Display',serif; line-height:1.15; }
               <i class="fas fa-ticket-alt"></i> Book Now
             </a>
           {% elif s.available_seats == 0 %}
-            <button disabled class="btn btn-secondary">
-              <i class="fas fa-chair"></i> Sold Out
-            </button>
+            <div class="waitlist-box" style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+              <button disabled class="btn btn-secondary" style="opacity:.75">
+                <i class="fas fa-chair"></i> Sold Out
+              </button>
+              <button type="button" class="btn btn-primary waitlist-join-btn" data-schedule-id="{{ s.id }}"
+                      {% if user.is_authenticated %}data-email="{{ user.email }}"{% endif %}>
+                <i class="fas fa-bell"></i> Join Waitlist
+              </button>
+              <form class="waitlist-form" hidden style="display:flex;gap:6px;align-items:center">
+                <input type="email" class="waitlist-email" placeholder="you@email.com" required
+                       style="padding:8px 10px;border:1px solid var(--border,#e2e8f0);border-radius:8px;font-size:.85rem;max-width:190px">
+                <button type="submit" class="btn btn-primary" style="padding:8px 12px" title="Join waitlist" aria-label="Join waitlist"><i class="fas fa-check"></i></button>
+              </form>
+              <small class="waitlist-msg subtle" style="max-width:230px;text-align:right"></small>
+            </div>
           {% else %}
             <button disabled class="btn" style="background:#ef4444;color:#fff">
               <i class="fas fa-times-circle"></i> {{ s.status|title }}
@@ -543,9 +606,9 @@ h1,h2,h3{ font-family:'Playfair Display',serif; line-height:1.15; }
         <button onclick="history.back()" class="btn btn-secondary">
           <i class="fas fa-arrow-left"></i> Go Back
         </button>
-        <a href="{% url 'bookings:book_ticket' %}" class="btn btn-primary">
-          <i class="fas fa-search"></i> New Search
-        </a>
+        <button type="button" class="btn btn-primary" onclick="document.getElementById('toggle-refine')?.click(); document.getElementById('refine-panel')?.scrollIntoView({behavior:'smooth'})">
+          <i class="fas fa-search"></i> Change search
+        </button>
       </div>
     </div>
   {% endif %}
@@ -557,6 +620,64 @@ h1,h2,h3{ font-family:'Playfair Display',serif; line-height:1.15; }
 <script>
 document.addEventListener('DOMContentLoaded', () => {
   AOS.init({ duration: 800, once: true, offset: 100 });
+
+  // --- CHANGE-SEARCH TOGGLE ---
+  const refineBtn = document.getElementById('toggle-refine');
+  const refinePanel = document.getElementById('refine-panel');
+  if (refineBtn && refinePanel) {
+    refineBtn.setAttribute('aria-expanded', String(!refinePanel.hidden));
+    refineBtn.addEventListener('click', () => {
+      refinePanel.hidden = !refinePanel.hidden;
+      refineBtn.setAttribute('aria-expanded', String(!refinePanel.hidden));
+      if (!refinePanel.hidden) refinePanel.querySelector('select, input')?.focus();
+    });
+  }
+
+  // --- WAITLIST (sold-out sailings) ---
+  function getCookie(name) {
+    const m = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+    return m ? decodeURIComponent(m.pop()) : '';
+  }
+  async function joinWaitlist(box, scheduleId, email) {
+    const msg = box.querySelector('.waitlist-msg');
+    try {
+      const body = new URLSearchParams({ schedule_id: scheduleId, email: email, seats: '{{ form_data.passengers|default:1 }}' });
+      const res = await fetch('{% url "bookings:waitlist_join" %}', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCookie('csrftoken'), 'Content-Type': 'application/x-www-form-urlencoded' },
+        body
+      });
+      const data = await res.json();
+      if (data.ok) {
+        box.querySelector('.waitlist-join-btn').hidden = true;
+        box.querySelector('.waitlist-form').hidden = true;
+        msg.style.color = 'var(--primary, #10B981)';
+        msg.textContent = data.message;
+      } else if (data.book_url) {
+        location.href = data.book_url; // seats reappeared — just book
+      } else {
+        msg.style.color = 'var(--error, #EF4444)';
+        msg.textContent = data.error || 'Something went wrong. Please try again.';
+      }
+    } catch (e) {
+      msg.style.color = 'var(--error, #EF4444)';
+      msg.textContent = 'Network error — please try again.';
+    }
+  }
+  document.querySelectorAll('.waitlist-box').forEach(box => {
+    const btn = box.querySelector('.waitlist-join-btn');
+    const form = box.querySelector('.waitlist-form');
+    btn?.addEventListener('click', () => {
+      const email = btn.dataset.email;
+      if (email) { joinWaitlist(box, btn.dataset.scheduleId, email); }
+      else { form.hidden = false; btn.hidden = true; form.querySelector('.waitlist-email').focus(); }
+    });
+    form?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const email = form.querySelector('.waitlist-email').value.trim();
+      if (email) joinWaitlist(box, btn.dataset.scheduleId, email);
+    });
+  });
 
   // --- ELEMENTS ---
   const routeSelect   = document.getElementById('route-select');
@@ -643,6 +764,9 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!res.ok) throw new Error();
       const { available_dates = [] } = await res.json();
       const set = new Set(available_dates);
+      setCalendarNotice(available_dates.length === 0
+        ? `No sailings on this route in ${mName} — try the arrows to check other months, or pick a different route.`
+        : '');
 
       calendarDays.forEach(a => {
         const m = a.href.match(/date=([^&]+)/);
@@ -660,6 +784,21 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) {
       console.warn('Availability fetch failed', e);
     }
+  }
+
+  // An empty month must not look like a broken feature: say so explicitly.
+  function setCalendarNotice(text) {
+    let el = document.getElementById('calendar-notice');
+    if (!el) {
+      el = document.createElement('p');
+      el.id = 'calendar-notice';
+      el.setAttribute('role', 'status');
+      el.style.cssText = 'margin-top:12px;padding:10px 14px;border-radius:10px;font-size:.9rem;font-weight:600;' +
+        'background:color-mix(in srgb, #f59e0b 14%, transparent);border:1px solid color-mix(in srgb, #f59e0b 35%, transparent)';
+      document.querySelector('.cal-grid')?.after(el);
+    }
+    el.textContent = text;
+    el.hidden = !text;
   }
 
   // --- UPDATE CALENDAR LINKS TO INCLUDE CURRENT ROUTE_ID ---

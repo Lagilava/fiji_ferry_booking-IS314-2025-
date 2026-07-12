@@ -1,15 +1,6 @@
 from django import forms
-from .models import Booking, Cargo
+from .models import Cargo
 
-class ModifyBookingForm(forms.ModelForm):
-    class Meta:
-        model = Booking
-        fields = ['passenger_adults', 'passenger_children', 'passenger_infants']
-        widgets = {
-            'passenger_adults': forms.NumberInput(attrs={'min': 0, 'max': 20, 'required': True}),
-            'passenger_children': forms.NumberInput(attrs={'min': 0, 'max': 20}),
-            'passenger_infants': forms.NumberInput(attrs={'min': 0, 'max': 20}),
-        }
 
 class CargoBookingForm(forms.ModelForm):
     class Meta:

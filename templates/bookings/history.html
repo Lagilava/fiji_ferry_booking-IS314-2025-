@@ -15,6 +15,23 @@
     --accent-width: 3px;
   }
 
+  .guest-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.7rem;
+    background: var(--primary-light);
+    border: 1px solid var(--primary);
+    border-radius: 12px;
+    padding: 0.9rem 1.1rem;
+    margin-bottom: 1.75rem;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: var(--text-primary);
+  }
+  .guest-banner i { color: var(--primary); margin-top: 0.15rem; }
+  .guest-banner a { color: var(--primary-dark); font-weight: 600; text-decoration: underline; }
+  [data-theme="dark"] .guest-banner a { color: var(--primary); }
+
   .history-page .page-eyebrow {
     font-size: 0.7rem;
     font-weight: 600;
@@ -719,10 +736,21 @@
 
     <!-- Page Header -->
     <div class="mb-10">
-      <p class="page-eyebrow">My Account</p>
+      <p class="page-eyebrow">{% if is_guest %}Guest Access{% else %}My Account{% endif %}</p>
       <h1 class="page-title">Booking History</h1>
       <p class="page-subtitle">Review your upcoming and past ferry journeys across the islands.</p>
     </div>
+
+    {% if is_guest %}
+    <div class="guest-banner">
+      <i class="fas fa-circle-check" aria-hidden="true"></i>
+      <div>
+        Showing bookings for <strong>{{ guest_email }}</strong>.
+        <a href="{% url 'bookings:guest_lookup' %}?switch=1">Use a different email</a> &middot;
+        <a href="{% url 'accounts:register' %}">create an account</a> to keep them all in one place.
+      </div>
+    </div>
+    {% endif %}
 
     <!-- Stats Bar -->
     {% if bookings %}

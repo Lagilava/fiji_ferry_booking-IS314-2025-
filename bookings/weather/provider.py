@@ -11,6 +11,7 @@ row, and returns the serialised weather dict (or ``None`` on total failure).
 """
 import logging
 import datetime
+from concurrent.futures import ThreadPoolExecutor
 
 import requests
 from django.conf import settings
@@ -19,7 +20,14 @@ from django.utils import timezone
 logger = logging.getLogger(__name__)
 
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
-TTL_MINUTES = 30
+
+# How long a stored reading stays "fresh". Open-Meteo updates roughly every
+# 15 min and imposes no key/quota, so there is no reason to serve staler data.
+TTL_MINUTES = 15
+
+# Guard against stampedes: when many cards ask for the same route at once, only
+# one request may actually hit the network within this window.
+_REFRESH_LOCK_SECONDS = 60
 
 # WMO weather interpretation codes -> human-readable condition text.
 # https://open-meteo.com/en/docs (Weather variable documentation)
@@ -120,6 +128,25 @@ def _warning_for(wind_speed, precip_prob):
     return None
 
 
+def serialize_condition(wc):
+    """Serialise a stored WeatherCondition row into the dict the frontend eats."""
+    return {
+        "route_id": wc.route_id,
+        "port": wc.port.name if wc.port_id else None,
+        "temperature": float(wc.temperature) if wc.temperature is not None else None,
+        "wind_speed": float(wc.wind_speed) if wc.wind_speed is not None else None,
+        "precipitation_probability": (
+            float(wc.precipitation_probability)
+            if wc.precipitation_probability is not None else None
+        ),
+        "condition": wc.condition,
+        "updated_at": wc.updated_at.isoformat() if wc.updated_at else None,
+        "expires_at": wc.expires_at.isoformat() if wc.expires_at else None,
+        "warning": _warning_for(wc.wind_speed, wc.precipitation_probability),
+        "stale": wc.is_expired(),
+    }
+
+
 def fetch_and_store_weather(route):
     """Fetch current weather for ``route``'s departure port, upsert a
     WeatherCondition row, and return the serialised weather dict (or None)."""
@@ -144,7 +171,6 @@ def fetch_and_store_weather(route):
             "precipitation_probability": w["precipitation_probability"],
             "condition": w["condition"],
             "expires_at": expires_at,
-            "updated_at": now,
         },
     )
     return {
@@ -157,4 +183,94 @@ def fetch_and_store_weather(route):
         "updated_at": now.isoformat(),
         "expires_at": expires_at.isoformat(),
         "warning": _warning_for(w["wind_speed"], w["precipitation_probability"]),
+        "stale": False,
     }
+
+
+def refresh_routes_if_stale(routes):
+    """Refresh any route whose stored reading is missing or expired.
+
+    Keeps the site correct when the Celery beat worker isn't running: the
+    request path repairs its own data. A short cache lock means a burst of
+    concurrent visitors triggers at most one upstream call per route.
+    """
+    from django.core.cache import cache
+    from bookings.models import WeatherCondition
+
+    routes = list(routes)
+    if not routes:
+        return {}
+
+    now = timezone.now()
+    fresh = {
+        wc.route_id: wc
+        for wc in WeatherCondition.objects.filter(
+            route__in=routes, expires_at__gt=now
+        ).select_related("port")
+    }
+
+    out = {rid: serialize_condition(wc) for rid, wc in fresh.items()}
+
+    stale = []
+    for route in routes:
+        if route.id in fresh:
+            continue
+        lock = f"wx:refreshing:{route.id}"
+        if cache.add(lock, "1", _REFRESH_LOCK_SECONDS):
+            stale.append((route, lock))
+        # else: another request is already fetching this route — skip it.
+
+    if not stale:
+        return out
+
+    def _fetch(pair):
+        """Network only — no ORM. Worker threads must not open DB connections."""
+        route, _lock = pair
+        port = route.departure_port
+        if port is None or port.lat is None or port.lng is None:
+            return route, None
+        try:
+            return route, fetch_current_weather(port.lat, port.lng)
+        except Exception as e:  # never let weather break the page
+            logger.warning("Weather refresh failed for route %s: %s", route.id, e)
+            return route, None
+
+    # These are IO-bound HTTP calls; fetching serially would take ~2s per route.
+    try:
+        with ThreadPoolExecutor(max_workers=min(8, len(stale))) as pool:
+            results = list(pool.map(_fetch, stale))
+    finally:
+        for _route, lock in stale:
+            cache.delete(lock)
+
+    # Persist on the calling thread, reusing its connection.
+    now = timezone.now()
+    expires_at = now + datetime.timedelta(minutes=TTL_MINUTES)
+    for route, w in results:
+        if not w:
+            continue
+        WeatherCondition.objects.update_or_create(
+            route=route,
+            port=route.departure_port,
+            defaults={
+                "temperature": w["temperature"],
+                "wind_speed": w["wind_speed"],
+                "precipitation_probability": w["precipitation_probability"],
+                "condition": w["condition"],
+                "expires_at": expires_at,
+            },
+        )
+        out[route.id] = {
+            "route_id": route.id,
+            "port": route.departure_port.name,
+            "temperature": w["temperature"],
+            "wind_speed": w["wind_speed"],
+            "precipitation_probability": w["precipitation_probability"],
+            "condition": w["condition"],
+            "updated_at": now.isoformat(),
+            "expires_at": expires_at.isoformat(),
+            "warning": _warning_for(w["wind_speed"], w["precipitation_probability"]),
+            "stale": False,
+        }
+
+    return out

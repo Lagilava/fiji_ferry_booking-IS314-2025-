@@ -490,11 +490,18 @@
 
 {% block content %}
 <div class="pay-wrap brand-{{ provider }}" data-aos="fade-up">
+  {% if purpose == 'modification' %}
+  {# The booking is already confirmed; going "back" must not cancel it. #}
+  <a href="{% url 'bookings:modification_payment' booking.id %}" class="pay-back-link">
+    <i class="fas fa-arrow-left"></i> Choose another method
+  </a>
+  {% else %}
   <a href="{% url 'bookings:cancel_mock_and_rebook' booking.id %}"
      class="pay-back-link"
      onclick="return confirm('Go back to step 1? Your current payment session will be cancelled.');">
     <i class="fas fa-arrow-left"></i> Back to review
   </a>
+  {% endif %}
   <div class="pay-grid">
     <!-- Payment form -->
     <div class="pay-card">
@@ -525,9 +532,10 @@
           <i class="fas fa-flask" style="opacity:0.3;"></i> sandbox
         </div>
 
-        <form method="post" action="{% url 'bookings:mock_payment' booking.id %}?method={{ provider }}" id="mock-pay-form">
+        <form method="post" action="{% url 'bookings:mock_payment' booking.id %}?method={{ provider }}{% if purpose %}&amp;purpose={{ purpose }}{% endif %}" id="mock-pay-form">
           {% csrf_token %}
           <input type="hidden" name="method" value="{{ provider }}">
+          {% if purpose %}<input type="hidden" name="purpose" value="{{ purpose }}">{% endif %}
 
           {% if provider == 'card' %}
             <!-- Card preview -->
@@ -639,20 +647,28 @@
         <span class="amt">FJD {{ amount|floatformat:2 }}</span>
       </div>
 
+      {% with q=purpose|yesno:"&purpose=modification," %}
       <div class="pay-methods">
         <span style="width:100%; font-size:0.7rem; color:var(--text-muted); margin-bottom:0.2rem;">Change payment method</span>
-        <a href="?method=card"   class="{% if provider == 'card' %}is-active{% endif %}">Card</a>
-        <a href="?method=anz"    class="{% if provider == 'anz' %}is-active{% endif %}">ANZ Fiji</a>
-        <a href="?method=bsp"    class="{% if provider == 'bsp' %}is-active{% endif %}">BSP</a>
-        <a href="?method=mpaisa" class="{% if provider == 'mpaisa' %}is-active{% endif %}">M‑PAiSA</a>
-        <a href="?method=mycash" class="{% if provider == 'mycash' %}is-active{% endif %}">MyCash</a>
+        <a href="?method=card{{ q }}"   class="{% if provider == 'card' %}is-active{% endif %}">Card</a>
+        <a href="?method=anz{{ q }}"    class="{% if provider == 'anz' %}is-active{% endif %}">ANZ Fiji</a>
+        <a href="?method=bsp{{ q }}"    class="{% if provider == 'bsp' %}is-active{% endif %}">BSP</a>
+        <a href="?method=mpaisa{{ q }}" class="{% if provider == 'mpaisa' %}is-active{% endif %}">M‑PAiSA</a>
+        <a href="?method=mycash{{ q }}" class="{% if provider == 'mycash' %}is-active{% endif %}">MyCash</a>
       </div>
+      {% endwith %}
 
+      {% if purpose == 'modification' %}
+      <a href="{% url 'bookings:booking_history' %}" class="pay-back-btn">
+        <i class="fas fa-arrow-left"></i> Back to my bookings
+      </a>
+      {% else %}
       <a href="{% url 'bookings:cancel_mock_and_rebook' booking.id %}"
          class="pay-back-btn"
          onclick="return confirm('Go back to step 1? Your current payment session will be cancelled.');">
         <i class="fas fa-arrow-left"></i> Back &amp; change booking
       </a>
+      {% endif %}
     </aside>
   </div>
 </div>

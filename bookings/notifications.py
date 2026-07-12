@@ -190,6 +190,31 @@ def notify_schedule_disruption(schedule, kind):
         to = _booking_recipient(booking)
         if not to:
             continue
+
+        # For cancellations, offer a free one-click move to the next sailing
+        # on the same route that fits this booking (seats/vehicles/cargo).
+        rebook_html = rebook_text = ""
+        if kind == "cancelled":
+            try:
+                from .waitlist import rebook_offer_for
+                alt, one_click_url = rebook_offer_for(booking)
+            except Exception:
+                logger.exception("Failed to build rebook offer for booking %s", booking.id)
+                alt, one_click_url = None, ""
+            if alt and one_click_url:
+                alt_depart = timezone.localtime(alt.departure_time).strftime("%a, %b %d %Y at %H:%M")
+                rebook_text = (
+                    f"\nGood news — {alt.ferry.name} sails the same route on {alt_depart} "
+                    f"and has room for your whole party. Move your booking to it free of "
+                    f"charge with one click:\n{one_click_url}\n"
+                )
+                rebook_html = f"""
+          <div style="background:#ecfdf5;border:1px solid #6ee7b7;border-radius:10px;padding:14px 16px;margin:14px 0">
+            <p style="margin:0 0 10px"><strong>Good news:</strong> {alt.ferry.name} sails the same route on
+               <strong>{alt_depart}</strong> and has room for your whole party.</p>
+            <a href="{one_click_url}" style="background:#10b981;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600">Move my booking — free</a>
+          </div>"""
+
         subject = f"{copy['subject']} — {dep} → {dest}"
         text = (
             f"Bula {_customer_name(booking)},\n\n"
@@ -198,6 +223,7 @@ def notify_schedule_disruption(schedule, kind):
             f"Route: {dep} → {dest}\n"
             f"Scheduled departure: {depart}\n\n"
             f"{copy['action']}\n"
+            + rebook_text
             + (f"\nManage your booking: {manage}\n" if manage else "")
             + "\nVinaka,\nFiji Ferry"
         )
@@ -211,12 +237,21 @@ def notify_schedule_disruption(schedule, kind):
             <tr><td style="padding:8px;color:#6b7280">Scheduled departure</td><td style="padding:8px">{depart}</td></tr>
           </table>
           <p style="margin-top:14px">{copy['action']}</p>
+          {rebook_html}
           {f'<p><a href="{manage}" style="background:#0e7490;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">Manage booking</a></p>' if manage else ''}
           <p>Vinaka,<br>Fiji Ferry</p>
         </div>
         """
         if _send(subject, text, [to], html):
             sent += 1
+    if kind == "cancelled":
+        # Close out the sailing's waitlist too (suggests the next sailing).
+        try:
+            from .waitlist import expire_waitlist_for_schedule
+            expire_waitlist_for_schedule(schedule)
+        except Exception:
+            logger.exception("Failed to expire waitlist for schedule %s", schedule.id)
+
     if sent:
         logger.info("notifications: sent %s '%s' disruption email(s) for schedule %s",
                     sent, kind, schedule.id)
@@ -242,12 +277,116 @@ def send_admin_alert(subject, message, *, html=None, throttle_key=None, throttle
     return _send(f"[Fiji Ferry Ops] {subject}", message, [to], html)
 
 
-def _send(subject, text, recipients, html=None):
+def send_modification_confirmation_email(booking, amount=None):
+    """Confirm a paid booking modification and attach the regenerated tickets.
+
+    Sent after the modification balance settles, so the attached PDF already
+    reflects the new passenger roster (added passengers have Ticket rows by
+    then, and the PDF is rendered from the live roster rather than a snapshot).
+    """
+    to = _booking_recipient(booking)
+    if not to:
+        logger.warning("No recipient for modification email, booking %s", booking.id)
+        return False
+
+    route = booking.schedule.route
+    dep, dest = route.departure_port.name, route.destination_port.name
+    depart = timezone.localtime(booking.schedule.departure_time).strftime("%a, %b %d %Y at %H:%M")
+    name = _customer_name(booking)
+
+    passengers = list(booking.passengers.all())
+    roster = "".join(
+        f"<tr><td style='padding:8px 12px;border:1px solid #eef2f7;background:#f9fafb;'>"
+        f"{p.get_full_name()}</td>"
+        f"<td style='padding:8px 12px;border:1px solid #eef2f7;background:#f9fafb;'>"
+        f"{p.get_passenger_type_display()}</td></tr>"
+        for p in passengers
+    )
+    paid_line = (
+        f"<p style='margin:0 0 6px;'>Amount paid today: "
+        f"<strong>FJD {amount:.2f}</strong></p>" if amount is not None else ""
+    )
+
+    counts = (
+        f"{booking.passenger_adults} adult(s), "
+        f"{booking.passenger_children} child(ren), "
+        f"{booking.passenger_infants} infant(s)"
+    )
+
+    text = (
+        f"Hi {name},\n\n"
+        f"Your booking #{booking.id} has been updated and your payment received.\n\n"
+        f"Trip: {dep} to {dest}\nDeparts: {depart}\n"
+        f"Passengers: {counts}\nBooking total: FJD {booking.total_price}\n\n"
+        f"Your updated tickets are attached as a PDF. Every passenger now has a "
+        f"valid boarding pass with its own QR code.\n\n"
+        f"Please arrive at least 45 minutes before departure with valid photo ID.\n\n"
+        f"Vinaka, and safe travels,\nFiji Ferry Service"
+    )
+
+    html = f"""\
+<!doctype html>
+<html><body style="margin:0;padding:24px;background:#f1f5f9;font-family:Segoe UI,Arial,sans-serif;color:#0f172a;">
+  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;border:1px solid #e2e8f0;">
+    <div style="background:linear-gradient(135deg,#0A2540,#0E7490);padding:26px 28px;color:#fff;">
+      <div style="font-size:12px;letter-spacing:.12em;text-transform:uppercase;opacity:.85;">Booking updated</div>
+      <div style="font-size:23px;font-weight:700;margin-top:4px;">Booking #{booking.id}</div>
+    </div>
+    <div style="padding:26px 28px;">
+      <p style="margin:0 0 16px;">Hi {name}, your payment went through and your booking is updated.</p>
+
+      <div style="background:#ecfdf5;border:1px solid #6ee7b7;border-radius:10px;padding:14px 16px;margin-bottom:20px;">
+        {paid_line}
+        <p style="margin:0;">Your <strong>updated tickets are attached</strong> to this email as a PDF.</p>
+      </div>
+
+      <h3 style="font-size:14px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;margin:0 0 10px;">Your trip</h3>
+      <p style="margin:0 0 4px;font-size:18px;font-weight:700;">{dep} &rarr; {dest}</p>
+      <p style="margin:0 0 20px;color:#475569;">{depart}</p>
+
+      <h3 style="font-size:14px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;margin:0 0 10px;">Passengers</h3>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:20px;font-size:14px;">{roster}</table>
+
+      <div style="display:flex;justify-content:space-between;border-top:2px solid #0EA5E9;padding-top:12px;font-weight:700;">
+        <span>Booking total</span><span>FJD {booking.total_price}</span>
+      </div>
+    </div>
+    <div style="padding:18px 28px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:12px;color:#64748b;">
+      Please arrive at least 45 minutes before departure with valid photo ID.<br>
+      Need help? support@fijiferrybooking.com &bull; +679 738 8496
+    </div>
+  </div>
+</body></html>"""
+
+    attachments = []
+    try:
+        from .models import Ticket
+        from .pdf import booking_pdf_bytes
+        tickets = list(Ticket.objects.filter(booking=booking).select_related("passenger"))
+        attachments.append((
+            f"FijiFerry_Booking_{booking.id}_Tickets.pdf",
+            booking_pdf_bytes(booking, tickets),
+            "application/pdf",
+        ))
+    except Exception:
+        # Never lose the confirmation just because the PDF failed to render.
+        logger.exception("Failed to attach updated ticket PDF for booking %s", booking.id)
+
+    return _send(
+        f"Your updated Fiji Ferry tickets — Booking #{booking.id}",
+        text, [to], html=html, attachments=attachments,
+    )
+
+
+def _send(subject, text, recipients, html=None, attachments=None):
+    """Send an email. ``attachments`` is a list of (filename, content, mimetype)."""
     from_email = getattr(settings, "DEFAULT_FROM_EMAIL", None) or getattr(settings, "EMAIL_HOST_USER", None)
     try:
         msg = EmailMultiAlternatives(subject, text, from_email, recipients)
         if html:
             msg.attach_alternative(html, "text/html")
+        for name, content, mimetype in (attachments or []):
+            msg.attach(name, content, mimetype)
         msg.send(fail_silently=False)
         return True
     except Exception:

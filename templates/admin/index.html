@@ -719,6 +719,130 @@
   </section>
 
   <!-- ════════════════════════════════════════════
+       ROUTE PERFORMANCE & DEMAND (load factor, cancellations, heatmap)
+  ════════════════════════════════════════════ -->
+  {{ load_factor|json_script:"lf-data" }}
+  {{ cancellation_trends|json_script:"ct-data" }}
+  {{ demand_heatmap|json_script:"dh-data" }}
+  <section aria-label="Route performance and demand" class="route-performance-section">
+    <div class="section-header">
+      <h3 class="section-title"><i class="fas fa-route"></i> Route Performance &amp; Demand (last 30 days)</h3>
+    </div>
+    <div class="rp-grid">
+      <div class="dash-card">
+        <div class="dash-card__header">
+          <h2 class="dash-card__title"><i class="fas fa-percent"></i> Load Factor by Route</h2>
+        </div>
+        <div class="dash-card__body">
+          <div class="chart-wrapper" id="loadFactorWrap" role="img" aria-label="Load factor by route"><canvas id="loadFactorChart"></canvas></div>
+        </div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-card__header">
+          <h2 class="dash-card__title"><i class="fas fa-cloud-showers-heavy"></i> Sailing Cancellations</h2>
+        </div>
+        <div class="dash-card__body">
+          <div class="chart-wrapper" id="cancelTrendWrap" role="img" aria-label="Cancellation trend"><canvas id="cancelTrendChart"></canvas></div>
+        </div>
+      </div>
+      <div class="dash-card rp-heatmap-card">
+        <div class="dash-card__header">
+          <h2 class="dash-card__title"><i class="fas fa-th"></i> Demand Heatmap (passengers by departure day &amp; hour)</h2>
+        </div>
+        <div class="dash-card__body">
+          <div id="demandHeatmap" class="rp-heatmap" role="img" aria-label="Demand heatmap by weekday and hour"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+  <style>
+    .rp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .rp-heatmap-card { grid-column: 1 / -1; }
+    .rp-heatmap { display: grid; grid-template-columns: 64px repeat(24, 1fr); gap: 2px; font-size: 11px; overflow-x: auto; }
+    .rp-heatmap .rp-cell { aspect-ratio: 1.2; border-radius: 3px; display: flex; align-items: center; justify-content: center; min-width: 18px; }
+    .rp-heatmap .rp-label { display: flex; align-items: center; font-weight: 600; opacity: .8; }
+    .rp-heatmap .rp-hour { text-align: center; opacity: .65; }
+    @media (max-width: 900px) { .rp-grid { grid-template-columns: 1fr; } }
+  </style>
+  <script>
+    window.addEventListener('load', function () {
+      const lf = JSON.parse(document.getElementById('lf-data').textContent || '[]');
+      const ct = JSON.parse(document.getElementById('ct-data').textContent || '[]');
+      const dh = JSON.parse(document.getElementById('dh-data').textContent || '[]');
+
+      if (typeof Chart !== 'undefined') {
+        if (lf.length) {
+          new Chart(document.getElementById('loadFactorChart'), {
+            type: 'bar',
+            data: {
+              labels: lf.map(r => r.route),
+              datasets: [{
+                label: 'Avg load factor %',
+                data: lf.map(r => r.load_factor),
+                backgroundColor: lf.map(r => r.load_factor >= 85 ? '#ef4444' : r.load_factor >= 60 ? '#10b981' : '#94a3b8')
+              }]
+            },
+            options: {
+              indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+              scales: { x: { min: 0, max: 100, ticks: { callback: v => v + '%' } } },
+              plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { afterLabel: c => lf[c.dataIndex].sailings + ' sailing(s)' } }
+              }
+            }
+          });
+        } else {
+          document.getElementById('loadFactorWrap').textContent = 'No sailings in this window yet.';
+        }
+
+        if (ct.length) {
+          new Chart(document.getElementById('cancelTrendChart'), {
+            type: 'bar',
+            data: {
+              labels: ct.map(r => r.date),
+              datasets: [
+                { label: 'Cancelled', data: ct.map(r => r.cancelled), backgroundColor: '#ef4444', stack: 's' },
+                { label: 'Operated', data: ct.map(r => r.total - r.cancelled), backgroundColor: '#10b981', stack: 's' }
+              ]
+            },
+            options: {
+              responsive: true, maintainAspectRatio: false,
+              scales: { x: { stacked: true }, y: { stacked: true } },
+              plugins: { tooltip: { callbacks: { footer: items => 'Rate: ' + ct[items[0].dataIndex].rate + '%' } } }
+            }
+          });
+        } else {
+          document.getElementById('cancelTrendWrap').textContent = 'No sailings in this window yet.';
+        }
+      }
+
+      // Heatmap: pure CSS grid, green intensity scaled to the busiest cell.
+      const grid = document.getElementById('demandHeatmap');
+      const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+      const byCell = {};
+      let max = 0;
+      dh.forEach(d => { byCell[d.day_index + '-' + d.hour] = d.passengers; if (d.passengers > max) max = d.passengers; });
+      if (!max) {
+        grid.textContent = 'No booked passengers in this window yet.';
+        grid.style.display = 'block';
+      } else {
+        let html = '<div></div>';
+        for (let h = 0; h < 24; h++) html += '<div class="rp-hour">' + h + '</div>';
+        days.forEach((day, di) => {
+          html += '<div class="rp-label">' + day.slice(0, 3) + '</div>';
+          for (let h = 0; h < 24; h++) {
+            const v = byCell[di + '-' + h] || 0;
+            const alpha = v ? (0.15 + 0.85 * v / max).toFixed(2) : 0;
+            html += '<div class="rp-cell" style="background:rgba(16,185,129,' + alpha + ')" title="' +
+                    day + ' ' + String(h).padStart(2, '0') + ':00 — ' + v + ' passenger(s)">' + (v || '') + '</div>';
+          }
+        });
+        grid.innerHTML = html;
+      }
+    });
+  </script>
+
+  <!-- ════════════════════════════════════════════
        RECENT BOOKINGS TABLE + RECENT REGISTRATIONS (2-col)
   ════════════════════════════════════════════ -->
   <div class="two-col">
