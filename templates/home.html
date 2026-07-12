@@ -794,6 +794,7 @@
 {{ routes|json_script:"routes-data" }}
 {{ weather_data|json_script:"weather-data" }}
 {{ schedule_weather_data|json_script:"schedule-weather-data" }}
+{{ port_media_map|json_script:"port-media-data" }}
 
 {% endblock %}
 
@@ -1803,6 +1804,65 @@ img { display: block; max-width: 100%; }
 }
 .map-loading .spinner { width: 1.6rem; height: 1.6rem; }
 
+/* ── Map toolbar (recenter / weather / fullscreen) ── */
+.map-toolbar {
+  display: flex; flex-direction: column; gap: .4rem;
+  background: rgba(15,23,42,.82);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border-radius: 12px; padding: .4rem;
+  border: 1px solid rgba(255,255,255,.1);
+  box-shadow: 0 4px 20px rgba(0,0,0,.25);
+}
+.map-tool-btn {
+  width: 34px; height: 34px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,.06); border: 1px solid transparent;
+  color: rgba(240,249,255,.85); cursor: pointer;
+  transition: background .15s ease, color .15s ease, transform .1s ease;
+}
+.map-tool-btn:hover { background: rgba(16,185,129,.25); transform: translateY(-1px); }
+.map-tool-btn.is-active {
+  background: #10b981; color: #fff;
+  box-shadow: 0 0 0 3px rgba(16,185,129,.25);
+}
+
+/* ── Fullscreen map ── */
+body.map-fullscreen-lock { overflow: hidden; }
+.map-wrapper.is-fullscreen {
+  position: fixed; inset: 0; z-index: 12000;
+  border-radius: 0; border: none;
+}
+.map-wrapper.is-fullscreen .map-container { height: 100vh; }
+
+/* ── Weather overlay chips ── */
+.weather-chip {
+  display: inline-flex; align-items: center; gap: .35rem;
+  background: rgba(15,23,42,.88);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(96,165,250,.4);
+  border-radius: 999px; padding: .2rem .6rem;
+  font-size: .68rem; font-weight: 700; color: #f0f9ff;
+  white-space: nowrap; pointer-events: none;
+}
+.weather-chip.is-stale { opacity: .55; }
+.weather-chip__temp { color: #60a5fa; }
+.weather-chip__cond { color: rgba(240,249,255,.7); font-weight: 600; text-transform: capitalize; }
+
+/* ── Popup with port photo ── */
+.map-popup-wrap .leaflet-popup-content-wrapper { padding: 0 !important; overflow: hidden; }
+.map-popup { padding: 0; min-width: 200px; }
+.map-popup__photo {
+  height: 92px; width: 100%; background-size: cover; background-position: center;
+  border-bottom: 1px solid rgba(16,185,129,.3);
+}
+.map-popup__body { padding: .85rem 1rem 1rem; }
+.map-popup__tagline {
+  font-size: .72rem; color: rgba(16,185,129,.9); font-weight: 600;
+  margin: -.15rem 0 .35rem; text-transform: uppercase; letter-spacing: .3px;
+}
+
 /* ── Map stats below map ── */
 .map-stats {
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-top: 1.25rem;
@@ -2700,6 +2760,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
   /* ═══════════════════════════════════════════════════════
      FIJI MAP — ESRI Ocean tiles + realistic sea-lane routes
+     + toolbar (recenter / weather overlay / fullscreen) + photo popups
   ═══════════════════════════════════════════════════════ */
   (function initFijiMap() {
     const mapEl = document.getElementById('fiji-map');
@@ -2707,6 +2768,15 @@ document.addEventListener('DOMContentLoaded', function() {
     if (mapEl._leaflet_id) return;   // already initialised
 
     const isTouch = window.matchMedia('(hover: none), (pointer: coarse)').matches;
+    const mapWrapper = mapEl.closest('.map-wrapper') || mapEl.parentElement;
+    const loadingEl = document.getElementById('map-loading');
+    if (loadingEl) loadingEl.style.display = 'flex';
+
+    let portMedia = {};
+    try {
+      const el = document.getElementById('port-media-data');
+      if (el) portMedia = JSON.parse(el.textContent || '{}');
+    } catch (e) { /* ignore — popups just skip the photo */ }
 
     const map = L.map(mapEl, {
       scrollWheelZoom: false,
@@ -2727,6 +2797,95 @@ document.addEventListener('DOMContentLoaded', function() {
     ).addTo(map);
 
     L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+    // ── Toolbar: recenter / weather / fullscreen — stacked top-right ────────
+    let mapBounds = [];
+    let weatherLayer = L.layerGroup();
+    let weatherLoaded = false;
+    let weatherOn = false;
+    let weatherBtn = null;
+
+    function escHtml(s) {
+      const d = document.createElement('div'); d.textContent = s == null ? '' : String(s);
+      return d.innerHTML;
+    }
+
+    async function loadWeatherLayer() {
+      try {
+        const res = await fetch('/bookings/api/weather/ports/');
+        if (!res.ok) throw new Error('weather fetch failed');
+        const { ports } = await res.json();
+        (ports || []).forEach((p) => {
+          if (p.condition == null || p.temperature == null) return;
+          const icon = L.divIcon({
+            html: `<div class="weather-chip${p.stale ? ' is-stale' : ''}">
+                <span class="weather-chip__temp">${Math.round(p.temperature)}°</span>
+                <span class="weather-chip__cond">${escHtml(p.condition)}</span>
+              </div>`,
+            className: '', iconSize: [0, 0], iconAnchor: [-26, 8],
+          });
+          L.marker([p.lat, p.lng], { icon, interactive: false }).addTo(weatherLayer);
+        });
+        weatherLoaded = true;
+      } catch (e) { /* leave the toggle off; next click retries */ }
+    }
+
+    async function toggleWeather() {
+      weatherOn = !weatherOn;
+      if (weatherBtn) weatherBtn.classList.toggle('is-active', weatherOn);
+      if (!weatherOn) { map.removeLayer(weatherLayer); return; }
+      if (!weatherLoaded) await loadWeatherLayer();
+      weatherLayer.addTo(map);
+    }
+
+    function toggleFullscreen(btn) {
+      if (!mapWrapper) return;
+      const on = mapWrapper.classList.toggle('is-fullscreen');
+      document.body.classList.toggle('map-fullscreen-lock', on);
+      if (btn) btn.classList.toggle('is-active', on);
+      setTimeout(() => map.invalidateSize(), 220);
+    }
+
+    const Toolbar = L.Control.extend({
+      options: { position: 'topright' },
+      onAdd: () => {
+        const wrap = L.DomUtil.create('div', 'map-toolbar');
+        L.DomEvent.disableClickPropagation(wrap);
+        L.DomEvent.disableScrollPropagation(wrap);
+        const mkBtn = (icon, label, onClick, extraClass) => {
+          const btn = L.DomUtil.create('button', 'map-tool-btn' + (extraClass ? ' ' + extraClass : ''), wrap);
+          btn.type = 'button'; btn.innerHTML = icon;
+          btn.setAttribute('aria-label', label); btn.title = label;
+          L.DomEvent.on(btn, 'click', (e) => { L.DomEvent.stop(e); onClick(btn); });
+          return btn;
+        };
+        mkBtn(
+          '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 019-9M21 12a9 9 0 01-9 9"/><path d="M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg>',
+          'Recenter map',
+          () => {
+            if (mapBounds.length) map.flyToBounds(mapBounds, { padding: [60, 60], maxZoom: 9 });
+            else map.flyTo([-17.75, 178.0], 8);
+          }
+        );
+        weatherBtn = mkBtn(
+          '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"/></svg>',
+          'Toggle weather overlay',
+          toggleWeather,
+          'map-tool-btn--weather'
+        );
+        mkBtn(
+          '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/></svg>',
+          'Toggle fullscreen',
+          () => toggleFullscreen(wrap.querySelector('.map-tool-btn--fullscreen')),
+          'map-tool-btn--fullscreen'
+        );
+        return wrap;
+      },
+    });
+    map.addControl(new Toolbar());
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && mapWrapper && mapWrapper.classList.contains('is-fullscreen')) toggleFullscreen();
+    });
 
     // ── Interaction gate ────────────────────────────────────────────────────
     const gate = document.createElement('div');
@@ -2760,15 +2919,24 @@ document.addEventListener('DOMContentLoaded', function() {
       });
     }
 
-    // ── Popup HTML ──────────────────────────────────────────────────────────
+    // ── Popup HTML — includes a real port photo + tagline when available ────
     function popupHtml(name, routeCount) {
+      const media = portMedia[name];
+      const photoHtml = media && media.image
+        ? `<div class="map-popup__photo" style="background-image:url('${media.image}')"></div>` : '';
+      const taglineHtml = media && media.tagline
+        ? `<div class="map-popup__tagline">${escHtml(media.tagline)}</div>` : '';
       return `<div class="map-popup">
-        <div class="map-popup__name"><span class="popup-dot"></span>${name}</div>
-        <div class="map-popup__meta">${routeCount} active route${routeCount !== 1 ? 's' : ''} today</div>
-        <a href="/bookings/book/" class="map-popup__book">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-          Book a ferry
-        </a>
+        ${photoHtml}
+        <div class="map-popup__body">
+          <div class="map-popup__name"><span class="popup-dot"></span>${name}</div>
+          ${taglineHtml}
+          <div class="map-popup__meta">${routeCount} active route${routeCount !== 1 ? 's' : ''} today</div>
+          <a href="/bookings/book/?port=${encodeURIComponent(name)}" class="map-popup__book">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            Book a ferry
+          </a>
+        </div>
       </div>`;
     }
 
@@ -2870,13 +3038,14 @@ document.addEventListener('DOMContentLoaded', function() {
         activePorts.forEach(({ latlng, routeCount }, name) => {
           L.marker(latlng, { icon: portIcon(name) })
             .addTo(map)
-            .bindPopup(popupHtml(name, routeCount), { maxWidth: 220 });
+            .bindPopup(popupHtml(name, routeCount), { maxWidth: 240, className: 'map-popup-wrap' });
           bounds.push(latlng);
         });
 
         const portsEl = document.getElementById('active-ports-count');
         if (portsEl) { portsEl.setAttribute('data-count', activePorts.size); portsEl.textContent = activePorts.size; }
 
+        mapBounds = bounds;
         if (bounds.length) map.fitBounds(bounds, { padding: [60, 60], maxZoom: 9 });
         else map.setView([-17.75, 178.0], 8);
       })
@@ -2902,10 +3071,14 @@ document.addEventListener('DOMContentLoaded', function() {
         const pm = Object.fromEntries(ports.map(p=>[p.name,[p.lat,p.lng]]));
         pairs.forEach(([a,b]) => { if (pm[a]&&pm[b]) drawRoute(a,b,pm[a],pm[b]); });
         const bounds = ports.map(p => {
-          L.marker([p.lat,p.lng],{icon:portIcon(p.name)}).addTo(map).bindPopup(popupHtml(p.name,1),{maxWidth:220});
+          L.marker([p.lat,p.lng],{icon:portIcon(p.name)}).addTo(map).bindPopup(popupHtml(p.name,1),{maxWidth:240,className:'map-popup-wrap'});
           return [p.lat,p.lng];
         });
+        mapBounds = bounds;
         map.fitBounds(bounds, { padding:[60,60], maxZoom:9 });
+      })
+      .finally(() => {
+        if (loadingEl) loadingEl.style.display = 'none';
       });
 
     map.invalidateSize();

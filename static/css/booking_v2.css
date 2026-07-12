@@ -560,3 +560,51 @@ html.dark .addon-qty-input, body.dark .addon-qty-input {
   background: var(--bk-field) !important;
   border-color: var(--bk-field-border) !important;
 }
+
+/* --------------------------------------------------------------------------
+   Mobile — booking.css already has a careful @media(max-width:640px) pass
+   (stacked counters, full-width action buttons, compact step labels). Because
+   this stylesheet loads after it, our unconditional glass-pill rules above
+   (fixed step-circle size, side-by-side form-actions, etc.) would otherwise
+   win on every screen size and silently undo that work. Restate the
+   mobile-relevant sizing here, on top of the glass look, so both survive.
+   -------------------------------------------------------------------------- */
+@media (max-width: 640px) {
+  .booking-hero-head h1 { font-size: 1.65rem; }
+  .booking-hero-sub { font-size: 0.76rem; padding: 0.35rem 0.85rem; }
+
+  /* Stepper pill: tighter padding so 4 circles + labels fit ~360px screens */
+  .steps { padding: 0.75rem 0.6rem 0.65rem; border-radius: 22px; }
+  .step-number { width: 2rem; height: 2rem; font-size: 0.78rem; }
+  .step::before { top: 1rem; }
+  .step-label { font-size: 0.58rem; letter-spacing: 0.03em; }
+
+  .step-title { font-size: 1.4rem; }
+  .step-description { margin-bottom: 1.25rem; }
+  .step-description::after { margin-top: 0.65rem; }
+
+  /* Bigger touch targets for the passenger counters (booking.css stacks
+     them to one per row; we restore the larger tap-friendly sizing here) */
+  .counter-btn { width: 2.75rem; height: 2.75rem; font-size: 1.3rem; }
+  .counter-display { font-size: 2.2rem; }
+
+  .addon-card { padding: 0.9rem !important; }
+  .passenger-card { border-radius: 14px; }
+  .service-card, .addon-card { border-radius: 14px !important; }
+
+  /* Full-width, stacked, primary action in the natural thumb zone */
+  .form-actions {
+    flex-direction: column;
+    gap: 0.65rem;
+    padding-top: 1.25rem;
+  }
+  .form-actions .btn { width: 100%; justify-content: center; }
+  #submit-booking { padding: 0.9rem 1.5rem; }
+}
+
+@media (max-width: 380px) {
+  .step-label { display: none; }
+  .step-number { width: 1.85rem; height: 1.85rem; font-size: 0.72rem; }
+  .step::before { top: 0.925rem; }
+  .counter-btn { width: 2.5rem; height: 2.5rem; }
+}

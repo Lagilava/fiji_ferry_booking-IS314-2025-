@@ -1192,14 +1192,26 @@
     class MapManager {
         constructor() {
             this.map = null;
+            this.weatherLayer = null;
+            this.weatherLoaded = false;
+            this.weatherOn = false;
+            this.portMedia = Utils.safeParseJSON('port-media-data', {});
             this.init();
         }
 
         async init() {
             const mapContainer = document.getElementById('fiji-map');
             if (!mapContainer) return;
+            // Guard against double-initialization (e.g. a stray second call) —
+            // Leaflet throws if you re-init an already-bound container.
+            if (mapContainer._leaflet_id) return;
 
             this.isTouch = window.matchMedia('(hover: none), (pointer: coarse)').matches;
+            this.mapContainer = mapContainer;
+            this.mapWrapper = mapContainer.closest('.map-wrapper') || mapContainer.parentElement;
+
+            const loadingEl = document.getElementById('map-loading');
+            if (loadingEl) loadingEl.style.display = 'flex';
 
             this.map = L.map('fiji-map', {
                 scrollWheelZoom: false,
@@ -1223,8 +1235,116 @@
             // Zoom control — bottom right, away from the legend
             L.control.zoom({ position: 'bottomright' }).addTo(this.map);
 
+            this.weatherLayer = L.layerGroup();
+            this.setupToolbar();
             this.setupInteractionGate(mapContainer);
             await this.loadPorts();
+
+            if (loadingEl) loadingEl.style.display = 'none';
+        }
+
+        // ── Toolbar: recenter / weather / fullscreen — stacked top-right ──────
+        setupToolbar() {
+            const Toolbar = L.Control.extend({
+                options: { position: 'topright' },
+                onAdd: (map) => {
+                    const wrap = L.DomUtil.create('div', 'map-toolbar');
+                    L.DomEvent.disableClickPropagation(wrap);
+                    L.DomEvent.disableScrollPropagation(wrap);
+
+                    const mkBtn = (icon, label, onClick, extraClass) => {
+                        const btn = L.DomUtil.create('button', 'map-tool-btn' + (extraClass ? ' ' + extraClass : ''), wrap);
+                        btn.type = 'button';
+                        btn.innerHTML = icon;
+                        btn.setAttribute('aria-label', label);
+                        btn.title = label;
+                        L.DomEvent.on(btn, 'click', (e) => { L.DomEvent.stop(e); onClick(btn); });
+                        return btn;
+                    };
+
+                    mkBtn(
+                        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 019-9M21 12a9 9 0 01-9 9"/><path d="M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg>',
+                        'Recenter map',
+                        () => {
+                            if (this.bounds && this.bounds.length) {
+                                this.map.flyToBounds(this.bounds, { padding: [60, 60], maxZoom: 9 });
+                            } else {
+                                this.map.flyTo([-17.7134, 178.0650], 8);
+                            }
+                        }
+                    );
+
+                    this.weatherBtn = mkBtn(
+                        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"/></svg>',
+                        'Toggle weather overlay',
+                        () => this.toggleWeather(),
+                        'map-tool-btn--weather'
+                    );
+
+                    mkBtn(
+                        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/></svg>',
+                        'Toggle fullscreen',
+                        () => this.toggleFullscreen(),
+                        'map-tool-btn--fullscreen'
+                    );
+
+                    return wrap;
+                },
+            });
+            this.map.addControl(new Toolbar());
+
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && this.mapWrapper && this.mapWrapper.classList.contains('is-fullscreen')) {
+                    this.toggleFullscreen();
+                }
+            });
+        }
+
+        toggleFullscreen() {
+            if (!this.mapWrapper) return;
+            const on = this.mapWrapper.classList.toggle('is-fullscreen');
+            document.body.classList.toggle('map-fullscreen-lock', on);
+            const btn = this.mapWrapper.querySelector('.map-tool-btn--fullscreen');
+            if (btn) btn.classList.toggle('is-active', on);
+            setTimeout(() => this.map.invalidateSize(), 220);
+        }
+
+        async toggleWeather() {
+            this.weatherOn = !this.weatherOn;
+            if (this.weatherBtn) this.weatherBtn.classList.toggle('is-active', this.weatherOn);
+
+            if (!this.weatherOn) {
+                this.map.removeLayer(this.weatherLayer);
+                return;
+            }
+            if (!this.weatherLoaded) {
+                await this.loadWeatherLayer();
+            }
+            this.weatherLayer.addTo(this.map);
+        }
+
+        async loadWeatherLayer() {
+            try {
+                const res = await fetch('/bookings/api/weather/ports/');
+                if (!res.ok) throw new Error('weather fetch failed');
+                const { ports } = await res.json();
+                (ports || []).forEach((p) => {
+                    if (p.condition == null || p.temperature == null) return;
+                    const icon = L.divIcon({
+                        html: `<div class="weather-chip${p.stale ? ' is-stale' : ''}">
+                            <span class="weather-chip__temp">${Math.round(p.temperature)}°</span>
+                            <span class="weather-chip__cond">${Utils.sanitizeHTML(p.condition)}</span>
+                        </div>`,
+                        className: '',
+                        iconSize: [0, 0],
+                        iconAnchor: [-26, 8],
+                    });
+                    L.marker([p.lat, p.lng], { icon, interactive: false }).addTo(this.weatherLayer);
+                });
+                this.weatherLoaded = true;
+            } catch (e) {
+                logger.warn('Weather overlay failed to load:', e);
+            }
         }
 
         createPortIcon(name) {
@@ -1374,6 +1494,61 @@
                     [-18.28,   178.22],
                     [-18.1248, 178.3967],
                 ],
+                // Nadi ↔ Suva — crosses southern Viti Levu (sea route goes south of island)
+                'nadi|suva': [
+                    [-17.7728, 177.3805],
+                    [-18.05,   177.55],
+                    [-18.35,   177.80],
+                    [-18.50,   178.00],
+                    [-18.40,   178.20],
+                    [-18.1267, 178.4272],
+                ],
+                // Nadi ↔ Yasawa Islands — north up the Yasawa Chain
+                'nadi|yasawa islands': [
+                    [-17.776, 177.437],
+                    [-17.52,  177.22],
+                    [-17.18,  177.28],
+                    [-16.95,  177.35],
+                ],
+                // Natovi ↔ Levuka — east across to Ovalau Island
+                'levuka|natovi': [
+                    [-17.6746, 178.5865],
+                    [-17.68,   178.71],
+                    [-17.6849, 178.8373],
+                ],
+                // Suva ↔ Rotuma — long open-ocean voyage north then northwest past Vanua Levu
+                'rotuma|suva': [
+                    [-18.1267, 178.4272],
+                    [-17.60,   178.50],
+                    [-17.00,   178.20],
+                    [-16.00,   177.80],
+                    [-14.50,   177.50],
+                    [-13.20,   177.25],
+                    [-12.4870, 177.1216],
+                ],
+                // Lautoka ↔ Rotuma — northwest across open ocean
+                'lautoka|rotuma': [
+                    [-17.61,   177.45],
+                    [-16.80,   177.40],
+                    [-15.50,   177.35],
+                    [-14.00,   177.20],
+                    [-12.4870, 177.1216],
+                ],
+                // Savusavu ↔ Rotuma — north-northwest through open Pacific
+                'rotuma|savusavu': [
+                    [-16.81,   179.33],
+                    [-15.80,   179.00],
+                    [-14.80,   178.30],
+                    [-13.80,   177.80],
+                    [-12.4870, 177.1216],
+                ],
+                // Suva ↔ Kadavu (Vunisea) — south through Beqa Lagoon / open ocean
+                'kadavu (vunisea)|suva': [
+                    [-18.1267, 178.4272],
+                    [-18.40,   178.35],
+                    [-18.75,   178.25],
+                    [-19.0451, 178.1571],
+                ],
             };
 
             return lanes[key] || null;
@@ -1416,16 +1591,26 @@
         }
 
         createPopupHtml(name, routeCount) {
-            const bookUrl = `/bookings/book/?port=${encodeURIComponent(name)}`;
+            const media = this.portMedia && this.portMedia[name];
+            const photoHtml = media && media.image
+                ? `<div class="map-popup__photo" style="background-image:url('${media.image}')"></div>`
+                : '';
+            const taglineHtml = media && media.tagline
+                ? `<div class="map-popup__tagline">${Utils.sanitizeHTML(media.tagline)}</div>`
+                : '';
             return `<div class="map-popup">
-                <div class="map-popup__name">
-                    <span class="popup-dot"></span>${name}
+                ${photoHtml}
+                <div class="map-popup__body">
+                    <div class="map-popup__name">
+                        <span class="popup-dot"></span>${name}
+                    </div>
+                    ${taglineHtml}
+                    <div class="map-popup__meta">${routeCount} active route${routeCount !== 1 ? 's' : ''} today</div>
+                    <a href="/bookings/book/?port=${encodeURIComponent(name)}" class="map-popup__book">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                        Book a ferry
+                    </a>
                 </div>
-                <div class="map-popup__meta">${routeCount} active route${routeCount !== 1 ? 's' : ''} today</div>
-                <a href="/bookings/book/" class="map-popup__book">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-                    Book a ferry
-                </a>
             </div>`;
         }
 
@@ -1556,7 +1741,7 @@
                     L.marker(latlng, { icon: this.createPortIcon(name) })
                         .addTo(this.map)
                         .bindPopup(this.createPopupHtml(name, routeCount), {
-                            maxWidth: 220, className: 'map-popup-wrap',
+                            maxWidth: 240, className: 'map-popup-wrap',
                         });
                     bounds.push(latlng);
                 });
@@ -1568,6 +1753,7 @@
                     portsEl.textContent = activePorts.size;
                 }
 
+                this.bounds = bounds;
                 if (bounds.length) {
                     this.map.fitBounds(bounds, { padding: [60, 60], maxZoom: 9 });
                 } else {
@@ -1583,20 +1769,21 @@
 
         addHardcodedPorts() {
             const ports = [
-                { name: 'Denarau',    lat: -17.7725, lng: 177.3805 },
-                { name: 'Suva',       lat: -18.1248, lng: 178.3967 },
-                { name: 'Lautoka',    lat: -17.6154, lng: 177.4510 },
-                { name: 'Natovi',     lat: -17.6590, lng: 178.4850 },
-                { name: 'Nabouwalu',  lat: -16.9910, lng: 178.6920 },
-                { name: 'Savusavu',   lat: -16.7763, lng: 179.3413 },
-                { name: 'Yasawa Islands', lat: -16.95, lng: 177.35 },
+                { name: 'Suva',             lat: -18.1268, lng: 178.4272 },
+                { name: 'Natovi',           lat: -17.6746, lng: 178.5865 },
+                { name: 'Levuka',           lat: -17.6849, lng: 178.8373 },
+                { name: 'Nabouwalu',        lat: -16.9934, lng: 178.6849 },
+                { name: 'Kadavu (Vunisea)', lat: -19.0451, lng: 178.1571 },
+                { name: 'Rotuma',           lat: -12.4870, lng: 177.1216 },
+                { name: 'Nadi',             lat: -17.7728, lng: 177.3805 },
+                { name: 'Savusavu',         lat: -16.81,   lng: 179.33 },
+                { name: 'Taveuni',          lat: -16.85,   lng: 179.97 },
+                { name: 'Lautoka',          lat: -17.61,   lng: 177.45 },
             ];
             const routePairs = [
-                ['Suva', 'Lautoka'],
-                ['Suva', 'Natovi'],
-                ['Natovi', 'Nabouwalu'],
-                ['Denarau', 'Yasawa Islands'],
-                ['Suva', 'Savusavu'],
+                ['Suva', 'Natovi'], ['Natovi', 'Levuka'], ['Natovi', 'Nabouwalu'],
+                ['Suva', 'Kadavu (Vunisea)'], ['Suva', 'Rotuma'],
+                ['Nadi', 'Suva'], ['Suva', 'Savusavu'], ['Suva', 'Taveuni'], ['Lautoka', 'Savusavu'],
             ];
             const portMap = Object.fromEntries(ports.map(p => [p.name, [p.lat, p.lng]]));
             const bounds = [];
@@ -1612,9 +1799,10 @@
             ports.forEach(port => {
                 L.marker([port.lat, port.lng], { icon: this.createPortIcon(port.name) })
                     .addTo(this.map)
-                    .bindPopup(this.createPopupHtml(port.name, 1), { maxWidth: 220 });
+                    .bindPopup(this.createPopupHtml(port.name, 1), { maxWidth: 240, className: 'map-popup-wrap' });
                 bounds.push([port.lat, port.lng]);
             });
+            this.bounds = bounds;
             if (bounds.length) this.map.fitBounds(bounds, { padding: [60, 60], maxZoom: 9 });
         }
     };

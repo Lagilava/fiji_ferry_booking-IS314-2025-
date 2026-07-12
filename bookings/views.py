@@ -307,6 +307,50 @@ def weather_batch(request):
     return JsonResponse({'valid': True, 'weather': weather})
 
 
+@require_GET
+def weather_ports(request):
+    """Current weather for every port, keyed by port — for the homepage map's
+    weather overlay. Unlike weather_batch (per-schedule/route), this is
+    per-port: a port can sit on several routes, so we take its single most
+    recent stored reading rather than fetching live (the map toggle should be
+    instant, and routes/homepage traffic already keeps readings fresh).
+    """
+    ports = Port.objects.filter(lat__isnull=False, lng__isnull=False)
+
+    latest_per_port = {}
+    for wc in (WeatherCondition.objects
+               .filter(port__in=ports)
+               .order_by('port_id', '-updated_at')):
+        latest_per_port.setdefault(wc.port_id, wc)
+
+    from bookings.weather.provider import serialize_condition
+
+    data = []
+    for port in ports:
+        wc = latest_per_port.get(port.id)
+        entry = {
+            'port_id': port.id,
+            'name': port.name,
+            'lat': port.lat,
+            'lng': port.lng,
+            'condition': None,
+            'temperature': None,
+            'wind_speed': None,
+            'stale': True,
+        }
+        if wc:
+            cond = serialize_condition(wc)
+            entry.update({
+                'condition': cond['condition'],
+                'temperature': cond['temperature'],
+                'wind_speed': cond['wind_speed'],
+                'stale': cond['stale'],
+            })
+        data.append(entry)
+
+    return JsonResponse({'valid': True, 'ports': data})
+
+
 def privacy_policy(request):
     return render(request, 'privacy_policy.html')
 
@@ -451,6 +495,19 @@ def homepage(request):
             })
     except Exception as e:
         logger.warning("Featured destinations unavailable: %s", e)
+
+    # --- Port media for the live map's popups (every port, not just featured) ---
+    port_media_map = {}
+    try:
+        from django.templatetags.static import static as static_url
+        for p in Port.objects.all():
+            media = port_media(p.name)
+            port_media_map[p.name] = {
+                'image': static_url(media['image']),
+                'tagline': media['tagline'],
+            }
+    except Exception as e:
+        logger.warning("Port media map unavailable: %s", e)
 
     # --- Next Departure Info ---
     next_departure = schedules.first()
@@ -695,6 +752,7 @@ def homepage(request):
         },
         'weather_data': weather_data,
         'featured_destinations': featured_destinations,
+        'port_media_map': port_media_map,
         'schedule_weather_data': schedule_weather_data,
         'next_departure': next_departure_info,
         'hero_departures': hero_departures,

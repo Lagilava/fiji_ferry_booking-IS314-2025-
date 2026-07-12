@@ -42,6 +42,7 @@ urlpatterns = [
     path('api/routes/', views.routes_api, name='routes_api'),
     path('api/weather/conditions/', views.get_weather_conditions, name='get_weather_conditions'),  # Updated: More specific path
     path('api/weather/batch/', views.weather_batch, name='weather_batch'),
+    path('api/weather/ports/', views.weather_ports, name='weather_ports'),
     path('api/create_checkout_session/', views.create_checkout_session, name='api_create_checkout_session'), # Updated: Moved to api/
     path('api/check_session/', views.check_session, name='check_session'),  # Updated: Moved to api/
     path('booking/<int:booking_id>/pdf/', views.booking_pdf, name='booking_pdf'),
